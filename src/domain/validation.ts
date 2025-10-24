@@ -1,0 +1,28 @@
+import { z } from "zod";
+
+/**
+ * Schema for validating prompt creation payloads.
+ */
+export const promptInputSchema = z.object({
+  id: z.string().uuid(),
+  slug: z
+    .string()
+    .min(3, "Slug must be at least 3 characters long")
+    .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumerics and hyphens"),
+  title: z.string().min(3, "Title must be at least 3 characters long"),
+  description: z.string().max(2000).optional(),
+  body: z.string().min(1, "Prompt body is required"),
+  semanticVersion: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/, "Version must follow semantic versioning"),
+  tags: z.array(z.string().min(1)).max(10).default([]),
+  changelog: z.string().max(2000).optional(),
+});
+
+/**
+ * Schema for validating search queries.
+ */
+export const searchQuerySchema = z.object({
+  text: z.string().max(200).optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  page: z.number().int().min(0).default(0),
+  pageSize: z.number().int().min(1).max(100).default(20),
+});

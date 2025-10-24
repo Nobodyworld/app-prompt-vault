@@ -1,63 +1,101 @@
-# app-prompt-vault
+# Prompt Vault
 
-A lightweight desktop vault to collect, version, and tag reusable prompts. Built with Tauri, React, and SQLite following the All-Builds control-plane guard rails.
+Prompt Vault is a cross-platform desktop vault for collecting, versioning, and tagging reusable prompts. The project targets a Ta
+uri shell hosting a React UI backed by a local SQLite database. This repository now includes a fully typed domain layer, a CLI fo
+r quick interactions, and exhaustive documentation to support future UI work.
 
-## Getting started (developer)
+## Key Features
 
-Install dependencies and run the web UI during development. For most UI work you don't need a native toolchain.
+- **Prompt Library** – Create prompts with rich metadata, semantic versioning, and change history.
+- **Tag Filtering** – Attach reusable tags to group prompts by workflow, team, or modality.
+- **SQLite Persistence** – Store data locally with migrations managed inside the repo for reproducible environments.
+- **Command-Line Interface** – Manage your library directly from the terminal while the desktop UI is under construction.
+- **Test Coverage** – Vitest suite exercises core business flows and guards against regressions.
 
-```powershell
+## Project Layout
+
+```text
+app-prompt-vault/
+├─ src/
+│  ├─ cli/                 # Commander-based CLI utilities
+│  ├─ db/                  # SQLite connection factory and migrations
+│  ├─ domain/              # Models, errors, and validation schemas
+│  ├─ repositories/        # Data access layer over SQLite
+│  └─ services/            # PromptVaultService façade
+├─ tests/                  # Vitest specs for service workflows
+├─ docs/                   # Step-by-step Codex chain documentation and architecture guides
+├─ codex_chain.json        # Automation chain definition
+├─ package.json            # Tooling, dependencies, and scripts
+└─ tsconfig.json           # TypeScript compiler configuration
+```
+
+## Getting Started
+
+> **Prerequisites:** Node.js 18.17+ and (optionally) SQLite libraries for native bindings.
+
+```bash
 # install dependencies
-npm ci
+npm install
 
-# start Vite dev server (web only)
-npm run dev
+# run unit tests
+npm test
 
-# open the app inside Tauri shell (requires Rust toolchain + native linker)
-npm run tauri dev
-```
+# lint the project
+npm run lint
 
-## Build (production)
-
-Create production UI assets and then optionally build native bundles.
-
-```powershell
-# build UI
+# build TypeScript output to dist/
 npm run build
-
-# build Tauri native bundles (Windows/macOS/Linux). Note: native builds require a working Rust toolchain and platform linker.
-npm run tauri build
 ```
 
-### Notes about native builds (Windows)
+## CLI Usage
 
-- The Rust MSVC toolchain requires the Microsoft Visual C++ linker (`link.exe`). If you don't want to install Visual Studio/Build Tools locally, use the provided GitHub Actions workflow which runs on `windows-latest` and produces native artifacts for you (see `.github/workflows/tauri-windows.yml`).
-- If you prefer a fully local, Visual-Studio-free route you can target the GNU toolchain (MSYS2/MinGW) — see `docs/` for an example setup and caveats.
+The CLI ships with the project to help you seed and explore the vault.
 
-Built native bundles (when produced) live under `src-tauri/target/release/bundle/` in the build runner.
+```bash
+# Create a prompt with tags
+npm run dev -- create \
+  --slug blog-outline \
+  --title "Blog Outline Generator" \
+  --body "You are an expert copywriter..." \
+  --version 1.0.0 \
+  --tags marketing,writing
 
-## Tests
+# List prompts matching a tag
+npm run dev -- list --tags marketing
 
-Unit tests use Vitest + React Testing Library.
+# Add a new version
+npm run dev -- version --id <prompt-id> --body "Improved prompt" --version 1.1.0
+```
 
-```powershell
+The CLI stores data in `prompt-vault.db` by default. Pass `--db` to point to another SQLite database (e.g., `:memory:` during tests).
+
+## Testing
+
+Vitest powers the automated test suite.
+
+```bash
 # run tests once
-npx vitest run
+npm test
 
-# run in watch mode during development
-npx vitest
+# run in watch mode
+echo "npm run test:watch"
 ```
 
-## Scripts (summary)
+Coverage reports are emitted under `coverage/` when tests run locally.
 
-- `npm run dev` — launch the Vite dev server for the React UI.
-- `npm run build` — create a production build for the UI.
-- `npm run tauri dev` — run the full Tauri shell with hot reload (requires native toolchain).
-- `npm run tauri build` — build native distributables (requires native toolchain or CI).
-- `npm test` / `npx vitest run` — run unit tests.
+## Documentation
 
-## Quick troubleshooting
+- [`docs/architecture.md`](docs/architecture.md) – component relationships, data flow, and migration strategy.
+- [`docs/workflows.md`](docs/workflows.md) – developer workflows, CLI recipes, and testing loops.
+- [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) – dependency inventory with security considerations.
+- [`docs/`](docs/) – contains the full Codex chain step reports.
 
-- If `npm run tauri build` fails on Windows with `link.exe not found`, either install Visual Studio Build Tools (Desktop development with C++) or use the GitHub Actions workflow to produce bundles in CI.
+## Roadmap
 
-See `docs/` and `README-DockWidget.md` for component-level notes and testing guidance.
+1. Build the React + Tauri UI that consumes the service layer.
+2. Introduce synchronization/export features for sharing prompt collections.
+3. Add GitHub Actions workflows for CI (linting, testing, release bundles).
+
+## License
+
+This repository is distributed under a Proprietary license. All rights reserved.
