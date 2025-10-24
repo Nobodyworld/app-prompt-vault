@@ -1,0 +1,15 @@
+type: app
+function: prompt-vault
+version: 0.1.0
+status: scaffolded
+language: typescript
+stack: tauri-react-sqlite
+features:
+  - prompt-library
+  - tag-filtering
+  - version-tracking
+  - sqlite-storage
+deps:
+  - react
+  - tauri
+  - rusqlite
