@@ -76,7 +76,8 @@ export class PromptRepository {
          FROM prompts p
          LEFT JOIN prompt_versions pv ON pv.prompt_id = p.id
          WHERE p.id = @promptId
-         ORDER BY pv.created_at DESC
+         -- Order by creation time, breaking ties by row insertion order to ensure determinism
+         ORDER BY pv.created_at DESC, pv.rowid DESC
          LIMIT 1`
       )
       .get({ promptId }) as Record<string, unknown> | undefined;

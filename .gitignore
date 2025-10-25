@@ -1,5 +1,13 @@
 node_modules/
 dist/
+desktop/dist/
 coverage/
 prompt-vault.db
 .env
+src-tauri/target/
+src-tauri/gen/
+*.log
+*.tmp
+tests/**/*.js
+tests/**/*.js.map
+tests/**/*.d.ts

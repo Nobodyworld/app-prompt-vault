@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Prompt Vault",
+  "version": "0.1.0",
+  "identifier": "com.promptvault.desktop",
+  "build": {
+    "frontendDist": "../desktop/dist",
+    "beforeDevCommand": "npm run desktop:dev",
+    "beforeBuildCommand": "npm run desktop:build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Prompt Vault",
+        "width": 1200,
+        "height": 800,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true
+  }
+}

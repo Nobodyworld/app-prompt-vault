@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import { z } from "zod";
+import type { z, ZodIssue } from "zod";
 import type { Prompt, PromptId, PromptSearchResult, PromptVersion, Tag } from "../domain/models.js";
 import { ValidationError } from "../domain/errors.js";
 import { promptInputSchema, searchQuerySchema } from "../domain/validation.js";
@@ -23,7 +23,7 @@ export class PromptVaultService {
   public createPrompt(input: z.input<typeof promptInputSchema>): Prompt {
     const result = promptInputSchema.safeParse(input);
     if (!result.success) {
-      throw new ValidationError(result.error.errors.map((error) => error.message));
+      throw new ValidationError(result.error.issues.map((error: ZodIssue) => error.message));
     }
 
     const { id, slug, title, description, body, semanticVersion, tags, changelog } = result.data;
