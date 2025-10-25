@@ -2,6 +2,7 @@ export interface PromptVersionSummary {
   id: string;
   semanticVersion: string;
   updatedAt: string;
+  body: string;
 }
 
 export interface PromptSummary {
@@ -23,4 +24,11 @@ export interface CreatePromptInput {
   semanticVersion: string;
   changelog?: string;
   tags: string[];
+}
+
+export interface AddPromptVersionInput {
+  promptId: string;
+  body: string;
+  semanticVersion: string;
+  changelog?: string;
 }
