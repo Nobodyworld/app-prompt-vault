@@ -1,15 +1,14 @@
 # Prompt Vault
 
-Prompt Vault is a cross-platform desktop vault for collecting, versioning, and tagging reusable prompts. The project targets a Ta
-uri shell hosting a React UI backed by a local SQLite database. This repository now includes a fully typed domain layer, a CLI fo
-r quick interactions, and exhaustive documentation to support future UI work.
+Prompt Vault is a cross-platform desktop vault for collecting, versioning, and tagging reusable prompts. The project includes a fully typed domain layer, a CLI for quick interactions, and a React UI hosted in a Tauri shell backed by a local SQLite database.
 
 ## Key Features
 
 - **Prompt Library** – Create prompts with rich metadata, semantic versioning, and change history.
 - **Tag Filtering** – Attach reusable tags to group prompts by workflow, team, or modality.
 - **SQLite Persistence** – Store data locally with migrations managed inside the repo for reproducible environments.
-- **Command-Line Interface** – Manage your library directly from the terminal while the desktop UI is under construction.
+- **Command-Line Interface** – Manage your library directly from the terminal.
+- **Desktop UI** – React-based interface for easy prompt management.
 - **Test Coverage** – Vitest suite exercises core business flows and guards against regressions.
 
 ## Project Layout
@@ -22,6 +21,12 @@ app-prompt-vault/
 │  ├─ domain/              # Models, errors, and validation schemas
 │  ├─ repositories/        # Data access layer over SQLite
 │  └─ services/            # PromptVaultService façade
+├─ desktop/
+│  ├─ src/                 # React UI components and pages
+│  ├─ index.html           # App shell
+│  ├─ vite.config.ts       # Vite configuration
+│  └─ tsconfig.json        # TypeScript config for UI
+├─ src-tauri/              # Tauri Rust backend
 ├─ tests/                  # Vitest specs for service workflows
 ├─ docs/                   # Step-by-step Codex chain documentation and architecture guides
 ├─ codex_chain.json        # Automation chain definition
@@ -31,7 +36,7 @@ app-prompt-vault/
 
 ## Getting Started
 
-> **Prerequisites:** Node.js 18.17+ and (optionally) SQLite libraries for native bindings.
+> **Prerequisites:** Node.js 18.17+, Rust (for Tauri), and (optionally) SQLite libraries for native bindings.
 
 ```bash
 # install dependencies
@@ -45,6 +50,12 @@ npm run lint
 
 # build TypeScript output to dist/
 npm run build
+
+# run desktop app in development
+npm run desktop:dev
+
+# build desktop app for production
+npm run desktop:build
 ```
 
 ## CLI Usage
@@ -92,7 +103,7 @@ Coverage reports are emitted under `coverage/` when tests run locally.
 
 ## Roadmap
 
-1. Build the React + Tauri UI that consumes the service layer.
+1. Polish the UI with additional features like search and advanced filtering.
 2. Introduce synchronization/export features for sharing prompt collections.
 3. Add GitHub Actions workflows for CI (linting, testing, release bundles).
 

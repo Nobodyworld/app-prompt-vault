@@ -246,7 +246,7 @@ fn add_prompt_version_inner(
         AppError::Validation("Semantic version must follow MAJOR.MINOR.PATCH".into())
     })?;
 
-    let mut connection = state
+    let connection = state
         .connection
         .lock()
         .map_err(|_| AppError::Internal("database lock poisoned".into()))?;

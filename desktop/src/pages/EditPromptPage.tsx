@@ -1,4 +1,5 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import type { PromptSummary } from "../types/prompt";
 import { addPromptVersion } from "../services/promptApi";

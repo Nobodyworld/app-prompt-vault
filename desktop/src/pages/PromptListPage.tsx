@@ -63,7 +63,7 @@ export function PromptListPage(): JSX.Element {
     return <p className="status">No prompts yet - create your first prompt to get started.</p>;
   }
 
-  async function handleCopy(prompt: PromptSummary): Promise<void> {
+    async function handleCopy(prompt: PromptSummary): Promise<void> {
     if (!prompt.latestVersion?.body) {
       setCopyError("Prompt body is unavailable. Try opening the editor to refresh this entry.");
       return;

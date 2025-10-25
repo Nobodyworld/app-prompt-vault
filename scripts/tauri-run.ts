@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { env, platform } from "node:process";
 
-function resolveCargoPaths() {
+function resolveCargoPaths(): string {
   const separator = platform === "win32" ? ";" : ":";
   const existing = (env.PATH ?? "").split(separator).filter(Boolean);
   const additions = new Set();

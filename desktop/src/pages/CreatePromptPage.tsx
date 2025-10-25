@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPrompt } from "../services/promptApi";
 import { isTauriAvailable } from "../lib/tauri";
