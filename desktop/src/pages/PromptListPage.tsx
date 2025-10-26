@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { listPrompts } from "../services/promptApi";
 import type { PromptSummary } from "../types/prompt";
 import { PromptList } from "../components/PromptList";
 import { isTauriAvailable } from "../lib/tauri";
 import { copyTextToClipboard } from "../lib/clipboard";
+
+type LocationState = { refresh?: boolean } | null;
 
 export function PromptListPage(): JSX.Element {
   const [prompts, setPrompts] = useState<PromptSummary[]>([]);
@@ -12,8 +14,21 @@ export function PromptListPage(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
+  const { state } = useLocation() as { state: LocationState };
+
+  const requestReload = useCallback(() => {
+    setReloadToken((token) => token + 1);
+  }, []);
+
+  useEffect(() => {
+    if (state?.refresh) {
+      requestReload();
+      navigate(".", { replace: true, state: null });
+    }
+  }, [navigate, requestReload, state?.refresh]);
 
   useEffect(() => {
     let mounted = true;
@@ -27,11 +42,12 @@ export function PromptListPage(): JSX.Element {
     }
 
     async function load(): Promise<void> {
+      setIsLoading(true);
       try {
-        setIsLoading(true);
         const data = await listPrompts();
         if (mounted) {
           setPrompts(data);
+          setError(null);
         }
       } catch (err: unknown) {
         if (mounted) {
@@ -44,12 +60,12 @@ export function PromptListPage(): JSX.Element {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [reloadToken]);
 
   if (isLoading) {
     return <p className="status">Loading prompts...</p>;
@@ -63,7 +79,7 @@ export function PromptListPage(): JSX.Element {
     return <p className="status">No prompts yet - create your first prompt to get started.</p>;
   }
 
-    async function handleCopy(prompt: PromptSummary): Promise<void> {
+  const handleCopy = useCallback(async (prompt: PromptSummary): Promise<void> => {
     if (!prompt.latestVersion?.body) {
       setCopyError("Prompt body is unavailable. Try opening the editor to refresh this entry.");
       return;
@@ -83,11 +99,14 @@ export function PromptListPage(): JSX.Element {
     } catch (err: unknown) {
       setCopyError(err instanceof Error ? err.message : "Unable to copy prompt to the clipboard.");
     }
-  }
+  }, []);
 
-  function handleEdit(prompt: PromptSummary): void {
-    navigate(`/edit/${prompt.id}`, { state: { prompt } });
-  }
+  const handleEdit = useCallback(
+    (prompt: PromptSummary) => {
+      navigate(`/edit/${prompt.id}`, { state: { prompt } });
+    },
+    [navigate]
+  );
 
   useEffect(() => {
     return () => {

@@ -1,0 +1,10 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "better-sqlite3"
+        # TODO(P3, 1d): Review native dependency updates manually due to binary rebuild requirements.

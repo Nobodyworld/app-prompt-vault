@@ -14,6 +14,7 @@ This document captures the most common developer and operator workflows for Prom
 ```bash
 npm test            # Executes the Vitest suite once
 npm run test:watch  # Watches files and reruns tests incrementally
+npm run quality:gate # Lint → build → tests with coverage thresholds → security scan
 ```
 
 Vitest defaults to the Node environment. Tests rely on the `:memory:` SQLite database to remain hermetic and fast.
@@ -25,9 +26,10 @@ npm run dev -- create --slug first --title "First Prompt" --body "Do X" --tags o
 npm run dev -- list
 npm run dev -- version --id <prompt-id> --body "Updated" --version 1.1.0
 npm run dev -- tag --id <prompt-id> --tags experiments,writing
+npm run dev -- doctor   # Runs integrity check, counts prompts/tags, prints sample slugs
 ```
 
-By default the CLI writes to `prompt-vault.db` in the repository root. Delete the file to reset your dataset.
+Enable metrics and health endpoints for any CLI invocation by exporting `PROMPT_VAULT_METRICS=true` (set `PROMPT_VAULT_METRICS_PORT` to override the default 9464). By default the CLI writes to `prompt-vault.db` in the repository root. Delete the file to reset your dataset.
 
 ## 4. Database Maintenance
 
@@ -35,14 +37,30 @@ By default the CLI writes to `prompt-vault.db` in the repository root. Delete th
 - When introducing a new migration, copy the previous file, increment the prefix, and add your SQL changes.
 - Update `PromptRepository.applyMigrations` if a more sophisticated migration runner is introduced.
 
-## 5. Releasing Builds (Future)
+## 5. Observability Toolkit
+
+- Start a standalone health/metrics server with `npm run observability`. The process will stay alive until interrupted.
+- Inspect metrics via `curl http://localhost:9464/metrics` (or your configured port).
+- Health endpoints:
+  - `/healthz` – liveness (process running)
+  - `/readyz` – readiness (SQLite connection currently open)
+- Telemetry spans follow the `service.*`, `repository.*`, and `plugin.*` naming conventions; use them to identify hot paths.
+
+## 6. Stewardship Metrics
+
+- Run `npm run metrics:snapshot` to print cyclomatic complexity, dependency fan-out, and a 50-prompt latency sample.
+- Copy relevant numbers into `STEWARDS_REPORT.md` (or dashboards) during major releases.
+- When metrics regress, prioritise targeted refactors (e.g., repositories > 2.5 average complexity) before shipping new features.
+
+## 7. Releasing Builds
 
 1. Run `npm run build` to emit compiled TypeScript.
-2. Package the CLI as part of the Tauri bundle or as a standalone Node executable.
-3. Publish release notes using the template in `CHANGELOG.md`.
-4. Tag the release (e.g., `git tag v0.2.0`) and push.
+2. Run `npm run release:prepare -- <version>` to bump package metadata and generate changelog/release-note stubs.
+3. Package the CLI as part of the Tauri bundle or as a standalone Node executable.
+4. Publish release notes using the generated templates and update TODO placeholders.
+5. Tag the release (e.g., `git tag v0.2.0`) and push.
 
-## 6. Troubleshooting
+## 8. Troubleshooting
 
 - **SQLite module fails to load**: ensure build tools for native Node modules are available (Python, C/C++ toolchain).
 - **Validation errors**: inspect the aggregated `ValidationError` messages to see which schema rule failed.
