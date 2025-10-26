@@ -22,9 +22,19 @@ ible. Formal support matrix will be published alongside the first stable release
 
 ## Hardening Checklist
 
-- Run `npm audit` before releases.
+- Run `npm run security:scan` (wrapper around `npm audit --omit=dev`) before releases and address high/critical issues prior to shipping.
 - Keep dependencies up to date (see `docs/DEPENDENCIES.md`).
+- Enable SQLite `PRAGMA foreign_keys = ON`, `busy_timeout`, and `journal_mode = WAL` on writable databases (handled by `ConnectionFactory`).
 - Ensure SQLite databases are stored in user-controlled directories with appropriate permissions.
 - Validate all user input using the Zod schemas provided in `src/domain/validation.ts`.
+- Redact secrets or API tokens from logs; Prompt Vault intentionally avoids logging prompt bodies.
+- Review release artifacts against `RELEASE_NOTES.md` for migration or operational calls to action.
+- Enable observability endpoints only when required and ensure metric exports do not include sensitive prompt content.
+
+## Residual Risks
+
+- Local databases are not encrypted; rely on full-disk encryption and OS permissions for confidentiality.
+- Prompt content is stored in plaintext. Scrub sensitive data before importing prompts into the vault.
+- Dependency scanning depends on npm registry availability; capture audit logs during releases and mirror advisories for air-gapped environments.
 
 Thank you for helping keep Prompt Vault users safe!

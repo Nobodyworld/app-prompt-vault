@@ -64,7 +64,7 @@ export default [
     }
   },
   {
-    files: ["scripts/**/*.mjs", "desktop/vite.config.ts"],
+    files: ["scripts/**/*.mjs", "scripts/**/*.ts", "desktop/vite.config.ts"],
     languageOptions: {
       parser: tsparser,
       ecmaVersion: 2022,

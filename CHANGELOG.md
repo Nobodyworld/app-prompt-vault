@@ -2,6 +2,45 @@
 
 All notable changes to Prompt Vault will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- `scripts/metrics-snapshot.ts` for agent-tagged complexity, dependency, and latency reporting alongside `STEWARDS_REPORT.md` and `AUTOMATION_ROLES.md` guidance.
+
+### Changed
+- Simplified repository transactions by delegating to `better-sqlite3`'s transaction helper and deduplicating tags before persistence.
+
+### Fixed
+- Tag upserts now reuse the persisted identifier returned from SQLite, preventing foreign key errors when reapplying shared labels.
+
+## [0.2.0] - 2025-10-26
+
+### Added
+- Observability package exposing structured logging, Prometheus-compatible metrics, and a health server with readiness controls.
+- Plugin host with an audit trail reference implementation plus developer docs (`EXTENSION_GUIDE.md`, `ARCHITECTURE_OVERVIEW.md`, `AUTOMATION.md`).
+- CLI doctor command, observability bootstrap script, Dependabot config, and CI workflow running the quality gate.
+
+### Changed
+- PromptVaultService and PromptRepository now emit telemetry spans, structured logs, and plugin notifications around every workflow.
+- CLI operations bootstrap observability, record telemetry events, and support opt-in metrics via environment variables.
+- Validation pipeline consolidated into `npm run quality:gate` with security scanning and Vitest coverage thresholds.
+
+### Fixed
+- Documented incident response, performance baselines, and future-proofing strategy to guide recovery and scaling decisions.
+- Busy timeout now honours `PROMPT_VAULT_BUSY_TIMEOUT`, allowing operators to tune contention limits without code changes.
+
+## [0.1.1] - 2025-10-25
+
+### Added
+- Coverage workflow powered by V8 instrumentation (`npm run test:coverage`) and summary script (`npm run coverage:summary`).
+- Repository-level regression tests for tag metadata preservation and service tests for pagination, timestamp updates, and no-op tag handling.
+- Release notes (`RELEASE_NOTES.md`) and expanded security guidance for operational readiness.
+
+### Changed
+- SQLite connections now enable foreign keys and busy timeouts by default while preserving WAL mode for writable databases.
+- Prompt version creation uses a single timestamp to keep metadata consistent across records.
+- Tag queries sort case-insensitively and reuse existing descriptions when labels are re-applied.
+
 ## [0.1.0] - 2024-04-11
 
 ### Added
@@ -15,3 +54,4 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ### Notes
 - Desktop UI work (React + Tauri) remains in planning; CLI acts as developer interface in the interim.
+

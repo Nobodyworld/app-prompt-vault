@@ -6,6 +6,8 @@ import Database from "better-sqlite3";
 import chalk from "chalk";
 import { randomUUID } from "node:crypto";
 import { PromptVaultService } from "../services/PromptVaultService.js";
+import { bootstrapObservabilityFromEnv } from "../observability/index.js";
+import { createAuditTrailPlugin } from "../extensions/index.js";
 
 const program = new Command();
 
@@ -13,18 +15,55 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const defaultDbPath = resolve(__dirname, "..", "..", "prompt-vault.db");
 
+const observability = bootstrapObservabilityFromEnv({ serviceName: "prompt-vault-cli" });
+const telemetry = observability.telemetry;
+const logger = observability.logger.child({ component: "cli" });
+observability.indicator.setLiveness({ status: "ok" });
+observability.indicator.setReadiness({ status: "degraded", details: { reason: "idle" } });
+
+async function shutdownObservability(): Promise<void> {
+  await observability.shutdown();
+}
+
+process.once("SIGINT", async () => {
+  await shutdownObservability();
+  process.exit(130);
+});
+
+process.once("SIGTERM", async () => {
+  await shutdownObservability();
+  process.exit(143);
+});
+
+process.on("exit", () => {
+  void shutdownObservability();
+});
+
 /**
  * Helper to create a PromptVaultService, run the provided handler, and ensure the database connection closes.
  * @param dbPath - Path to the SQLite database file.
  * @param handler - Callback invoked with the service instance.
  */
-async function useService(dbPath: string, handler: (service: PromptVaultService) => Promise<void> | void): Promise<void> {
+async function useService<T>(
+  dbPath: string,
+  handler: (service: PromptVaultService, database: Database.Database) => Promise<T> | T
+): Promise<T> {
+  observability.indicator.setReadiness({ status: "degraded", details: { reason: "connecting" } });
   const database = new Database(dbPath);
-  const service = new PromptVaultService(database);
+  observability.indicator.setReadiness({ status: "ok" });
+  const service = new PromptVaultService(database, {
+    telemetry,
+    logger: logger.child({ component: "service", dbPath }),
+    plugins: [createAuditTrailPlugin()],
+  });
   try {
-    await handler(service);
+    return await handler(service, database);
+  } catch (error) {
+    logger.error("cli_handler_failed", { error: error instanceof Error ? error.message : error });
+    throw error;
   } finally {
     database.close();
+    observability.indicator.setReadiness({ status: "degraded", details: { reason: "idle" } });
   }
 }
 
@@ -64,6 +103,7 @@ program
       });
 
       console.log(chalk.green(`Created prompt ${prompt.title} (${prompt.slug})`));
+      telemetry.recordEvent("cli.prompt_created", { promptId: prompt.id });
     });
   });
 
@@ -140,6 +180,24 @@ program
     await useService(options.db, (service) => {
       const version = service.addVersion(options.id, options.body, options.version, options.changelog);
       console.log(chalk.green(`Added version ${version.semanticVersion} to prompt ${options.id}`));
+    });
+  });
+
+program
+  .command("doctor")
+  .description("Run integrity checks and summarise prompt vault health")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service, database) => {
+      const integrity = database.prepare("PRAGMA integrity_check;").get() as { integrity_check: string };
+      const promptCountRow = database.prepare("SELECT COUNT(*) as count FROM prompts;").get() as { count: number };
+      const tagCountRow = database.prepare("SELECT COUNT(*) as count FROM tags;").get() as { count: number };
+      const sample = service.searchPrompts({ page: 0, pageSize: 5 });
+      console.log(chalk.bold("Prompt Vault Doctor"));
+      console.log(`Integrity: ${integrity.integrity_check}`);
+      console.log(`Prompts: ${promptCountRow.count}`);
+      console.log(`Tags: ${tagCountRow.count}`);
+      console.log(`Sample Prompts: ${sample.prompts.map((prompt) => prompt.slug).join(", ") || "<none>"}`);
     });
   });
 
