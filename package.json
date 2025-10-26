@@ -41,6 +41,7 @@
     "better-sqlite3": "^12.4.1",
     "chalk": "^5.6.2",
     "commander": "^14.0.2",
+    "react-error-boundary": "^3.1.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.4",
@@ -49,6 +50,10 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",
     "@types/better-sqlite3": "^7.6.8",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/user-event": "^14.4.3",
+  "@types/testing-library__user-event": "^14.1.1",
     "@types/node": "^24.9.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
