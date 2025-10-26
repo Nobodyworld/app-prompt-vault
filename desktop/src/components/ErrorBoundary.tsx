@@ -8,9 +8,9 @@ type Props = {
 
 function Fallback({ error }: { error: Error | null }) {
   return (
-    <div className="error-boundary-fallback" style={{ padding: 16 }}>
+    <div className="error-boundary-fallback">
       <h2>Something went wrong.</h2>
-      <details style={{ whiteSpace: "pre-wrap" }}>{error?.toString()}</details>
+      <details>{error?.toString()}</details>
     </div>
   );
 }

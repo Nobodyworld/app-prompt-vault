@@ -118,6 +118,18 @@ async fn add_prompt_version(
     add_prompt_version_inner(state, payload).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String> {
+    // Best-effort: print telemetry payload to stdout so it appears in Tauri logs.
+    match serde_json::to_string(&payload) {
+        Ok(s) => {
+            println!("[telemetry] {}", s);
+            Ok(())
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 fn list_prompts_inner(state: State<'_, AppState>) -> Result<ListPromptsResponse, AppError> {
     let connection_guard = state
         .connection
@@ -440,7 +452,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             list_prompts,
             create_prompt,
-            add_prompt_version
+            add_prompt_version,
+            record_telemetry_event
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

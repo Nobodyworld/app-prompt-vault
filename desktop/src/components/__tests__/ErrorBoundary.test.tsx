@@ -1,22 +1,29 @@
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { vi } from "vitest";
+import React from "react";
+import { act } from "react-dom/test-utils";
+import { createRoot } from "react-dom/client";
 import ErrorBoundary from "../ErrorBoundary";
 
-function ProblemChild() {
+function ProblemChild(): React.ReactElement {
   throw new Error("boom");
 }
 
-describe("ErrorBoundary", () => {
+describe("ErrorBoundary (minimal)", () => {
   it("renders fallback when child throws", () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(
-      <ErrorBoundary>
-        <ProblemChild />
-      </ErrorBoundary>
-    );
+    const container = document.createElement("div");
+    document.body.appendChild(container);
 
-    expect(screen.getByText(/Something went wrong/i)).toBeTruthy();
-    consoleError.mockRestore();
+    act(() => {
+      const root = createRoot(container);
+      root.render(
+        <ErrorBoundary>
+          <ProblemChild />
+        </ErrorBoundary>
+      );
+    });
+
+    // The fallback contains the text
+    if (!container.textContent?.includes("Something went wrong")) {
+      throw new Error("Fallback not rendered");
+    }
   });
 });
