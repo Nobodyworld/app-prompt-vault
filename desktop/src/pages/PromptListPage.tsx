@@ -67,18 +67,6 @@ export function PromptListPage(): JSX.Element {
     };
   }, [reloadToken]);
 
-  if (isLoading) {
-    return <p className="status">Loading prompts...</p>;
-  }
-
-  if (error) {
-    return <p className="error">{error}</p>;
-  }
-
-  if (prompts.length === 0) {
-    return <p className="status">No prompts yet - create your first prompt to get started.</p>;
-  }
-
   const handleCopy = useCallback(async (prompt: PromptSummary): Promise<void> => {
     if (!prompt.latestVersion?.body) {
       setCopyError("Prompt body is unavailable. Try opening the editor to refresh this entry.");
@@ -115,6 +103,18 @@ export function PromptListPage(): JSX.Element {
       }
     };
   }, []);
+
+  if (isLoading) {
+    return <p className="status">Loading prompts...</p>;
+  }
+
+  if (error) {
+    return <p className="error">{error}</p>;
+  }
+
+  if (prompts.length === 0) {
+    return <p className="status">No prompts yet - create your first prompt to get started.</p>;
+  }
 
   return (
     <PromptList
