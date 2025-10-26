@@ -640,10 +640,18 @@ fn main() {
                     std::thread::sleep(std::time::Duration::from_secs(2));
                     telemetry_retention_cleanup(&dir_clone, retention_days);
 
-                    // Now run daily cleanup in a loop (best-effort): sleep for 24h and cleanup.
-                    let day = std::time::Duration::from_secs(24 * 60 * 60);
+                    // Determine cleanup interval from env: PROMPT_VAULT_TELEMETRY_CLEANUP_INTERVAL_HOURS
+                    // If absent or invalid, default to 24 hours.
+                    let interval_hours: u64 = std::env::var("PROMPT_VAULT_TELEMETRY_CLEANUP_INTERVAL_HOURS")
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .filter(|&n| n > 0)
+                        .unwrap_or(24);
+
+                    let interval_secs = interval_hours.saturating_mul(60 * 60);
+                    let interval = std::time::Duration::from_secs(interval_secs);
                     loop {
-                        std::thread::sleep(day);
+                        std::thread::sleep(interval);
                         telemetry_retention_cleanup(&dir_clone, retention_days);
                     }
                 });
