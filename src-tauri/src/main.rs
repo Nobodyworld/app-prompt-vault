@@ -120,39 +120,95 @@ async fn add_prompt_version(
 
 #[tauri::command]
 async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String> {
-    // Persist telemetry payload to a file under the application's local data directory.
-    // This is best-effort and must not crash the app if filesystem operations fail.
-    let app_handle = tauri::AppHandle::current();
-    match app_handle
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())
-        .and_then(|dir| {
-            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let file_path = dir.join("telemetry.log");
-            let mut file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&file_path)
-                .map_err(|e| e.to_string())?;
-            let line = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
-            use std::io::Write;
-            writeln!(file, "{}", line).map_err(|e| e.to_string())?;
-            Ok(())
-        }) {
-        Ok(_) => Ok(()),
-        Err(err) => {
-            // If persisting fails, fallback to printing so there's still a record in logs.
-            eprintln!("[telemetry][error] failed to persist: {}", err);
-            match serde_json::to_string(&payload) {
-                Ok(s) => {
-                    println!("[telemetry] {}", s);
-                }
-                Err(e) => eprintln!("[telemetry][error] serialization failed: {}", e),
+    // Persist telemetry payload to a rolling daily file under the application's local data directory.
+    // Rotation strategy:
+    // - Files are created per-day: telemetry-YYYY-MM-DD.log
+    // - If a day's file exceeds MAX_BYTES, it is renamed to telemetry-YYYY-MM-DD.N.log and a new file is started.
+    // This is intentionally best-effort (non-fatal) and also prints to stdout for integration with log collectors.
+
+    const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MiB per file before rotation
+
+    let handle = tauri::AppHandle::current();
+    let dir = match handle.path().app_local_data_dir() {
+        Ok(d) => d.join("prompt-vault-telemetry"),
+        Err(e) => {
+            eprintln!("[telemetry][error] failed to determine app local data dir: {}", e);
+            // fallback to printing
+            if let Ok(s) = serde_json::to_string(&payload) {
+                println!("[telemetry] {}", s);
             }
-            Ok(())
+            return Ok(());
+        }
+    };
+
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("[telemetry][error] failed to create telemetry dir {}: {}", dir.display(), e);
+    }
+
+    // Build today's filename
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let base_name = format!("telemetry-{}.log", today);
+    let mut file_path = dir.join(&base_name);
+
+    // Rotate if file exists and size > MAX_BYTES
+    if let Ok(meta) = std::fs::metadata(&file_path) {
+        if meta.len() >= MAX_BYTES {
+            // find next available index
+            let mut idx = 1u32;
+            loop {
+                let rotated = dir.join(format!("telemetry-{}.{}.log", today, idx));
+                if !rotated.exists() {
+                    if let Err(e) = std::fs::rename(&file_path, &rotated) {
+                        eprintln!("[telemetry][error] failed to rotate file: {}", e);
+                    }
+                    break;
+                }
+                idx += 1;
+                if idx > 1000 {
+                    // give up after many attempts
+                    break;
+                }
+            }
         }
     }
+
+    // Open (create/append) the (possibly new) file
+    match std::fs::OpenOptions::new().create(true).append(true).open(&file_path) {
+        Ok(mut file) => {
+            if let Ok(line) = serde_json::to_string(&payload) {
+                use std::io::Write;
+                if let Err(e) = writeln!(file, "{}", line) {
+                    eprintln!("[telemetry][error] failed to write telemetry: {}", e);
+                }
+                // Also print a compact version to stdout for log collectors
+                println!("[telemetry] {}", line);
+
+                // Additionally update a simple metrics counter JSON (event counts) to integrate with observability.
+                let metrics_path = dir.join("telemetry-metrics.json");
+                let mut metrics: serde_json::Map<String, serde_json::Value> = match std::fs::read_to_string(&metrics_path) {
+                    Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+                    Err(_) => serde_json::Map::new(),
+                };
+                let event_name = payload.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let counter_key = format!("event_count:{}", event_name);
+                let current = metrics.get(&counter_key).and_then(|v| v.as_u64()).unwrap_or(0);
+                metrics.insert(counter_key, serde_json::Value::from(current + 1));
+                if let Ok(s) = serde_json::to_string_pretty(&metrics) {
+                    let _ = std::fs::write(&metrics_path, s);
+                }
+            } else {
+                eprintln!("[telemetry][error] failed to serialize payload");
+            }
+        }
+        Err(e) => {
+            eprintln!("[telemetry][error] failed to open telemetry file {}: {}", file_path.display(), e);
+            if let Ok(s) = serde_json::to_string(&payload) {
+                println!("[telemetry] {}", s);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn list_prompts_inner(state: State<'_, AppState>) -> Result<ListPromptsResponse, AppError> {
