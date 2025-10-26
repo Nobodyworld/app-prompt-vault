@@ -211,6 +211,33 @@ async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String
     Ok(())
 }
 
+// Retention: delete telemetry files older than `days` in the telemetry directory.
+fn telemetry_retention_cleanup(dir: &std::path::Path, days: i64) {
+    use chrono::Duration;
+    let cutoff = chrono::Utc::now() - Duration::days(days);
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if let Ok(metadata) = std::fs::metadata(&path) {
+                if let Ok(mtime) = metadata.modified() {
+                    if let Ok(datetime) = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::from(mtime)).checked_sub_signed(Duration::zero()) {
+                        // Convert to chrono::DateTime<Utc> via duration since UNIX_EPOCH
+                        let file_time = chrono::DateTime::<chrono::Utc>::from(mtime);
+                        if file_time < cutoff {
+                            if let Err(e) = std::fs::remove_file(&path) {
+                                eprintln!("[telemetry][retention] failed to remove {}: {}", path.display(), e);
+                            } else {
+                                println!("[telemetry][retention] removed old file: {}", path.display());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 fn list_prompts_inner(state: State<'_, AppState>) -> Result<ListPromptsResponse, AppError> {
     let connection_guard = state
         .connection
@@ -528,6 +555,19 @@ fn main() {
             let handle = app.handle();
             let state = ensure_database(&handle)?;
             app.manage(state);
+            // Run a background retention cleanup (best-effort): remove telemetry files older than 30 days
+            let telemetry_dir = handle
+                .path()
+                .app_local_data_dir()
+                .map(|d| d.join("prompt-vault-telemetry"));
+            if let Ok(dir) = telemetry_dir {
+                let dir_clone = dir.clone();
+                std::thread::spawn(move || {
+                    // Sleep briefly to avoid blocking startup I/O heavy operations
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    telemetry_retention_cleanup(&dir_clone, 30);
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
