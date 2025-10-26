@@ -4,6 +4,50 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Prompt Vault Desktop</title>
+    <!-- Very-early forwarding for console errors to help capture renderer logs during dev -->
+    <script>
+      (function () {
+        try {
+          // Small helper to POST logs to the local log server (log-server.cjs)
+          function postLog(payload) {
+            try {
+              // fire-and-forget, ignore failures
+              fetch('http://127.0.0.1:1421/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                keepalive: true,
+              }).catch(function () {});
+            } catch (e) {}
+          }
+
+          var origConsoleError = console.error.bind(console);
+          console.error = function () {
+            try {
+              var args = Array.prototype.slice.call(arguments).map(function (a) { try { return String(a); } catch (e) { return '[unserializable]'; } });
+              postLog({ level: 'error', message: args.join(' ') });
+            } catch (e) {}
+            try { origConsoleError.apply(console, arguments); } catch (e) {}
+          };
+
+          window.addEventListener('error', function (ev) {
+            try {
+              var msg = (ev && ev.message) || String(ev);
+              postLog({ level: 'error', message: String(msg) });
+            } catch (e) {}
+          });
+
+          window.addEventListener('unhandledrejection', function (ev) {
+            try {
+              var reason = (ev && ev.reason) ? (ev.reason.stack || String(ev.reason)) : String(ev);
+              postLog({ level: 'error', message: 'unhandledrejection: ' + String(reason) });
+            } catch (e) {}
+          });
+        } catch (e) {
+          // non-fatal
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

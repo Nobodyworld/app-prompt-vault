@@ -330,3 +330,18 @@ button[disabled] {
   border: 1px solid rgba(251, 191, 36, 0.3);
   font-size: 0.9rem;
 }
+
+/* Error boundary styling */
+.error-boundary-fallback {
+  padding: 1rem 1.25rem;
+  background: rgba(148, 163, 184, 0.04);
+  border: 1px solid rgba(248, 113, 113, 0.15);
+  border-radius: 0.75rem;
+  margin: 1.25rem 0;
+}
+
+.error-boundary-fallback details {
+  white-space: pre-wrap;
+  margin-top: 0.5rem;
+  color: #fecaca;
+}

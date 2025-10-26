@@ -22,6 +22,10 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
+      - name: Check Node engine matches package.json
+        run: |
+          node -e 'const pkg=require("./package.json"); const desired=(pkg.engines&&pkg.engines.node)||""; if(!desired){console.log("no engines defined, skipping check"); process.exit(0);} const major=parseInt(process.version.slice(1).split(".")[0],10); const m=(desired.match(/\d+/)||[])[0]; const desiredMajor=m?parseInt(m,10):NaN; if(Number.isNaN(desiredMajor)){console.log(`Could not parse engines.node ("${desired}"), skipping check`); process.exit(0);} if(major!==desiredMajor){console.error(`Engine mismatch: found ${process.version}, expected ${desired}`); process.exit(1);} console.log(`Node version ${process.version} matches engines ${desired}`);'
+
       - name: Install dependencies
         run: npm ci
 
