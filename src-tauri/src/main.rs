@@ -120,13 +120,38 @@ async fn add_prompt_version(
 
 #[tauri::command]
 async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String> {
-    // Best-effort: print telemetry payload to stdout so it appears in Tauri logs.
-    match serde_json::to_string(&payload) {
-        Ok(s) => {
-            println!("[telemetry] {}", s);
+    // Persist telemetry payload to a file under the application's local data directory.
+    // This is best-effort and must not crash the app if filesystem operations fail.
+    let app_handle = tauri::AppHandle::current();
+    match app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())
+        .and_then(|dir| {
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let file_path = dir.join("telemetry.log");
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&file_path)
+                .map_err(|e| e.to_string())?;
+            let line = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
+            use std::io::Write;
+            writeln!(file, "{}", line).map_err(|e| e.to_string())?;
+            Ok(())
+        }) {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            // If persisting fails, fallback to printing so there's still a record in logs.
+            eprintln!("[telemetry][error] failed to persist: {}", err);
+            match serde_json::to_string(&payload) {
+                Ok(s) => {
+                    println!("[telemetry] {}", s);
+                }
+                Err(e) => eprintln!("[telemetry][error] serialization failed: {}", e),
+            }
             Ok(())
         }
-        Err(e) => Err(e.to_string()),
     }
 }
 
