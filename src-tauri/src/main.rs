@@ -613,10 +613,20 @@ fn main() {
 
                 println!("[telemetry][retention] starting background cleanup with retention_days={}", retention_days);
 
+                // Spawn a background thread that performs an initial, short-delayed cleanup
+                // and then performs a periodic daily cleanup. This keeps long-lived installs
+                // from accumulating old telemetry files.
                 std::thread::spawn(move || {
-                    // Sleep briefly to avoid blocking startup I/O heavy operations
+                    // Short initial delay to avoid blocking startup I/O heavy operations
                     std::thread::sleep(std::time::Duration::from_secs(2));
                     telemetry_retention_cleanup(&dir_clone, retention_days);
+
+                    // Now run daily cleanup in a loop (best-effort): sleep for 24h and cleanup.
+                    let day = std::time::Duration::from_secs(24 * 60 * 60);
+                    loop {
+                        std::thread::sleep(day);
+                        telemetry_retention_cleanup(&dir_clone, retention_days);
+                    }
                 });
             }
             Ok(())
