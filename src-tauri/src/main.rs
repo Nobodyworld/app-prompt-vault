@@ -596,17 +596,27 @@ fn main() {
             let handle = app.handle();
             let state = ensure_database(&handle)?;
             app.manage(state);
-            // Run a background retention cleanup (best-effort): remove telemetry files older than 30 days
+            // Run a background retention cleanup (best-effort): remove telemetry files older than configured days
+            // Read retention days from env var PROMPT_VAULT_TELEMETRY_RETENTION_DAYS (positive integer). Fallback to 30.
             let telemetry_dir = handle
                 .path()
                 .app_local_data_dir()
                 .map(|d| d.join("prompt-vault-telemetry"));
             if let Ok(dir) = telemetry_dir {
                 let dir_clone = dir.clone();
+                // Determine retention days from env, default to 30 if missing or invalid
+                let retention_days: i64 = std::env::var("PROMPT_VAULT_TELEMETRY_RETENTION_DAYS")
+                    .ok()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .filter(|&n| n > 0)
+                    .unwrap_or(30);
+
+                println!("[telemetry][retention] starting background cleanup with retention_days={}", retention_days);
+
                 std::thread::spawn(move || {
                     // Sleep briefly to avoid blocking startup I/O heavy operations
                     std::thread::sleep(std::time::Duration::from_secs(2));
-                    telemetry_retention_cleanup(&dir_clone, 30);
+                    telemetry_retention_cleanup(&dir_clone, retention_days);
                 });
             }
             Ok(())
