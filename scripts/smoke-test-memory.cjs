@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-env node */
 /*
 Smoke test script that supports in-memory DB for CI.
 Usage: node ./scripts/smoke-test-memory.cjs [path-to-db]

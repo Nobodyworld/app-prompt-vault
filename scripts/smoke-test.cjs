@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-env node */
 /*
 Simple smoke test script for the Prompt Vault DB.
 Inserts a prompt + version and reads them back. Exits with non-zero on failure.
@@ -7,8 +8,9 @@ Usage: node ./scripts/smoke-test.cjs [path-to-db]
 const Database = require("better-sqlite3");
 const { randomUUID } = require("crypto");
 const fs = require("fs");
+const { argv } = require("process");
 
-const dbPath = process.argv[2] || "./prompt-vault.db";
+const dbPath = argv[2] || "./prompt-vault.db";
 if (!fs.existsSync(dbPath)) {
   console.error(`DB file not found: ${dbPath}`);
   process.exit(2);
