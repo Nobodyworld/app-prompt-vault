@@ -191,13 +191,12 @@ fn persist_telemetry_to_dir(dir: &std::path::Path, payload: &serde_json::Value, 
 }
 
 #[tauri::command]
-async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String> {
+async fn record_telemetry_event(app: tauri::AppHandle, payload: serde_json::Value) -> Result<(), String> {
     // Persist telemetry payload to a rolling daily file under the application's local data directory.
     // Rotation strategy: per-day files rotated when exceeding MAX_BYTES.
     const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MiB per file before rotation
 
-    let handle = tauri::AppHandle::current();
-    let dir = match handle.path().app_local_data_dir() {
+    let dir = match app.path().app_local_data_dir() {
         Ok(d) => d.join("prompt-vault-telemetry"),
         Err(e) => {
             eprintln!("[telemetry][error] failed to determine app local data dir: {}", e);
@@ -221,21 +220,19 @@ fn telemetry_retention_cleanup(dir: &std::path::Path, days: i64) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.filter_map(|e| e.ok()) {
             let path = entry.path();
-            if let Ok(metadata) = std::fs::metadata(&path) {
-                if let Ok(mtime) = metadata.modified() {
-                    if let Ok(datetime) = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::from(mtime)).checked_sub_signed(Duration::zero()) {
-                        // Convert to chrono::DateTime<Utc> via duration since UNIX_EPOCH
-                        let file_time = chrono::DateTime::<chrono::Utc>::from(mtime);
-                        if file_time < cutoff {
-                            if let Err(e) = std::fs::remove_file(&path) {
-                                eprintln!("[telemetry][retention] failed to remove {}: {}", path.display(), e);
-                            } else {
-                                println!("[telemetry][retention] removed old file: {}", path.display());
+                    if let Ok(metadata) = std::fs::metadata(&path) {
+                        if let Ok(mtime) = metadata.modified() {
+                            // Convert SystemTime to chrono::DateTime<Utc>
+                            let file_time = chrono::DateTime::<chrono::Utc>::from(mtime);
+                            if file_time < cutoff {
+                                if let Err(e) = std::fs::remove_file(&path) {
+                                    eprintln!("[telemetry][retention] failed to remove {}: {}", path.display(), e);
+                                } else {
+                                    println!("[telemetry][retention] removed old file: {}", path.display());
+                                }
                             }
                         }
                     }
-                }
-            }
         }
     }
 }
