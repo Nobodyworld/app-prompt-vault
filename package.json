@@ -16,7 +16,7 @@
     "validate": "npm run quality:gate",
     "test:watch": "vitest",
     "dev": "tsx src/cli/index.ts",
-  "smoke": "node ./scripts/smoke-test.cjs",
+    "smoke": "node ./scripts/smoke-test-memory.cjs",
     "observability": "PROMPT_VAULT_METRICS=true tsx scripts/observability.ts",
     "db:bootstrap": "tsx scripts/bootstrap-db.ts",
     "release:prepare": "tsx scripts/release-prepare.ts",
@@ -34,7 +34,7 @@
     "cli"
   ],
   "engines": {
-    "node": ">=18.17"
+    "node": "24.x"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
