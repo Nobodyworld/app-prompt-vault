@@ -16,6 +16,7 @@
     "validate": "npm run quality:gate",
     "test:watch": "vitest",
     "dev": "tsx src/cli/index.ts",
+  "smoke": "node ./scripts/smoke-test.cjs",
     "observability": "PROMPT_VAULT_METRICS=true tsx scripts/observability.ts",
     "db:bootstrap": "tsx scripts/bootstrap-db.ts",
     "release:prepare": "tsx scripts/release-prepare.ts",

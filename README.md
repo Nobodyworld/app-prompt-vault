@@ -38,7 +38,7 @@ app-prompt-vault/
 
 ## Getting Started
 
-> **Prerequisites:** Node.js 18.17+, Rust (for Tauri), and (optionally) SQLite libraries for native bindings.
+-> **Prerequisites:** Node.js 24.x (recommended) or Node >= 18.17, Rust (for Tauri), and (optionally) SQLite libraries for native bindings.
 
 ```bash
 # install dependencies
