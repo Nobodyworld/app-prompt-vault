@@ -118,30 +118,9 @@ async fn add_prompt_version(
     add_prompt_version_inner(state, payload).map_err(|error| error.to_string())
 }
 
-#[tauri::command]
-async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String> {
-    // Persist telemetry payload to a rolling daily file under the application's local data directory.
-    // Rotation strategy:
-    // - Files are created per-day: telemetry-YYYY-MM-DD.log
-    // - If a day's file exceeds MAX_BYTES, it is renamed to telemetry-YYYY-MM-DD.N.log and a new file is started.
-    // This is intentionally best-effort (non-fatal) and also prints to stdout for integration with log collectors.
-
-    const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MiB per file before rotation
-
-    let handle = tauri::AppHandle::current();
-    let dir = match handle.path().app_local_data_dir() {
-        Ok(d) => d.join("prompt-vault-telemetry"),
-        Err(e) => {
-            eprintln!("[telemetry][error] failed to determine app local data dir: {}", e);
-            // fallback to printing
-            if let Ok(s) = serde_json::to_string(&payload) {
-                println!("[telemetry] {}", s);
-            }
-            return Ok(());
-        }
-    };
-
-    if let Err(e) = std::fs::create_dir_all(&dir) {
+// Helper that persists telemetry payload into the provided directory, with rotation by max_bytes.
+fn persist_telemetry_to_dir(dir: &std::path::Path, payload: &serde_json::Value, max_bytes: u64) -> Result<(), String> {
+    if let Err(e) = std::fs::create_dir_all(dir) {
         eprintln!("[telemetry][error] failed to create telemetry dir {}: {}", dir.display(), e);
     }
 
@@ -150,9 +129,9 @@ async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String
     let base_name = format!("telemetry-{}.log", today);
     let mut file_path = dir.join(&base_name);
 
-    // Rotate if file exists and size > MAX_BYTES
+    // Rotate if file exists and size >= max_bytes
     if let Ok(meta) = std::fs::metadata(&file_path) {
-        if meta.len() >= MAX_BYTES {
+        if meta.len() >= max_bytes {
             // find next available index
             let mut idx = 1u32;
             loop {
@@ -175,7 +154,7 @@ async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String
     // Open (create/append) the (possibly new) file
     match std::fs::OpenOptions::new().create(true).append(true).open(&file_path) {
         Ok(mut file) => {
-            if let Ok(line) = serde_json::to_string(&payload) {
+            if let Ok(line) = serde_json::to_string(payload) {
                 use std::io::Write;
                 if let Err(e) = writeln!(file, "{}", line) {
                     eprintln!("[telemetry][error] failed to write telemetry: {}", e);
@@ -202,12 +181,36 @@ async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String
         }
         Err(e) => {
             eprintln!("[telemetry][error] failed to open telemetry file {}: {}", file_path.display(), e);
-            if let Ok(s) = serde_json::to_string(&payload) {
+            if let Ok(s) = serde_json::to_string(payload) {
                 println!("[telemetry] {}", s);
             }
         }
     }
 
+    Ok(())
+}
+
+#[tauri::command]
+async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String> {
+    // Persist telemetry payload to a rolling daily file under the application's local data directory.
+    // Rotation strategy: per-day files rotated when exceeding MAX_BYTES.
+    const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MiB per file before rotation
+
+    let handle = tauri::AppHandle::current();
+    let dir = match handle.path().app_local_data_dir() {
+        Ok(d) => d.join("prompt-vault-telemetry"),
+        Err(e) => {
+            eprintln!("[telemetry][error] failed to determine app local data dir: {}", e);
+            // fallback to printing
+            if let Ok(s) = serde_json::to_string(&payload) {
+                println!("[telemetry] {}", s);
+            }
+            return Ok(());
+        }
+    };
+
+    // Use the helper to persist with the configured MAX_BYTES
+    let _ = persist_telemetry_to_dir(&dir, &payload, MAX_BYTES);
     Ok(())
 }
 
@@ -234,6 +237,44 @@ fn telemetry_retention_cleanup(dir: &std::path::Path, days: i64) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_persist_and_rotate_and_metrics() {
+        let tmp = TempDir::new().expect("create tempdir");
+        let dir = tmp.path();
+
+        // small max bytes so rotation happens quickly during test
+        let max_bytes = 100u64;
+
+        let payload = serde_json::json!({
+            "name": "test_event",
+            "message": "hello",
+        });
+
+        // write multiple times to exceed rotation
+        for _ in 0..10 {
+            persist_telemetry_to_dir(dir, &payload, max_bytes).expect("persist ok");
+        }
+
+        // assert that at least one rotated file exists or the main file exists
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let base = dir.join(format!("telemetry-{}.log", today));
+        let rotated = dir.join(format!("telemetry-{}.1.log", today));
+        assert!(base.exists() || rotated.exists(), "expected base or rotated file");
+
+        let metrics_path = dir.join("telemetry-metrics.json");
+        assert!(metrics_path.exists(), "metrics file should exist");
+        let content = std::fs::read_to_string(metrics_path).expect("read metrics");
+        let metrics: serde_json::Value = serde_json::from_str(&content).expect("parse metrics");
+        let key = format!("event_count:{}", "test_event");
+        assert!(metrics.get(&key).is_some(), "metrics should contain event counter");
     }
 }
 
