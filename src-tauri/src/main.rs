@@ -190,6 +190,28 @@ fn persist_telemetry_to_dir(dir: &std::path::Path, payload: &serde_json::Value, 
     Ok(())
 }
 
+// Return the telemetry directory path for the current platform (helpful for debugging).
+#[tauri::command]
+async fn get_telemetry_dir(app: tauri::AppHandle) -> Result<String, String> {
+    match app.path().app_local_data_dir() {
+        Ok(d) => Ok(d.join("prompt-vault-telemetry").to_string_lossy().to_string()),
+        Err(e) => Err(format!("failed to determine app local data dir: {}", e)),
+    }
+}
+
+// Force-run the retention cleanup immediately. If `days` is None, uses 30.
+#[tauri::command]
+async fn force_telemetry_retention_cleanup(app: tauri::AppHandle, days: Option<i64>) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("failed to determine app local data dir: {}", e))?
+        .join("prompt-vault-telemetry");
+    let days = days.unwrap_or(30);
+    telemetry_retention_cleanup(&dir, days);
+    Ok(())
+}
+
 #[tauri::command]
 async fn record_telemetry_event(app: tauri::AppHandle, payload: serde_json::Value) -> Result<(), String> {
     // Persist telemetry payload to a rolling daily file under the application's local data directory.
@@ -632,7 +654,9 @@ fn main() {
             list_prompts,
             create_prompt,
             add_prompt_version,
-            record_telemetry_event
+            record_telemetry_event,
+            get_telemetry_dir,
+            force_telemetry_retention_cleanup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
