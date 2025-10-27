@@ -36,4 +36,4 @@ jobs:
         run: npm test
 
       - name: Smoke test (in-memory)
-        run: "npm run smoke -- :memory:"
+        run: 'npm run smoke -- :memory:'

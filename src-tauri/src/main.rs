@@ -127,7 +127,7 @@ fn persist_telemetry_to_dir(dir: &std::path::Path, payload: &serde_json::Value, 
     // Build today's filename
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let base_name = format!("telemetry-{}.log", today);
-    let mut file_path = dir.join(&base_name);
+    let file_path = dir.join(&base_name);
 
     // Rotate if file exists and size >= max_bytes
     if let Ok(meta) = std::fs::metadata(&file_path) {

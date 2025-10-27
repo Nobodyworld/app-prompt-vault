@@ -14,7 +14,7 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "baseUrl": "./src",
-    "types": ["vite/client"]
+    "types": ["vite/client", "vitest"]
   },
   "include": ["./src"],
   "exclude": ["../node_modules", "../dist"]

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { listPrompts } from "../services/promptApi";
 import type { PromptSummary } from "../types/prompt";
@@ -8,7 +8,7 @@ import { copyTextToClipboard } from "../lib/clipboard";
 
 type LocationState = { refresh?: boolean } | null;
 
-export function PromptListPage(): JSX.Element {
+export function PromptListPage(): React.JSX.Element {
   const [prompts, setPrompts] = useState<PromptSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

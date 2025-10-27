@@ -1,3 +1,4 @@
+import React from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { PromptListPage } from "./pages/PromptListPage";
@@ -5,7 +6,7 @@ import { CreatePromptPage } from "./pages/CreatePromptPage";
 import { EditPromptPage } from "./pages/EditPromptPage";
 import ErrorBoundary from "./components/ErrorBoundary";
 
-export function App(): JSX.Element {
+export function App(): React.JSX.Element {
   return (
     <BrowserRouter>
       <ErrorBoundary>
