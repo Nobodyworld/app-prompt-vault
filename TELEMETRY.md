@@ -22,6 +22,28 @@ Notes
 - Each line in the log files is a single JSON object (ndjson) representing the telemetry payload forwarded from the renderer.
 - The Tauri backend also maintains a small `telemetry-metrics.json` in the same directory with simple event counters (useful for quick inspection by observability tools).
 
+Configuration
+
+- Retention window: You can configure how many days of telemetry to keep using the environment variable
+  `PROMPT_VAULT_TELEMETRY_RETENTION_DAYS` (positive integer). If unset or invalid the app defaults to 30 days.
+
+  Examples (PowerShell):
+
+  ```powershell
+  # Keep 7 days of telemetry (for development)
+  $env:PROMPT_VAULT_TELEMETRY_RETENTION_DAYS = '7'
+
+  # Persist permanently (not recommended):
+  $env:PROMPT_VAULT_TELEMETRY_RETENTION_DAYS = '3650'
+  ```
+
+  Example (macOS / Linux):
+
+  ```bash
+  # Keep 14 days
+  export PROMPT_VAULT_TELEMETRY_RETENTION_DAYS=14
+  ```
+
 Dumping logs locally
 
 From the repository root you can use the included CLI binary (build with cargo) to dump recent telemetry files:

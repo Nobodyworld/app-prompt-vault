@@ -118,30 +118,9 @@ async fn add_prompt_version(
     add_prompt_version_inner(state, payload).map_err(|error| error.to_string())
 }
 
-#[tauri::command]
-async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String> {
-    // Persist telemetry payload to a rolling daily file under the application's local data directory.
-    // Rotation strategy:
-    // - Files are created per-day: telemetry-YYYY-MM-DD.log
-    // - If a day's file exceeds MAX_BYTES, it is renamed to telemetry-YYYY-MM-DD.N.log and a new file is started.
-    // This is intentionally best-effort (non-fatal) and also prints to stdout for integration with log collectors.
-
-    const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MiB per file before rotation
-
-    let handle = tauri::AppHandle::current();
-    let dir = match handle.path().app_local_data_dir() {
-        Ok(d) => d.join("prompt-vault-telemetry"),
-        Err(e) => {
-            eprintln!("[telemetry][error] failed to determine app local data dir: {}", e);
-            // fallback to printing
-            if let Ok(s) = serde_json::to_string(&payload) {
-                println!("[telemetry] {}", s);
-            }
-            return Ok(());
-        }
-    };
-
-    if let Err(e) = std::fs::create_dir_all(&dir) {
+// Helper that persists telemetry payload into the provided directory, with rotation by max_bytes.
+fn persist_telemetry_to_dir(dir: &std::path::Path, payload: &serde_json::Value, max_bytes: u64) -> Result<(), String> {
+    if let Err(e) = std::fs::create_dir_all(dir) {
         eprintln!("[telemetry][error] failed to create telemetry dir {}: {}", dir.display(), e);
     }
 
@@ -150,9 +129,9 @@ async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String
     let base_name = format!("telemetry-{}.log", today);
     let mut file_path = dir.join(&base_name);
 
-    // Rotate if file exists and size > MAX_BYTES
+    // Rotate if file exists and size >= max_bytes
     if let Ok(meta) = std::fs::metadata(&file_path) {
-        if meta.len() >= MAX_BYTES {
+        if meta.len() >= max_bytes {
             // find next available index
             let mut idx = 1u32;
             loop {
@@ -175,7 +154,7 @@ async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String
     // Open (create/append) the (possibly new) file
     match std::fs::OpenOptions::new().create(true).append(true).open(&file_path) {
         Ok(mut file) => {
-            if let Ok(line) = serde_json::to_string(&payload) {
+            if let Ok(line) = serde_json::to_string(payload) {
                 use std::io::Write;
                 if let Err(e) = writeln!(file, "{}", line) {
                     eprintln!("[telemetry][error] failed to write telemetry: {}", e);
@@ -202,7 +181,7 @@ async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String
         }
         Err(e) => {
             eprintln!("[telemetry][error] failed to open telemetry file {}: {}", file_path.display(), e);
-            if let Ok(s) = serde_json::to_string(&payload) {
+            if let Ok(s) = serde_json::to_string(payload) {
                 println!("[telemetry] {}", s);
             }
         }
@@ -210,6 +189,114 @@ async fn record_telemetry_event(payload: serde_json::Value) -> Result<(), String
 
     Ok(())
 }
+
+// Return the telemetry directory path for the current platform (helpful for debugging).
+#[tauri::command]
+async fn get_telemetry_dir(app: tauri::AppHandle) -> Result<String, String> {
+    match app.path().app_local_data_dir() {
+        Ok(d) => Ok(d.join("prompt-vault-telemetry").to_string_lossy().to_string()),
+        Err(e) => Err(format!("failed to determine app local data dir: {}", e)),
+    }
+}
+
+// Force-run the retention cleanup immediately. If `days` is None, uses 30.
+#[tauri::command]
+async fn force_telemetry_retention_cleanup(app: tauri::AppHandle, days: Option<i64>) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("failed to determine app local data dir: {}", e))?
+        .join("prompt-vault-telemetry");
+    let days = days.unwrap_or(30);
+    telemetry_retention_cleanup(&dir, days);
+    Ok(())
+}
+
+#[tauri::command]
+async fn record_telemetry_event(app: tauri::AppHandle, payload: serde_json::Value) -> Result<(), String> {
+    // Persist telemetry payload to a rolling daily file under the application's local data directory.
+    // Rotation strategy: per-day files rotated when exceeding MAX_BYTES.
+    const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MiB per file before rotation
+
+    let dir = match app.path().app_local_data_dir() {
+        Ok(d) => d.join("prompt-vault-telemetry"),
+        Err(e) => {
+            eprintln!("[telemetry][error] failed to determine app local data dir: {}", e);
+            // fallback to printing
+            if let Ok(s) = serde_json::to_string(&payload) {
+                println!("[telemetry] {}", s);
+            }
+            return Ok(());
+        }
+    };
+
+    // Use the helper to persist with the configured MAX_BYTES
+    let _ = persist_telemetry_to_dir(&dir, &payload, MAX_BYTES);
+    Ok(())
+}
+
+// Retention: delete telemetry files older than `days` in the telemetry directory.
+fn telemetry_retention_cleanup(dir: &std::path::Path, days: i64) {
+    use chrono::Duration;
+    let cutoff = chrono::Utc::now() - Duration::days(days);
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+                    if let Ok(metadata) = std::fs::metadata(&path) {
+                        if let Ok(mtime) = metadata.modified() {
+                            // Convert SystemTime to chrono::DateTime<Utc>
+                            let file_time = chrono::DateTime::<chrono::Utc>::from(mtime);
+                            if file_time < cutoff {
+                                if let Err(e) = std::fs::remove_file(&path) {
+                                    eprintln!("[telemetry][retention] failed to remove {}: {}", path.display(), e);
+                                } else {
+                                    println!("[telemetry][retention] removed old file: {}", path.display());
+                                }
+                            }
+                        }
+                    }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_persist_and_rotate_and_metrics() {
+        let tmp = TempDir::new().expect("create tempdir");
+        let dir = tmp.path();
+
+        // small max bytes so rotation happens quickly during test
+        let max_bytes = 100u64;
+
+        let payload = serde_json::json!({
+            "name": "test_event",
+            "message": "hello",
+        });
+
+        // write multiple times to exceed rotation
+        for _ in 0..10 {
+            persist_telemetry_to_dir(dir, &payload, max_bytes).expect("persist ok");
+        }
+
+        // assert that at least one rotated file exists or the main file exists
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let base = dir.join(format!("telemetry-{}.log", today));
+        let rotated = dir.join(format!("telemetry-{}.1.log", today));
+        assert!(base.exists() || rotated.exists(), "expected base or rotated file");
+
+        let metrics_path = dir.join("telemetry-metrics.json");
+        assert!(metrics_path.exists(), "metrics file should exist");
+        let content = std::fs::read_to_string(metrics_path).expect("read metrics");
+        let metrics: serde_json::Value = serde_json::from_str(&content).expect("parse metrics");
+        let key = format!("event_count:{}", "test_event");
+        assert!(metrics.get(&key).is_some(), "metrics should contain event counter");
+    }
+}
+
 
 fn list_prompts_inner(state: State<'_, AppState>) -> Result<ListPromptsResponse, AppError> {
     let connection_guard = state
@@ -528,13 +615,56 @@ fn main() {
             let handle = app.handle();
             let state = ensure_database(&handle)?;
             app.manage(state);
+            // Run a background retention cleanup (best-effort): remove telemetry files older than configured days
+            // Read retention days from env var PROMPT_VAULT_TELEMETRY_RETENTION_DAYS (positive integer). Fallback to 30.
+            let telemetry_dir = handle
+                .path()
+                .app_local_data_dir()
+                .map(|d| d.join("prompt-vault-telemetry"));
+            if let Ok(dir) = telemetry_dir {
+                let dir_clone = dir.clone();
+                // Determine retention days from env, default to 30 if missing or invalid
+                let retention_days: i64 = std::env::var("PROMPT_VAULT_TELEMETRY_RETENTION_DAYS")
+                    .ok()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .filter(|&n| n > 0)
+                    .unwrap_or(30);
+
+                println!("[telemetry][retention] starting background cleanup with retention_days={}", retention_days);
+
+                // Spawn a background thread that performs an initial, short-delayed cleanup
+                // and then performs a periodic daily cleanup. This keeps long-lived installs
+                // from accumulating old telemetry files.
+                std::thread::spawn(move || {
+                    // Short initial delay to avoid blocking startup I/O heavy operations
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    telemetry_retention_cleanup(&dir_clone, retention_days);
+
+                    // Determine cleanup interval from env: PROMPT_VAULT_TELEMETRY_CLEANUP_INTERVAL_HOURS
+                    // If absent or invalid, default to 24 hours.
+                    let interval_hours: u64 = std::env::var("PROMPT_VAULT_TELEMETRY_CLEANUP_INTERVAL_HOURS")
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .filter(|&n| n > 0)
+                        .unwrap_or(24);
+
+                    let interval_secs = interval_hours.saturating_mul(60 * 60);
+                    let interval = std::time::Duration::from_secs(interval_secs);
+                    loop {
+                        std::thread::sleep(interval);
+                        telemetry_retention_cleanup(&dir_clone, retention_days);
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             list_prompts,
             create_prompt,
             add_prompt_version,
-            record_telemetry_event
+            record_telemetry_event,
+            get_telemetry_dir,
+            force_telemetry_retention_cleanup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

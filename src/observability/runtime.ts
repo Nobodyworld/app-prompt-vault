@@ -5,6 +5,7 @@ import type { Telemetry } from "./telemetry.js";
 import { createNoopTelemetry, createTelemetry, MetricRegistry } from "./telemetry.js";
 import type { HealthIndicator } from "./healthServer.js";
 import { createHealthIndicator, createHealthServer } from "./healthServer.js";
+import { startTelemetryMetricsWatcher } from "./telemetryFileReader.js";
 
 export interface ObservabilityBootstrapOptions {
   readonly serviceName: string;
@@ -51,6 +52,10 @@ export function bootstrapObservabilityFromEnv(
     port: Number.isFinite(metricsPort) ? metricsPort : undefined,
   });
 
+  // Start telemetry metrics watcher which reads renderer-produced telemetry-metrics.json and increments counters.
+  // The watcher is best-effort and only runs when metrics are enabled.
+  const watcher = startTelemetryMetricsWatcher(registry);
+
   return {
     telemetry,
     logger,
@@ -67,6 +72,7 @@ export function bootstrapObservabilityFromEnv(
           resolve();
         });
       });
+      watcher.stop();
     },
   };
 }
