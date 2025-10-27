@@ -6,6 +6,9 @@ coverage:
     patch:
       default:
         # require small or no regression on PRs
+        # By default we allow PRs to make small changes; to enforce strict PR gating,
+        # set this to the same value as project.default (e.g., 80) which will cause
+        # PRs that reduce coverage below that threshold to be flagged.
         target: 0
   precision: 2
   round: down
@@ -16,3 +19,10 @@ comment:
 
 # require CI to pass before marking coverage
 require_ci_to_pass: true
+
+# Optional: to enforce stricter PR gating, uncomment and set the following:
+# coverage:
+#   status:
+#     patch:
+#       default:
+#         target: 80

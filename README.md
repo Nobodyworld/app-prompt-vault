@@ -3,6 +3,19 @@
 [![CI](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml/badge.svg)](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml)
 [![Codecov](https://codecov.io/gh/Nobodyworld/app-prompt-vault/branch/main/graph/badge.svg)](https://codecov.io/gh/Nobodyworld/app-prompt-vault)
 
+## CI / Codecov token
+
+To enable authenticated uploads to Codecov (recommended for private repos or org policy), add a repository secret named `CODECOV_TOKEN` with the token from your Codecov project settings.
+
+On GitHub:
+
+1. Go to your repository Settings → Secrets → Actions.
+2. Click "New repository secret" and add the `CODECOV_TOKEN` value.
+
+The CI workflow will detect the presence of `CODECOV_TOKEN` and upload the generated `coverage/lcov.info` to Codecov. If the token is not provided (e.g., in forks or local runs), uploads are skipped to avoid leaking tokens.
+
+Codecov will post PR comments with coverage diffs when uploads are received. You can further customize behavior via `codecov.yml` in the repo.
+
 Prompt Vault is a cross-platform vault for collecting, versioning, and tagging reusable prompts. The project includes a fully typed domain layer, a CLI for quick interactions, and a React UI that works in both desktop (Tauri) and web browser environments, backed by SQLite (desktop) or a demo API server (web).
 
 ## Key Features
