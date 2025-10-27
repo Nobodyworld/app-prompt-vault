@@ -39,7 +39,7 @@ const LOCAL_STORAGE_KEY = 'prompt-vault:inMemoryStore:v1';
 let fallbackActive = false;
 const fallbackSubscribers = new Set<(b: boolean) => void>();
 
-function notifyFallback(active: boolean) {
+function notifyFallback(active: boolean): void {
   fallbackActive = active;
   for (const cb of fallbackSubscribers) cb(active);
 }

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { MetricRegistry } from "./telemetry.js";
+import type { MetricRegistry } from "./telemetry.js";
 
 type LastCounts = Map<string, number>;
 
@@ -27,7 +27,7 @@ export function startTelemetryMetricsWatcher(registry: MetricRegistry, intervalM
 
   let stopped = false;
 
-  async function tryRead() {
+  async function tryRead(): Promise<void> {
     const dirs = candidateTelemetryDirs();
     for (const dir of dirs) {
       try {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-env node */
+/* eslint-disable no-undef */
 // Simple headless capture script (optional dev tool). Run manually.
 const puppeteer = require('puppeteer');
 const fs = require('fs');

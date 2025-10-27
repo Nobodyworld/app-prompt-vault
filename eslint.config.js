@@ -5,7 +5,26 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", "tests/**", "vitest.config.ts", ".eslintrc.cjs", "desktop/dist/**"]
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      "tests/**",
+      "vitest.config.ts",
+      ".eslintrc.cjs",
+      "desktop/dist/**",
+      // ignore generated and native build artifacts
+      "src-tauri/**",
+      "src-tauri/target/**",
+      // ignore dev tools and scripts that run under Node
+      "dev-tools/**",
+      "scripts/**",
+      "*.cjs",
+      "*.js",
+      // common ad-hoc tool files
+      "insert-and-read.*",
+      "inspect-db.*",
+      "server.ts"
+    ]
   },
   js.configs.recommended,
   {

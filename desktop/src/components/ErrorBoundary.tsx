@@ -6,7 +6,9 @@ type Props = {
   children: React.ReactNode;
 };
 
-function Fallback({ error }: { error: Error | null }) {
+function Fallback({ error }: { error: Error | null }): React.ReactElement {
+  // Render a small fallback UI for errors captured by the boundary
+  // Keep return type explicit for lint rules
   return (
     <div className="error-boundary-fallback">
       <h2>Something went wrong.</h2>
@@ -15,8 +17,8 @@ function Fallback({ error }: { error: Error | null }) {
   );
 }
 
-export function ErrorBoundary({ children }: Props) {
-  async function handleError(error: Error, info: { componentStack: string }) {
+export function ErrorBoundary({ children }: Props): React.ReactElement {
+  async function handleError(error: Error, info: { componentStack: string }): Promise<void> {
     try {
       const traceId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
@@ -40,12 +42,10 @@ export function ErrorBoundary({ children }: Props) {
         });
       } else {
         // When not running in Tauri (dev browser), just log to console for diagnostics
-        // eslint-disable-next-line no-console
         console.error("ErrorBoundary captured error:", payload);
       }
     } catch (e) {
       // Do not propagate errors from the telemetry path
-      // eslint-disable-next-line no-console
       console.error("ErrorBoundary telemetry fail:", e);
     }
   }
