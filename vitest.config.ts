@@ -8,9 +8,10 @@ export default defineConfig({
     coverage: ( {
       // Use V8 coverage provider for accurate coverage in Node (faster and more reliable)
       provider: 'v8',
-      reporter: ["text", "json", "html"],
+      // include server / library code only; exclude desktop renderer and generated assets
+      reporter: ["text", "json", "lcov", "html"],
       include: ["src/**/*.ts"],
-      exclude: ["src/cli/**", "src/db/migrations/**"],
+      exclude: ["desktop/**", "src-tauri/**", "dist/**", "node_modules/**", "src/cli/**", "src/db/migrations/**"],
       check: {
         lines: 85,
         statements: 85,
