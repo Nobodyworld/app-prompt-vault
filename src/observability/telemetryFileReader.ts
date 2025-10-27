@@ -49,18 +49,23 @@ export function startTelemetryMetricsWatcher(registry: MetricRegistry, intervalM
         }
         return; // read first available dir
       } catch (err) {
-        // ignore and try next dir
+        // keep debug trace but continue to next dir
+        console.debug('tryRead telemetry dir failed', err);
       }
     }
   }
 
   const timer = setInterval(() => {
     if (stopped) return;
-    tryRead().catch(() => {});
+    tryRead().catch((err) => {
+      console.debug('startTelemetryMetricsWatcher periodic tryRead failed', err);
+    });
   }, intervalMs);
 
   // run immediately once
-  tryRead().catch(() => {});
+  tryRead().catch((err) => {
+    console.debug('startTelemetryMetricsWatcher initial tryRead failed', err);
+  });
 
   return { stop: () => { stopped = true; clearInterval(timer); } };
 }

@@ -34,8 +34,9 @@ export function ErrorBoundary({ children }: Props) {
       // Best-effort: if running inside Tauri, forward telemetry to the backend.
       if (isTauriAvailable()) {
         // invokeOrThrow will import the Tauri core invoke and send to Rust command
-        await invokeOrThrow("record_telemetry_event", payload).catch(() => {
-          // swallow errors - telemetry must not crash the app
+        await invokeOrThrow("record_telemetry_event", payload).catch((err) => {
+          // swallow errors - telemetry must not crash the app; keep debug trace
+          console.debug('invokeOrThrow record_telemetry_event failed', err);
         });
       } else {
         // When not running in Tauri (dev browser), just log to console for diagnostics

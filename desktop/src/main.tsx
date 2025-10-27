@@ -11,7 +11,49 @@ if (!container) {
 
 const root = createRoot(container);
 
-root.render(<App />);
+function showFatalError(message: string): void {
+  try {
+    const rootEl = document.getElementById('root');
+    if (rootEl) {
+      rootEl.innerHTML = `
+        <div style="padding:2rem;font-family:Inter,Segoe UI,sans-serif;background:#0f172a;color:#fde68a;min-height:100vh;">
+          <h2 style="margin-top:0;color:#fecaca;">Application error</h2>
+          <pre style="white-space:pre-wrap;overflow:auto;max-height:70vh;color:#ffd7bf;">${String(message)}</pre>
+          <p style="color:#f8fafc;opacity:0.9;">Open the developer console for more details.</p>
+        </div>`;
+    }
+  } catch (e) {
+    // best-effort only
+    console.error('Failed to render fatal error overlay', e);
+  }
+}
+
+// Global error hooks so runtime errors surface visibly instead of a white screen
+window.addEventListener('error', (ev) => {
+  try {
+    const msg = (ev && (ev as ErrorEvent).message) || String(ev);
+    showFatalError(msg + '\n\nSee console for stack trace.');
+  } catch (e) {
+    // keep failure visible for debugging (best-effort)
+    console.debug('window.error handler failed', e);
+  }
+});
+
+window.addEventListener('unhandledrejection', (ev) => {
+  try {
+    const reason = (ev && (ev as PromiseRejectionEvent).reason) || ev;
+    showFatalError('Unhandled promise rejection: ' + (reason && (reason.stack || String(reason))));
+  } catch (e) {
+    console.debug('unhandledrejection handler failed', e);
+  }
+});
+
+try {
+  root.render(<App />);
+} catch (err) {
+  console.error('Render failed:', err);
+  showFatalError(err instanceof Error ? err.stack || err.message : String(err));
+}
 
 // If running inside Tauri, forward console errors and page errors to the Rust host
 // via the `client-log` event so they appear in host logs during dev.
@@ -32,10 +74,14 @@ root.render(<App />);
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ level: 'error', message: args.map(String).join(' ') }),
-              }).catch(() => {});
-            } catch (e) {}
+              }).catch((err) => {
+                console.debug('forward log POST failed', err);
+              });
+            } catch (e) {
+              console.debug('forward log POST attempt failed', e);
+            }
           } catch (e) {
-            // ignore
+            console.debug('console.error forwarding failed', e);
           }
           origConsoleError(...args);
         };
@@ -48,13 +94,21 @@ root.render(<App />);
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ level: 'error', message: String((ev && (ev as any).message) || ev) }),
-              }).catch(() => {});
-            } catch (e) {}
-          } catch (e) {}
+              }).catch((err) => {
+                console.debug('forward event POST failed', err);
+              });
+            } catch (e) {
+              console.debug('forward event POST attempt failed', e);
+            }
+          } catch (e) {
+            console.debug('emit event handler failed', e);
+          }
         });
-      }).catch(() => {});
+      }).catch((err) => {
+        console.debug('tauri event import failed', err);
+      });
     }
   } catch (e) {
-    // non-fatal
+    console.debug('setupTauriLogForwarding failed', e);
   }
 })();

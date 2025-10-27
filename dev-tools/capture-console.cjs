@@ -39,7 +39,9 @@ const timeout = parseInt(process.env.CAPTURE_TIMEOUT || '8000', 10);
       }
     });
 
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 10000 }).catch((err) => {
+      console.debug('puppeteer goto failed', err);
+    });
 
     await new Promise((r) => setTimeout(r, timeout));
 
@@ -48,7 +50,7 @@ const timeout = parseInt(process.env.CAPTURE_TIMEOUT || '8000', 10);
   } catch (err) {
     console.error('Capture error:', err && err.stack ? err.stack : err);
     process.exitCode = 2;
-  } finally {
-    try { await browser.close(); } catch {}
+    } finally {
+    try { await browser.close(); } catch (e) { console.debug('browser.close failed', e); }
   }
 })();
