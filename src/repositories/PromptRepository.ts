@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   Prompt,
@@ -210,6 +211,63 @@ export class PromptRepository {
   }
 
   /**
+   * Remove tag associations from a prompt. Tags that are no longer referenced will be garbage collected.
+   * @param promptId - Identifier of the prompt to update.
+   * @param labels - Tag labels to remove (case-insensitive).
+   * @param updatedAt - Timestamp applied to the prompt update metadata.
+   */
+  public removeTags(promptId: PromptId, labels: readonly string[], updatedAt: Date = new Date()): void {
+    if (labels.length === 0) {
+      return;
+    }
+
+    this.telemetry.withSpan("repository.removeTags", { promptId, count: labels.length }, () => {
+      this.runTransaction(() => {
+        const normalized = labels.map((label) => label.toLowerCase());
+
+        const tagIds = this.database
+          .prepare(
+            `SELECT id FROM tags WHERE LOWER(label) IN (${normalized
+              .map((_, index) => `@label${index}`)
+              .join(", ")})`
+          )
+          .all(
+            normalized.reduce<Record<string, string>>((parameters, label, index) => {
+              parameters[`label${index}`] = label;
+              return parameters;
+            }, {})
+          ) as { id: string }[];
+
+        if (tagIds.length === 0) {
+          return;
+        }
+
+        const placeholders = tagIds.map((_, index) => `@tag${index}`);
+        const parameters = tagIds.reduce<Record<string, string>>((accumulator, tag, index) => {
+          accumulator[`tag${index}`] = tag.id;
+          return accumulator;
+        }, { promptId });
+
+        this.database
+          .prepare(
+            `DELETE FROM prompt_tags WHERE prompt_id = @promptId AND tag_id IN (${placeholders.join(", ")})`
+          )
+          .run(parameters);
+
+        this.database
+          .prepare(
+            `DELETE FROM tags
+             WHERE id IN (${placeholders.join(", ")})
+             AND NOT EXISTS (SELECT 1 FROM prompt_tags WHERE tag_id = tags.id)`
+          )
+          .run(parameters);
+
+        this.updatePromptTimestamps(promptId, updatedAt.toISOString());
+      });
+    });
+  }
+
+  /**
    * Record a new version for a prompt.
    * @param version - Version metadata to persist.
    */
@@ -223,9 +281,15 @@ export class PromptRepository {
   }
 
   private applyMigrations(): void {
-    const migrationUrl = new URL("../db/migrations/001_init.sql", import.meta.url);
-    const sql = readFileSync(fileURLToPath(migrationUrl), "utf8");
-    this.database.exec(sql);
+    const migrationsDir = fileURLToPath(new URL("../db/migrations/", import.meta.url));
+    const migrationFiles = readdirSync(migrationsDir)
+      .filter((file) => file.endsWith(".sql"))
+      .sort(); // Apply deterministically (001_*, 002_*, ...).
+
+    for (const file of migrationFiles) {
+      const sql = readFileSync(join(migrationsDir, file), "utf8");
+      this.database.exec(sql);
+    }
   }
 
   private insertPromptRecord(prompt: Prompt): void {

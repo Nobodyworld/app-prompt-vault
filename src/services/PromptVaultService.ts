@@ -157,8 +157,6 @@ export class PromptVaultService {
     this.telemetry.withSpan("service.tagPrompt", { promptId, count: labels.length }, () => {
       const prompt = this.repository.getPromptById(promptId);
       const existingLabels = new Set(prompt.tags.map((tag) => tag.label.toLowerCase()));
-
-      // TODO(P2, 3d): Add support for removing tags from prompts via service method once tag detach UX is defined.
       const tags = this.prepareTags(labels, existingLabels);
       if (tags.length === 0) {
         return;
@@ -170,12 +168,29 @@ export class PromptVaultService {
     });
   }
 
+  /**
+   * Remove tags from an existing prompt.
+   * @param promptId - Identifier of the prompt to modify.
+   * @param labels - Tag labels to remove (case-insensitive).
+   */
+  public untagPrompt(promptId: PromptId, labels: readonly string[]): void {
+    const normalized = this.normalizeLabels(labels);
+    if (normalized.length === 0) {
+      return;
+    }
+
+    this.telemetry.withSpan("service.untagPrompt", { promptId, count: normalized.length }, () => {
+      this.repository.getPromptById(promptId);
+      this.repository.removeTags(promptId, normalized, new Date());
+      this.logger.info("prompt_untagged", { promptId, count: normalized.length });
+      this.pluginHost.emit("onPromptUntagged", { promptId, labels: normalized });
+    });
+  }
+
   private prepareTags(labels: readonly string[], existingLabels: ReadonlySet<string> = new Set()): Tag[] {
     const seen = new Set<string>(Array.from(existingLabels, (label) => label.toLowerCase()));
 
-    return labels
-      .map((label) => label.trim())
-      .filter((label) => label.length > 0)
+    return this.normalizeLabels(labels)
       .filter((label) => {
         const normalized = label.toLowerCase();
         if (seen.has(normalized)) {
@@ -190,5 +205,11 @@ export class PromptVaultService {
         description: undefined,
         createdAt: new Date(),
       }));
+  }
+
+  private normalizeLabels(labels: readonly string[]): string[] {
+    return labels
+      .map((label) => label.trim())
+      .filter((label) => label.length > 0);
   }
 }

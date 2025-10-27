@@ -234,6 +234,35 @@ describe("PromptVaultService", () => {
     expect(refreshed.updatedAt.getTime()).toEqual(baseline.updatedAt.getTime());
   });
 
+  it("removes tags when requested", () => {
+    const service = createService();
+    const prompt = service.createPrompt({
+      id: randomUUID(),
+      slug: "untaggable",
+      title: "Untag",
+      description: undefined,
+      body: "Body",
+      semanticVersion: "1.0.0",
+      tags: ["Alpha", "Beta"],
+      changelog: undefined,
+    });
+
+    const created = service.getPrompt(prompt.id);
+    expect(created.tags.map((tag) => tag.label)).toEqual(["Alpha", "Beta"]);
+
+    vi.useFakeTimers();
+    const future = new Date(created.updatedAt.getTime() + 10_000);
+    vi.setSystemTime(future);
+
+    service.untagPrompt(prompt.id, ["beta", "unknown"]);
+
+    vi.useRealTimers();
+    const refreshed = service.getPrompt(prompt.id);
+
+    expect(refreshed.tags.map((tag) => tag.label)).toEqual(["Alpha"]);
+    expect(refreshed.updatedAt.getTime()).toBeGreaterThan(created.updatedAt.getTime());
+  });
+
   it("notifies registered plugins when prompts change", () => {
     const plugin = {
       name: "test-plugin",
@@ -241,6 +270,7 @@ describe("PromptVaultService", () => {
       onPromptCreated: vi.fn(),
       onVersionAdded: vi.fn(),
       onPromptTagged: vi.fn(),
+      onPromptUntagged: vi.fn(),
     };
     const service = new PromptVaultService(new Database(":memory:"), {
       plugins: [plugin],
@@ -261,11 +291,13 @@ describe("PromptVaultService", () => {
 
     service.addVersion(promptId, "Body 2", "1.0.1");
     service.tagPrompt(promptId, ["beta"]);
+    service.untagPrompt(promptId, ["beta"]);
 
     expect(plugin.setup).toHaveBeenCalled();
     expect(plugin.onPromptCreated).toHaveBeenCalled();
     expect(plugin.onVersionAdded).toHaveBeenCalled();
     expect(plugin.onPromptTagged).toHaveBeenCalled();
+    expect(plugin.onPromptUntagged).toHaveBeenCalledWith({ promptId, labels: ["beta"] });
   });
 });
 
@@ -318,5 +350,51 @@ describe("PromptRepository", () => {
 
     const refreshed = repository.getPromptById(prompt.id);
     expect(refreshed.tags[0]?.description).toBe("Operations team");
+  });
+
+  it("removes tag links and cleans up unused tags", () => {
+    const database = new Database(":memory:");
+    const repository = new PromptRepository(database);
+    const timestamp = new Date();
+
+    const prompt: Prompt = {
+      id: randomUUID(),
+      slug: "tag-cleanup",
+      title: "Tag Cleanup",
+      description: undefined,
+      tags: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const version: PromptVersion = {
+      id: randomUUID(),
+      promptId: prompt.id,
+      semanticVersion: "1.0.0",
+      body: "Body",
+      changelog: undefined,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    repository.createPrompt(prompt, version);
+
+    const tags: Tag[] = [
+      { id: randomUUID(), label: "Alpha", description: undefined, createdAt: timestamp },
+      { id: randomUUID(), label: "Beta", description: undefined, createdAt: timestamp },
+    ];
+
+    repository.upsertTags(prompt.id, tags);
+
+    repository.removeTags(prompt.id, ["beta"]);
+
+    const refreshed = repository.getPromptById(prompt.id);
+
+    expect(refreshed.tags.map((tag) => tag.label)).toEqual(["Alpha"]);
+
+    const remainingTagRow = database
+      .prepare("SELECT COUNT(*) as count FROM tags WHERE LOWER(label) = 'beta'")
+      .get() as { count: number };
+    expect(remainingTagRow.count).toBe(0);
   });
 });

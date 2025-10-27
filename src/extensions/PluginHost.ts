@@ -49,4 +49,5 @@ interface PluginEvents {
   onPromptCreated: { prompt: Prompt; version: PromptVersion };
   onVersionAdded: { promptId: PromptId; version: PromptVersion };
   onPromptTagged: { promptId: PromptId; tags: readonly Tag[] };
+  onPromptUntagged: { promptId: PromptId; labels: readonly string[] };
 }

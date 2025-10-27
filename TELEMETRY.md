@@ -21,6 +21,7 @@ Notes
 - Files are rotated daily and capped at ~5 MiB per file. When a file grows beyond the cap it is renamed to `telemetry-YYYY-MM-DD.N.log` and a new file is started.
 - Each line in the log files is a single JSON object (ndjson) representing the telemetry payload forwarded from the renderer.
 - The Tauri backend also maintains a small `telemetry-metrics.json` in the same directory with simple event counters (useful for quick inspection by observability tools).
+- HTTP surfaces expose additional metrics at `/observability/metrics` when `PROMPT_VAULT_METRICS=true`. Counters include `prompt_vault_http_requests_total`, `prompt_vault_http_request_duration_seconds`, and `prompt_vault_prompt_writes_total` (emitted by the operational telemetry plugin).
 
 Configuration
 

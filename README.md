@@ -24,11 +24,11 @@ Prompt Vault is a cross-platform vault for collecting, versioning, and tagging r
 - **Prompt Library** – Create prompts with rich metadata, semantic versioning, and change history.
 - **Tag Filtering** – Attach reusable tags to group prompts by workflow, team, or modality with automatic duplicate detection.
 - **SQLite Persistence** – Store data locally with migrations managed inside the repo for reproducible environments.
-- **Demo Web API** – In-memory API server for trying the web interface without setup.
+- **HTTP API** – Express server that exposes the domain layer over REST using the same SQLite persistence as the CLI.
 - **Command-Line Interface** – Manage your library directly from the terminal with health-aware operations.
 - **Desktop UI** – React-based interface for easy prompt management.
 - **Test Coverage** – Vitest suite exercises core business flows and guards against regressions.
-- **Observability Hooks** – Optional Prometheus-compatible metrics, structured logging, and a CLI doctor command for quick audits.
+- **Observability Hooks** – Prometheus-compatible metrics, structured logging, `/observability/*` health endpoints, and a CLI doctor command for quick audits.
 - **Extension Layer** – Plugins react to prompt lifecycle events without touching core service logic.
 
 ## Project Layout
@@ -74,6 +74,9 @@ npm run coverage:summary
 # capture repository metrics (complexity, dependency graph, latency sample)
 npm run metrics:snapshot
 
+# scaffold a plugin skeleton under src/extensions/plugins/
+npm run extension:scaffold analytics
+
 # lint the project
 npm run lint
 
@@ -118,6 +121,9 @@ npm run dev -- create \
   --version 1.0.0 \
   --tags marketing,writing
 
+# Remove tags from a prompt
+npm run dev -- untag --id <prompt-id> --tags marketing
+
 # List prompts matching a tag
 npm run dev -- list --tags marketing
 
@@ -129,6 +135,35 @@ npm run dev -- doctor
 ```
 
 Enable metrics/health endpoints per invocation with `PROMPT_VAULT_METRICS=true` and optionally `PROMPT_VAULT_METRICS_PORT=9464`. The CLI stores data in `prompt-vault.db` by default—pass `--db` to point to another SQLite database (e.g., `:memory:` during tests).
+
+## HTTP API
+
+Run `npm run web:dev` to start the combined web UI and HTTP API. The Express server exposes REST endpoints under `/api` and reuses the `PromptVaultService` so all entry points share validation, telemetry, and persistence logic.
+
+Available endpoints:
+
+- `GET /api/prompts` – Paginated prompt search accepting `text`, `tags`, `page`, and `pageSize` query parameters.
+- `POST /api/prompts` – Create a prompt. Provide `slug`, `title`, `body`, optional `description`, optional `tags`, and `semanticVersion`.
+- `GET /api/prompts/:id` – Retrieve a single prompt with its latest version and tags.
+- `POST /api/prompts/:id/versions` – Append a new version by submitting `body`, `semanticVersion`, and optional `changelog`.
+- `POST /api/prompts/:id/tags` – Attach one or more tags to the prompt.
+- `DELETE /api/prompts/:id/tags` – Remove tag associations.
+
+Environment configuration:
+
+- `PORT` – HTTP port (defaults to `3001`).
+- `PROMPT_VAULT_DB_PATH` – Path to the SQLite database file (defaults to `prompt-vault.db`).
+- `PROMPT_VAULT_ALLOWED_ORIGINS` – Optional comma-separated origin allowlist for CORS responses. When omitted, all origins are permitted.
+- `PROMPT_VAULT_METRICS=true` – Enable the observability server with health checks and metrics.
+- `PROMPT_VAULT_METRICS_PORT` – Override the Prometheus/health listener port (defaults to `9464`).
+
+Operational endpoints are exposed on `/observability`:
+
+- `GET /observability/healthz` – Liveness signal mirroring the internal health server.
+- `GET /observability/readyz` – Readiness signal that flips to `503` during shutdown or startup.
+- `GET /observability/metrics` – Prometheus exposition format using the in-process registry.
+
+All HTTP responses carry an `x-request-id` header; include it when reporting issues so logs and traces can be correlated quickly.
 
 ## Testing
 
@@ -167,7 +202,7 @@ Coverage thresholds (lines/statements ≥ 85%, functions ≥ 80%, branches ≥ 7
 1. Polish the UI with additional features like search and advanced filtering.
 2. Introduce synchronization/export features for sharing prompt collections.
 3. Automate release packaging (bundle desktop artifacts, publish changelog summaries).
-4. Surface tag removal and bulk editing capabilities in the service and desktop client.
+4. Extend the desktop and web clients to expose the new tag removal APIs and support bulk-edit workflows.
 5. Ship optional remote sync plugin for collaborative prompt libraries.
 
 ## License
