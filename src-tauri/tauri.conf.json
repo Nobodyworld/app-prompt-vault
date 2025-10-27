@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.promptvault.desktop",
   "build": {
-    "frontendDist": "../desktop/dist",
     "beforeDevCommand": "npm run desktop:dev",
-    "beforeBuildCommand": "npm run desktop:build"
+    "beforeBuildCommand": "powershell -Command \"if (!(Test-Path '../desktop/dist')) { New-Item -ItemType Directory -Path '../desktop/dist' }\" && npm run desktop:build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../desktop/dist"
   },
   "app": {
     "windows": [
