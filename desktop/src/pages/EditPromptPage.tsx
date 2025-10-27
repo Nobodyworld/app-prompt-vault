@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import React, { useState } from "react";
 import type { FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import type { PromptSummary } from "../types/prompt";
-import { addPromptVersion } from "../services/promptApi";
+import { addPromptVersion, updatePrompt } from "../services/promptApi";
 import { isTauriAvailable } from "../lib/tauri";
 
 function bumpPatch(version: string): string {
@@ -22,14 +22,25 @@ interface EditLocationState {
   prompt?: PromptSummary;
 }
 
-export function EditPromptPage(): JSX.Element {
+export function EditPromptPage(): React.JSX.Element {
   const navigate = useNavigate();
   const { state } = useLocation() as { state?: EditLocationState };
   const { id } = useParams();
   const prompt = state?.prompt;
   const runtimeAvailable = isTauriAvailable();
 
-  const latestVersion = prompt?.latestVersion;
+  // Early return if prompt is not available or doesn't match the ID
+  if (!prompt || !prompt.id || prompt.id !== id) {
+    return (
+      <div className="status">
+        Select a prompt from the library to edit. The editor needs the prompt context passed from the list.
+      </div>
+    );
+  }
+
+  // At this point, prompt is guaranteed to be defined
+  const safePrompt = prompt;
+  const latestVersion = safePrompt.latestVersion;
   const initialBody = latestVersion?.body ?? "";
   const defaultVersion = latestVersion ? bumpPatch(latestVersion.semanticVersion) : "1.0.1";
 
@@ -38,16 +49,9 @@ export function EditPromptPage(): JSX.Element {
   const [changelog, setChangelog] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [title, setTitle] = useState(safePrompt.title ?? "");
 
-  const promptTitle = useMemo(() => prompt?.title ?? "Untitled Prompt", [prompt?.title]);
-
-  if (!prompt || !prompt.id || prompt.id !== id) {
-    return (
-      <div className="status">
-        Select a prompt from the library to edit. The editor needs the prompt context passed from the list.
-      </div>
-    );
-  }
+  const promptId = safePrompt.id;
 
   const hasBody = body.trim().length > 0;
 
@@ -68,8 +72,16 @@ export function EditPromptPage(): JSX.Element {
     setError(null);
 
     try {
+      // Update title if changed
+      if (title.trim() !== (safePrompt?.title ?? "")) {
+        await updatePrompt({
+          id: safePrompt.id,
+          title: title.trim() || undefined,
+        });
+      }
+
       await addPromptVersion({
-        promptId: prompt.id,
+        promptId: safePrompt.id,
         body,
         semanticVersion: semanticVersion.trim(),
         changelog: changelog.trim() || undefined,
@@ -90,25 +102,12 @@ export function EditPromptPage(): JSX.Element {
         <p>Updating this prompt creates a new version. Older versions remain in the history.</p>
       </header>
 
-      <div className="metadata-preview">
-        <div>
-          <span className="metadata-label">Prompt</span>
-          <span className="metadata-value">{promptTitle}</span>
-        </div>
-        {latestVersion && (
-          <div>
-            <span className="metadata-label">Current Version</span>
-            <span className="metadata-value">v{latestVersion.semanticVersion}</span>
-          </div>
-        )}
-      </div>
-
       <label>
-        New Semantic Version
+        Title
         <input
-          value={semanticVersion}
-          onChange={(event) => setSemanticVersion(event.target.value)}
-          placeholder="e.g., 1.0.1"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="Prompt title"
           required
         />
       </label>
@@ -131,6 +130,29 @@ export function EditPromptPage(): JSX.Element {
           value={changelog}
           onChange={(event) => setChangelog(event.target.value)}
           placeholder="Describe what changed in this version"
+        />
+      </label>
+
+      <div className="metadata-preview">
+        <div>
+          <span className="metadata-label">ID</span>
+          <span className="metadata-value">{promptId}</span>
+        </div>
+        {latestVersion && (
+          <div>
+            <span className="metadata-label">Current Version</span>
+            <span className="metadata-value">v{latestVersion.semanticVersion}</span>
+          </div>
+        )}
+      </div>
+
+      <label>
+        New Semantic Version
+        <input
+          value={semanticVersion}
+          onChange={(event) => setSemanticVersion(event.target.value)}
+          placeholder="e.g., 1.0.1"
+          required
         />
       </label>
 

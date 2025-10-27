@@ -14,9 +14,15 @@
       {
         "label": "main",
         "title": "Prompt Vault",
-        "width": 1200,
+        "width": 500,
         "height": 800,
-        "resizable": true
+        "minWidth": 400,
+        "minHeight": 600,
+        "resizable": true,
+        "decorations": false,
+        "center": false,
+        "x": 0,
+        "y": 0
       }
     ],
     "security": {

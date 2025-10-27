@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listPrompts } from "../services/promptApi";
 import type { PromptSummary } from "../types/prompt";
 import { PromptList } from "../components/PromptList";
-import { isTauriAvailable } from "../lib/tauri";
 import { copyTextToClipboard } from "../lib/clipboard";
 
 type LocationState = { refresh?: boolean } | null;
@@ -32,14 +31,6 @@ export function PromptListPage(): React.JSX.Element {
 
   useEffect(() => {
     let mounted = true;
-
-    if (!isTauriAvailable()) {
-      setError("Desktop runtime unavailable. Launch Prompt Vault from the desktop app to view your library.");
-      setIsLoading(false);
-      return () => {
-        mounted = false;
-      };
-    }
 
     async function load(): Promise<void> {
       setIsLoading(true);
@@ -85,7 +76,17 @@ export function PromptListPage(): React.JSX.Element {
         clearTimerRef.current = null;
       }, 2000);
     } catch (err: unknown) {
-      setCopyError(err instanceof Error ? err.message : "Unable to copy prompt to the clipboard.");
+      const errorMessage = err instanceof Error ? err.message : "Unable to copy prompt to the clipboard.";
+      // Provide more helpful error messages for common clipboard issues
+      if (errorMessage === 'CLIPBOARD_PERMISSIONS_BLOCKED') {
+        setCopyError("Clipboard access blocked. Try using Ctrl+C/Cmd+C to copy manually, or enable clipboard permissions in your browser settings.");
+      } else if (errorMessage === 'FALLBACK_COPY_FAILED') {
+        setCopyError("Automatic copying failed. The prompt text has been displayed in an alert - please copy it manually.");
+      } else if (errorMessage === 'MANUAL_COPY_REQUIRED') {
+        setCopyError("Prompt text displayed in alert popup. Please copy it manually using Ctrl+C/Cmd+C.");
+      } else {
+        setCopyError(errorMessage);
+      }
     }
   }, []);
 

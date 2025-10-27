@@ -32,3 +32,10 @@ export interface AddPromptVersionInput {
   semanticVersion: string;
   changelog?: string;
 }
+
+export interface UpdatePromptInput {
+  id: string;
+  title?: string;
+  description?: string;
+  tags?: string[];
+}

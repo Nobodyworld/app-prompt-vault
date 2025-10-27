@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout";
 import { PromptListPage } from "./pages/PromptListPage";
 import { CreatePromptPage } from "./pages/CreatePromptPage";
 import { EditPromptPage } from "./pages/EditPromptPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 export function App(): React.JSX.Element {
@@ -12,9 +13,10 @@ export function App(): React.JSX.Element {
       <ErrorBoundary>
         <Routes>
           <Route element={<Layout />}>
-            <Route index element={<PromptListPage />} />
-            <Route path="create" element={<CreatePromptPage />} />
-            <Route path="edit/:id" element={<EditPromptPage />} />
+          <Route index element={<PromptListPage />} />
+          <Route path="create" element={<CreatePromptPage />} />
+          <Route path="edit/:id" element={<EditPromptPage />} />
+          <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
       </ErrorBoundary>

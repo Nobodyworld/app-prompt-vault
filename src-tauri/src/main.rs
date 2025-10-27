@@ -110,12 +110,35 @@ struct AddVersionResponse {
     version: PromptVersionSummary,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdatePromptPayload {
+    id: String,
+    title: Option<String>,
+    description: Option<String>,
+    tags: Option<Vec<String>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdatePromptResponse {
+    prompt: PromptSummary,
+}
+
 #[tauri::command]
 async fn add_prompt_version(
     state: State<'_, AppState>,
     payload: AddVersionPayload,
 ) -> Result<AddVersionResponse, String> {
     add_prompt_version_inner(state, payload).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn update_prompt(
+    state: State<'_, AppState>,
+    payload: UpdatePromptPayload,
+) -> Result<UpdatePromptResponse, String> {
+    update_prompt_inner(state, payload).map_err(|error| error.to_string())
 }
 
 // Helper that persists telemetry payload into the provided directory, with rotation by max_bytes.
@@ -468,6 +491,73 @@ fn add_prompt_version_inner(
     })
 }
 
+fn update_prompt_inner(
+    state: State<'_, AppState>,
+    payload: UpdatePromptPayload,
+) -> Result<UpdatePromptResponse, AppError> {
+    let connection = state
+        .connection
+        .lock()
+        .map_err(|_| AppError::Internal("database lock poisoned".into()))?;
+
+    let id = payload.id;
+    let title = payload.title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    let description = payload.description.map(|d| d.trim().to_string()).filter(|d| !d.is_empty());
+    let tags = payload.tags.map(|t| t.into_iter().map(|tag| tag.trim().to_string()).filter(|tag| !tag.is_empty()).collect::<Vec<_>>());
+
+    let mut updates = Vec::new();
+    let mut params_vec = Vec::new();
+
+    if let Some(ref t) = title {
+        updates.push("title = ?");
+        params_vec.push(t.as_str());
+    }
+    if let Some(ref d) = description {
+        updates.push("description = ?");
+        params_vec.push(d.as_str());
+    }
+    updates.push("updated_at = ?");
+    let now = chrono::Utc::now().to_rfc3339();
+    params_vec.push(&now);
+
+    if updates.is_empty() {
+        return Err(AppError::Validation("No fields to update".into()));
+    }
+
+    let query = format!("UPDATE prompts SET {} WHERE id = ?", updates.join(", "));
+    params_vec.push(&id);
+
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+
+    connection.execute(&query, &params_refs[..])?;
+
+    if let Some(ref t) = tags {
+        // Remove existing tags
+        connection.execute("DELETE FROM prompt_tags WHERE prompt_id = ?", [&id])?;
+        // Add new tags
+        store_tags(&connection, &id, t)?;
+    }
+
+    // Fetch updated prompt
+    let mut stmt = connection.prepare(
+        "SELECT id, slug, title, description, created_at, updated_at FROM prompts WHERE id = ?",
+    )?;
+    let partial = stmt.query_row([&id], |row| {
+        Ok(PartialPrompt {
+            id: row.get(0)?,
+            slug: row.get(1)?,
+            title: row.get(2)?,
+            description: row.get(3)?,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+        })
+    })?;
+
+    let summary = compose_prompt_summary(&connection, &partial)?;
+
+    Ok(UpdatePromptResponse { prompt: summary })
+}
+
 struct PartialPrompt {
     id: String,
     slug: String,
@@ -662,6 +752,7 @@ fn main() {
             list_prompts,
             create_prompt,
             add_prompt_version,
+            update_prompt,
             record_telemetry_event,
             get_telemetry_dir,
             force_telemetry_retention_cleanup

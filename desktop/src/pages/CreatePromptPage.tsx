@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPrompt } from "../services/promptApi";
@@ -38,7 +38,15 @@ function parseCustomTags(input: string): string[] {
     .filter(Boolean);
 }
 
-export function CreatePromptPage(): JSX.Element {
+const STORAGE_KEY = "prompt-vault-create-form";
+
+interface PersistedState {
+  form: FormState;
+  selectedTags: string[];
+  slugSuffix: string;
+}
+
+export function CreatePromptPage(): React.JSX.Element {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [slugSuffix, setSlugSuffix] = useState<string>(createSlugSuffix);
@@ -47,8 +55,50 @@ export function CreatePromptPage(): JSX.Element {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
+  // Load persisted form data on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed: PersistedState = JSON.parse(saved);
+        setForm(parsed.form);
+        setSelectedTags(parsed.selectedTags);
+        setSlugSuffix(parsed.slugSuffix);
+      }
+    } catch (error) {
+      console.error("Failed to load saved form data:", error);
+    }
+  }, []);
+
+  // Save form data whenever it changes
+  useEffect(() => {
+    const stateToSave: PersistedState = {
+      form,
+      selectedTags,
+      slugSuffix,
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+    } catch (error) {
+      console.error("Failed to save form data:", error);
+    }
+  }, [form, selectedTags, slugSuffix]);
+
   useEffect(() => {
     setRuntimeAvailable(isTauriAvailable());
+  }, []);
+
+  // Listen for custom event to submit form from header
+  useEffect(() => {
+    const handleSubmitEvent = (): void => {
+      const formElement = document.querySelector('.prompt-form') as HTMLFormElement;
+      if (formElement) {
+        formElement.requestSubmit();
+      }
+    };
+
+    window.addEventListener('submit-create-form', handleSubmitEvent);
+    return () => window.removeEventListener('submit-create-form', handleSubmitEvent);
   }, []);
 
   const slugPreview = useMemo(() => {
@@ -70,6 +120,8 @@ export function CreatePromptPage(): JSX.Element {
     setForm(INITIAL_FORM);
     setSelectedTags([]);
     setSlugSuffix(createSlugSuffix());
+    // Clear persisted data
+    localStorage.removeItem(STORAGE_KEY);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -117,34 +169,7 @@ export function CreatePromptPage(): JSX.Element {
     <form className="prompt-form" onSubmit={handleSubmit}>
       <header>
         <h2>Create Prompt</h2>
-        <p>Provide the prompt message and (optionally) a title. Slug and version are generated automatically.</p>
       </header>
-
-      <div className="metadata-preview">
-        <div>
-          <span className="metadata-label">Slug</span>
-          <span className="metadata-value">{slugPreview}</span>
-        </div>
-        <div>
-          <span className="metadata-label">Version</span>
-          <span className="metadata-value">{INITIAL_VERSION}</span>
-        </div>
-        {tagPreview && (
-          <div>
-            <span className="metadata-label">Tags</span>
-            <span className="metadata-value">{tagPreview}</span>
-          </div>
-        )}
-      </div>
-
-      <label>
-        Title (optional)
-        <input
-          value={form.title}
-          onChange={(event) => setForm((state) => ({ ...state, title: event.target.value }))}
-          placeholder="Give your prompt a friendly name"
-        />
-      </label>
 
       <label>
         Prompt Message
@@ -185,11 +210,39 @@ export function CreatePromptPage(): JSX.Element {
         />
       </label>
 
+      <div className="metadata-preview">
+        <div>
+          <span className="metadata-label">Slug</span>
+          <span className="metadata-value">{slugPreview}</span>
+        </div>
+        <div>
+          <span className="metadata-label">Version</span>
+          <span className="metadata-value">{INITIAL_VERSION}</span>
+        </div>
+        {tagPreview && (
+          <div>
+            <span className="metadata-label">Tags</span>
+            <span className="metadata-value">{tagPreview}</span>
+          </div>
+        )}
+      </div>
+
       {error && <p className="error">{error}</p>}
 
       <div className="form-actions">
         <button className="secondary" type="button" onClick={() => navigate("/")}>
           Cancel
+        </button>
+        <button 
+          className="danger" 
+          type="button" 
+          onClick={() => {
+            if (confirm('Are you sure you want to clear the form?')) {
+              resetForm();
+            }
+          }}
+        >
+          Clear
         </button>
         <button type="submit" disabled={isSubmitting || !runtimeAvailable}>
           {isSubmitting ? "Creating..." : "Create Prompt"}
