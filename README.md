@@ -1,12 +1,17 @@
 # Prompt Vault
 
-Prompt Vault is a cross-platform desktop vault for collecting, versioning, and tagging reusable prompts. The project includes a fully typed domain layer, a CLI for quick interactions, and a React UI hosted in a Tauri shell backed by a local SQLite database.
+[![CI](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml/badge.svg)](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/Nobodyworld/app-prompt-vault/branch/main/graph/badge.svg)](https://codecov.io/gh/Nobodyworld/app-prompt-vault)
+
+Prompt Vault is a cross-platform vault for collecting, versioning, and tagging reusable prompts. The project includes a fully typed domain layer, a CLI for quick interactions, and a React UI that works in both desktop (Tauri) and web browser environments, backed by SQLite (desktop) or a demo API server (web).
 
 ## Key Features
 
+- **Cross-Platform** – Works in desktop (Tauri) and web browser environments with automatic feature detection.
 - **Prompt Library** – Create prompts with rich metadata, semantic versioning, and change history.
 - **Tag Filtering** – Attach reusable tags to group prompts by workflow, team, or modality with automatic duplicate detection.
 - **SQLite Persistence** – Store data locally with migrations managed inside the repo for reproducible environments.
+- **Demo Web API** – In-memory API server for trying the web interface without setup.
 - **Command-Line Interface** – Manage your library directly from the terminal with health-aware operations.
 - **Desktop UI** – React-based interface for easy prompt management.
 - **Test Coverage** – Vitest suite exercises core business flows and guards against regressions.
@@ -73,6 +78,12 @@ npm run desktop:dev
 
 # build desktop app for production
 npm run desktop:build
+
+# run web app in development (with demo data)
+npm run web:dev
+
+# build and serve web app for production
+npm run web:build
 
 # start a standalone observability server (metrics + health endpoints)
 npm run observability
