@@ -1,0 +1,18 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 80
+    patch:
+      default:
+        # require small or no regression on PRs
+        target: 0
+  precision: 2
+  round: down
+
+comment:
+  layout: "reach, diff, files"
+  require_changes: true
+
+# require CI to pass before marking coverage
+require_ci_to_pass: true
