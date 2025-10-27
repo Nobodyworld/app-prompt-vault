@@ -30,7 +30,7 @@ This document captures the current architecture of Prompt Vault after the Stage 
 ┌───────────────┴─────────────────────┐
 │ Extension Host (src/extensions/)    │
 │ • PluginHost manages lifecycle      │
-│ • Audit trail reference plugin      │
+│ • Audit trail + operational metrics │
 └─────────────────────────────────────┘
 ```
 
@@ -65,7 +65,7 @@ Key ideas:
 ### Plugin System
 
 - `PluginHost` accepts `PromptVaultPlugin` registrations. Handlers execute inside telemetry spans (`plugin.<name>.<event>`) so long-running plugins are observable.
-- `createAuditTrailPlugin()` provides a reference that logs lifecycle events and emits telemetry events. Future plugins should follow the same pattern and can be scaffolded with the supplied TypeScript types.
+- `createAuditTrailPlugin()` logs lifecycle events while `createOperationalTelemetryPlugin()` increments counters for every write. Future plugins should follow the same pattern and can be scaffolded with the supplied TypeScript types or `npm run extension:scaffold`.
 
 ## Operational Topology
 

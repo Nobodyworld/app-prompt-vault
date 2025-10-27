@@ -10,6 +10,7 @@ export default [
       "node_modules/**",
       "tests/**",
       "vitest.config.ts",
+      "vitest.ui.config.ts",
       ".eslintrc.cjs",
       "desktop/dist/**",
       // ignore generated and native build artifacts
@@ -32,7 +33,6 @@ export default [
     languageOptions: {
       parser: tsparser,
       parserOptions: {
-        project: "./tsconfig.json",
         tsconfigRootDir: import.meta.dirname,
       },
       ecmaVersion: 2022,

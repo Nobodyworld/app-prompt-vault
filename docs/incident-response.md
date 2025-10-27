@@ -4,9 +4,9 @@ This playbook outlines the recommended recovery steps when Prompt Vault experien
 
 ## 1. Verify Health Endpoints
 
-1. Hit `/healthz` to confirm the process is alive.
-2. Hit `/readyz` to ensure the service is accepting work. A degraded response typically includes contextual `details`.
-3. Scrape `/metrics` and inspect `prompt_vault_span_total` for rapidly increasing error counts.
+1. Hit `/observability/healthz` (or the standalone `/healthz` if running the metrics server directly) to confirm the process is alive.
+2. Hit `/observability/readyz` to ensure the service is accepting work. A degraded response typically includes contextual `details`.
+3. Scrape `/observability/metrics` and inspect `prompt_vault_span_total` and `prompt_vault_http_requests_total` for rapidly increasing error counts.
 
 ## 2. Common Recovery Actions
 

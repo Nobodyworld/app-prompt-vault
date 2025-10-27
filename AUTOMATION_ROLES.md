@@ -28,5 +28,11 @@ This registry maps potential agent responsibilities to the scripts and guardrail
 - **Outputs:** Metrics/health endpoints for smoke testing and dashboards.
 - **Notes:** Pair with `npm run dev -- doctor` to capture integrity snapshots.
 
+### Extension Steward
+- **Trigger:** When bootstrapping a new plugin or connector.
+- **Command:** `npm run extension:scaffold <name>`
+- **Outputs:** Template plugin file under `src/extensions/plugins/` with instrumentation hooks.
+- **Notes:** Export the new factory from `src/extensions/index.ts` and add documentation in `EXTENSION_GUIDE.md`.
+
 ## Safety Tags
 Scripts annotated with `// # agent-entrypoint` or `// # agent-safe-task` signal code paths that agents may invoke or extend without bypassing guardrails. When adding new automation helpers, include the appropriate tag and document the workflow here.

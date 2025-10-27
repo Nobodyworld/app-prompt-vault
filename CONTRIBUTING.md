@@ -14,7 +14,8 @@ Thank you for your interest in improving Prompt Vault! This guide outlines the p
 2. Make your changes following the architecture documented in `ARCHITECTURE_OVERVIEW.md` and `docs/architecture.md`.
 3. Write or update tests under `tests/` to cover your changes.
 4. Run `npm run quality:gate` locally (or `npm run validate` for backwards compatibility).
-5. Document new behaviour in README/guide files and update `CHANGELOG.md` or `RELEASE_NOTES.md` where appropriate.
+5. When adding plugins, prefer the `npm run extension:scaffold <name>` template and export them via `src/extensions/index.ts`.
+6. Document new behaviour in README/guide files and update `CHANGELOG.md` or `RELEASE_NOTES.md` where appropriate.
 6. Commit using descriptive messages and open a pull request against `main`.
 
 ## Code Style
@@ -23,7 +24,7 @@ Thank you for your interest in improving Prompt Vault! This guide outlines the p
 - Keep functions small and pure where possible; push side-effects to the CLI or platform-specific adapters.
 - Include docstrings (JSDoc) for classes and exported functions.
 - Format code using your editor's TypeScript formatter; lint errors must be resolved before submission.
-- Instrument long-running flows with `StructuredLogger` and telemetry spans so they appear in metrics.
+- Instrument long-running flows with `StructuredLogger` and telemetry spans so they appear in metrics; scrape `/observability/metrics` in local testing when troubleshooting.
 
 ## Commit & PR Expectations
 

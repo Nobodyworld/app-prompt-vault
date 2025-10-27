@@ -24,15 +24,16 @@ This repository is automation-friendly: it ships structured telemetry, determini
 | Bootstrap dependencies | `npm install` |
 | Run quality gate | `npm run quality:gate` |
 | Snapshot metrics/complexity | `npm run metrics:snapshot` |
-| Start observability server | `npm run observability` (exports health/metrics until interrupted) |
+| Start observability server | `npm run observability` (exports `/observability/*` and Prometheus metrics until interrupted) |
 | Run CLI doctor | `npm run dev -- doctor` |
+| Scaffold a plugin template | `npm run extension:scaffold <name>` |
 | Prepare release notes + changelog stub | `npm run release:prepare -- <version>` |
 
 ## Agent Safety Patterns
 
 - **Read-only first:** Parse documentation (`ARCHITECTURE_OVERVIEW.md`, `EXTENSION_GUIDE.md`) before editing.
 - **Dry runs:** Use `npm run dev -- <command>` to validate CLI behaviour against an in-memory database (`--db :memory:`) before touching production files.
-- **Telemetry:** Enable metrics locally during automation to capture span timings and log context for debugging runs (`PROMPT_VAULT_METRICS=true`).
+- **Telemetry:** Enable metrics locally during automation to capture span timings and log context for debugging runs (`PROMPT_VAULT_METRICS=true`). Scrape `/observability/metrics` to confirm instrumentation is healthy.
 - **PR Authoring:** Summaries should cite documentation updates and mention any residual risks flagged in `RELEASE_NOTES.md`.
 
 ## Change Coordination

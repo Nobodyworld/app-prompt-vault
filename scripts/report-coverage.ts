@@ -46,9 +46,12 @@ const globalTotals: { functions: Totals; blocks: Totals } = {
 const fileSummaries = new Map<string, { functions: Totals; blocks: Totals }>();
 
 for (const file of coverageFiles) {
-  const payload = JSON.parse(
-    readFileSync(join(coverageDirectory, file), "utf8")
-  ) as CoverageFile;
+  const payload = JSON.parse(readFileSync(join(coverageDirectory, file), "utf8")) as Partial<CoverageFile>;
+
+  if (!Array.isArray(payload.result)) {
+    console.warn(`Skipping ${file}: not a raw V8 coverage artifact.`);
+    continue;
+  }
 
   for (const script of payload.result) {
     if (!script.url.startsWith(projectSrcPrefix)) {

@@ -3,20 +3,25 @@
 ## Unreleased
 
 ### Highlights
-- Added `npm run metrics:snapshot` for capturing complexity, dependency, and latency metrics, with findings recorded in `STEWARDS_REPORT.md` and automation roles catalogued in `AUTOMATION_ROLES.md`.
-- Simplified repository transactions to rely on atomic helpers and deduplicated tag persistence, reducing manual rollback handling.
+- Added Prometheus-compatible HTTP instrumentation and an `/observability` router exposing liveness, readiness, and metrics endpoints for all entry points.
+- Introduced an operational telemetry plugin to count prompt mutations and mirror lifecycle events into structured logs.
+- Shipped `npm run extension:scaffold` to generate plugin templates alongside updated docs for agents and maintainers.
+- Extended the Vitest suite with observability integration tests to guard metrics and health regressions.
 
 ### Upgrade Steps
 1. Run `npm install` if dependencies drift (no new runtime packages were added).
-2. Execute `npm run metrics:snapshot` after `npm run quality:gate` to export fresh stewardship metrics.
-3. Review `STEWARDS_REPORT.md` for the latest recommendations before deployment.
+2. Execute `npm run quality:gate` to exercise the updated observability tests.
+3. Enable `PROMPT_VAULT_METRICS=true` and optionally set `PROMPT_VAULT_METRICS_PORT` so `/observability/metrics` can be scraped by your platform monitors.
+4. Review `AUTOMATION.md`, `EXTENSION_GUIDE.md`, and `AGENTS.md` for the latest automation and plugin guidance before delegating work.
 
 ### Breaking Changes
 - None.
 
 ### Operational Notes
-- Tag upserts now return the stored identifier from SQLite; existing databases require no migrations but agents should continue deduplicating labels before persistence.
+- HTTP metrics now include request duration histograms (`prompt_vault_http_request_duration_seconds`) and counters for prompt write activity. Add alerting thresholds that reflect your SLOs.
+- The operational telemetry plugin records lifecycle events; disable it only if you replace it with an equivalent handler to avoid losing write metrics.
 - Coverage reporting still requires a V8 provider—expect warnings until `@vitest/coverage-v8` (or similar) is available in restricted registries.
+- Every API response returns an `x-request-id` header mirrored in JSON error payloads; include it in support requests to speed log correlation.
 
 ## 0.2.0 (2025-10-26)
 

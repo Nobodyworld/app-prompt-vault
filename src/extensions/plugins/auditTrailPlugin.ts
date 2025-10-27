@@ -29,5 +29,11 @@ export function createAuditTrailPlugin(): PromptVaultPlugin {
         tags: tags.map((tag) => tag.label).join(","),
       });
     },
+    onPromptUntagged({ promptId, labels }) {
+      context?.logger.info("audit_prompt_untagged", {
+        promptId,
+        labels: labels.join(","),
+      });
+    },
   };
 }

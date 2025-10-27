@@ -4,3 +4,4 @@ export { MetricRegistry, createTelemetry, createNoopTelemetry } from "./telemetr
 export type { Telemetry, TelemetrySpanAttributes } from "./telemetry.js";
 export { createHealthServer, createHealthIndicator } from "./healthServer.js";
 export { bootstrapObservabilityFromEnv } from "./runtime.js";
+export { createHttpMetricsMiddleware } from "./httpInstrumentation.js";

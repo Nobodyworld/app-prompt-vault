@@ -14,7 +14,7 @@ Keep domain validation, migrations, and persistence inside the core service—pl
 
 ## Plugin Lifecycle
 
-1. **Registration.** Pass plugin instances to `PromptVaultService` via the `plugins` option. The CLI registers the bundled audit trail plugin automatically.
+1. **Registration.** Pass plugin instances to `PromptVaultService` via the `plugins` option. The CLI registers the bundled audit trail and operational telemetry plugins automatically.
 2. **Setup hook.** `setup(context)` fires immediately with a logger + telemetry handle. Use it to initialise connections or schedule timers.
 3. **Event hooks.** Implement any of the optional callbacks:
    - `onPromptCreated({ prompt, version })`
@@ -25,7 +25,13 @@ Handlers execute inside telemetry spans (`plugin.<name>.<event>`) so metrics cap
 
 ## Starter Template
 
-Create a new file under `src/extensions/plugins/yourPluginName.ts`:
+You can scaffold a plugin skeleton with the provided script:
+
+```bash
+npm run extension:scaffold operations
+```
+
+This creates `src/extensions/plugins/operationsPlugin.ts` with a ready-to-edit template. If you prefer to write one manually, create a new file under `src/extensions/plugins/yourPluginName.ts`:
 
 ```ts
 import type { PromptVaultPlugin } from "../types.js";
@@ -43,7 +49,7 @@ export function createExamplePlugin(): PromptVaultPlugin {
 }
 ```
 
-Register it when constructing `PromptVaultService`:
+Register it when constructing `PromptVaultService` (or export it from `src/extensions/index.ts` for reuse):
 
 ```ts
 import { PromptVaultService } from "../services/PromptVaultService.js";
@@ -53,6 +59,8 @@ const service = new PromptVaultService(database, {
   plugins: [createExamplePlugin()],
 });
 ```
+
+The repository ships with `createOperationalTelemetryPlugin()` as a reference implementation that records metrics and telemetry events for every prompt mutation. Use it as a blueprint for more advanced integrations (Slack notifications, remote sync, etc.).
 
 ## Testing Plugins
 

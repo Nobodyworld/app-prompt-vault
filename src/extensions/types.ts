@@ -13,4 +13,5 @@ export interface PromptVaultPlugin {
   onPromptCreated?(payload: { prompt: Prompt; version: PromptVersion }): void;
   onVersionAdded?(payload: { promptId: PromptId; version: PromptVersion }): void;
   onPromptTagged?(payload: { promptId: PromptId; tags: readonly Tag[] }): void;
+  onPromptUntagged?(payload: { promptId: PromptId; labels: readonly string[] }): void;
 }

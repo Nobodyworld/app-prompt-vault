@@ -7,7 +7,7 @@ import chalk from "chalk";
 import { randomUUID } from "node:crypto";
 import { PromptVaultService } from "../services/PromptVaultService.js";
 import { bootstrapObservabilityFromEnv } from "../observability/index.js";
-import { createAuditTrailPlugin } from "../extensions/index.js";
+import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from "../extensions/index.js";
 
 const program = new Command();
 
@@ -54,7 +54,7 @@ async function useService<T>(
   const service = new PromptVaultService(database, {
     telemetry,
     logger: logger.child({ component: "service", dbPath }),
-    plugins: [createAuditTrailPlugin()],
+    plugins: [createAuditTrailPlugin(), createOperationalTelemetryPlugin()],
   });
   try {
     return await handler(service, database);
@@ -165,6 +165,23 @@ program
         .filter(Boolean);
       service.tagPrompt(options.id, labels);
       console.log(chalk.green(`Tagged prompt ${options.id} with ${labels.join(", ")}`));
+    });
+  });
+
+program
+  .command("untag")
+  .description("Remove tags from an existing prompt")
+  .requiredOption("--id <id>", "Prompt identifier")
+  .requiredOption("--tags <tags>", "Comma separated tags to remove")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      const labels = (options.tags as string)
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      service.untagPrompt(options.id, labels);
+      console.log(chalk.green(`Removed tags ${labels.join(", ")} from prompt ${options.id}`));
     });
   });
 

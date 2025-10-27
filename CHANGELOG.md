@@ -6,12 +6,20 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ### Added
 - `scripts/metrics-snapshot.ts` for agent-tagged complexity, dependency, and latency reporting alongside `STEWARDS_REPORT.md` and `AUTOMATION_ROLES.md` guidance.
+- Regression test asserting every SQL migration is executed and required indexes are present on new databases.
+- Express observability middleware emitting Prometheus-compatible HTTP counters/histograms and an `/observability` router exposing health and metrics endpoints.
+- Operational telemetry plugin that records prompt mutation events and counters for write activity.
+- `npm run extension:scaffold` helper for generating plugin templates plus integration tests covering observability endpoints.
 
 ### Changed
 - Simplified repository transactions by delegating to `better-sqlite3`'s transaction helper and deduplicating tags before persistence.
+- Express server now enforces request correlation IDs, sanitises user-provided identifiers, and returns JSON-formatted parse errors alongside the `x-request-id` header.
+- Migration runner executes every `.sql` file in order, enabling additive schema upgrades such as the new performance indexes for prompt search and tag operations.
+- Default HTTP bootstrap enables request metrics, exposes `/observability/*` routes, and loads the operational telemetry plugin to keep metrics and logs in sync across entry points.
 
 ### Fixed
 - Tag upserts now reuse the persisted identifier returned from SQLite, preventing foreign key errors when reapplying shared labels.
+- Search, tag assignment, and tag removal operations benefit from new SQLite indexes, reducing query latency on vaults with larger datasets.
 
 ## [0.2.0] - 2025-10-26
 
