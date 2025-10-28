@@ -28,7 +28,7 @@ Prompt Vault is a cross-platform vault for collecting, versioning, and tagging r
 - **Command-Line Interface** – Manage your library directly from the terminal with health-aware operations.
 - **Desktop UI** – React-based interface for easy prompt management.
 - **Test Coverage** – Vitest suite exercises core business flows and guards against regressions.
-- **Observability Hooks** – Prometheus-compatible metrics, structured logging, `/observability/*` health endpoints, and a CLI doctor command for quick audits.
+- **Observability Hooks** – Prometheus-compatible metrics, structured logging, `/observability/*` health endpoints, per-request tracing spans (`x-trace-id` headers), and a CLI doctor command for quick audits.
 - **Extension Layer** – Plugins react to prompt lifecycle events without touching core service logic.
 
 ## Project Layout
@@ -156,6 +156,7 @@ Environment configuration:
 - `PROMPT_VAULT_ALLOWED_ORIGINS` – Optional comma-separated origin allowlist for CORS responses. When omitted, all origins are permitted.
 - `PROMPT_VAULT_METRICS=true` – Enable the observability server with health checks and metrics.
 - `PROMPT_VAULT_METRICS_PORT` – Override the Prometheus/health listener port (defaults to `9464`).
+- `PROMPT_VAULT_STATIC_DIR` – Path to a directory of pre-built static assets served by the HTTP API (defaults to the bundled desktop build when available).
 
 Operational endpoints are exposed on `/observability`:
 
@@ -163,7 +164,9 @@ Operational endpoints are exposed on `/observability`:
 - `GET /observability/readyz` – Readiness signal that flips to `503` during shutdown or startup.
 - `GET /observability/metrics` – Prometheus exposition format using the in-process registry.
 
-All HTTP responses carry an `x-request-id` header; include it when reporting issues so logs and traces can be correlated quickly.
+All HTTP responses carry an `x-request-id` header; when metrics/tracing are enabled (`PROMPT_VAULT_METRICS=true`), responses also emit `x-trace-id` and error payloads mirror `traceId` for rapid correlation in logs and telemetry exports.
+
+> **Configuration safety:** Startup now validates ports, database paths, allowed origins, and telemetry flags. Invalid values halt the process with actionable error messages, and ambiguous combinations (e.g., metrics port without metrics enabled) surface structured warnings in the logs.
 
 ## Testing
 

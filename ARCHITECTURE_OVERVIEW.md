@@ -61,6 +61,7 @@ Key ideas:
 - `bootstrapObservabilityFromEnv` centralises log level parsing, metrics registry creation, and health server startup. It exposes a `HealthIndicator` so services can toggle readiness/liveness.
 - `MetricRegistry` implements counters and histograms with Prometheus exposition format without introducing external dependencies (useful in air-gapped environments).
 - `createHealthServer` exports `/healthz`, `/readyz`, and `/metrics` endpoints. The CLI keeps readiness in sync with database availability.
+- `createHttpTracingMiddleware` wraps every HTTP request in an `http.server.request` span, adds `x-trace-id` headers, and keeps logs aligned with the AsyncLocalStorage trace context for downstream plugins and routers.
 
 ### Plugin System
 

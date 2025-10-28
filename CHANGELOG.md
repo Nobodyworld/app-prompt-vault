@@ -10,16 +10,21 @@ All notable changes to Prompt Vault will be documented in this file.
 - Express observability middleware emitting Prometheus-compatible HTTP counters/histograms and an `/observability` router exposing health and metrics endpoints.
 - Operational telemetry plugin that records prompt mutation events and counters for write activity.
 - `npm run extension:scaffold` helper for generating plugin templates plus integration tests covering observability endpoints.
+- Environment-aware server configuration loader with validation, static asset discovery, and dedicated regression tests.
+- Express tracing middleware that opens `http.server.request` spans, decorates responses with `x-trace-id`, and ships dedicated tests to guard the instrumentation contract.
 
 ### Changed
 - Simplified repository transactions by delegating to `better-sqlite3`'s transaction helper and deduplicating tags before persistence.
 - Express server now enforces request correlation IDs, sanitises user-provided identifiers, and returns JSON-formatted parse errors alongside the `x-request-id` header.
+- HTTP error payloads now mirror both `requestId` and `traceId` so operators can stitch support cases to log streams without manual lookup.
 - Migration runner executes every `.sql` file in order, enabling additive schema upgrades such as the new performance indexes for prompt search and tag operations.
 - Default HTTP bootstrap enables request metrics, exposes `/observability/*` routes, and loads the operational telemetry plugin to keep metrics and logs in sync across entry points.
+- HTTP API now boots with the validated configuration, logging explicit warnings for ambiguous inputs and refusing to start when required values are malformed.
 
 ### Fixed
 - Tag upserts now reuse the persisted identifier returned from SQLite, preventing foreign key errors when reapplying shared labels.
 - Search, tag assignment, and tag removal operations benefit from new SQLite indexes, reducing query latency on vaults with larger datasets.
+- Server configuration loader now de-duplicates repeated `PROMPT_VAULT_ALLOWED_ORIGINS` entries while still surfacing warnings so CORS policies stay deterministic.
 
 ## [0.2.0] - 2025-10-26
 
