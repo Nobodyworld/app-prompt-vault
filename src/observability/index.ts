@@ -5,3 +5,4 @@ export type { Telemetry, TelemetrySpanAttributes } from "./telemetry.js";
 export { createHealthServer, createHealthIndicator } from "./healthServer.js";
 export { bootstrapObservabilityFromEnv } from "./runtime.js";
 export { createHttpMetricsMiddleware } from "./httpInstrumentation.js";
+export { createHttpTracingMiddleware } from "./httpTracing.js";

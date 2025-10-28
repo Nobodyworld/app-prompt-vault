@@ -204,6 +204,7 @@ export interface Telemetry {
   withSpan<T>(name: string, attributes: TelemetrySpanAttributes, fn: () => T): T;
   withSpan<T>(name: string, attributes: TelemetrySpanAttributes, fn: () => Promise<T>): Promise<T>;
   recordEvent(name: string, attributes?: TelemetrySpanAttributes): void;
+  getActiveContext(): TelemetrySpanContext | undefined;
 }
 
 class NoopTelemetry implements Telemetry {
@@ -215,6 +216,10 @@ class NoopTelemetry implements Telemetry {
 
   public recordEvent(): void {
     // intentionally noop
+  }
+
+  public getActiveContext(): TelemetrySpanContext | undefined {
+    return undefined;
   }
 }
 
@@ -314,6 +319,10 @@ class InstrumentedTelemetry implements Telemetry {
   public recordEvent(name: string, attributes: TelemetrySpanAttributes = {}): void {
     this.eventCounter.increment(this.registry.withDefaultLabels({ event_name: name }));
     this.logger.debug(`event:${name}`, { ...attributes, traceId: this.storage.getStore()?.traceId });
+  }
+
+  public getActiveContext(): TelemetrySpanContext | undefined {
+    return this.storage.getStore();
   }
 }
 

@@ -7,12 +7,16 @@
 - Introduced an operational telemetry plugin to count prompt mutations and mirror lifecycle events into structured logs.
 - Shipped `npm run extension:scaffold` to generate plugin templates alongside updated docs for agents and maintainers.
 - Extended the Vitest suite with observability integration tests to guard metrics and health regressions.
+- Hardened HTTP bootstrap with a validated configuration loader, explicit logging of startup warnings, and regression tests for environment parsing.
+- Normalised duplicate entries in `PROMPT_VAULT_ALLOWED_ORIGINS` to keep CORS filters tight while preserving warning signals for operators.
+- Instrumented every HTTP request with an `http.server.request` span and corresponding `x-trace-id` response header so support teams can pivot from incidents to precise log segments in seconds.
 
 ### Upgrade Steps
 1. Run `npm install` if dependencies drift (no new runtime packages were added).
 2. Execute `npm run quality:gate` to exercise the updated observability tests.
 3. Enable `PROMPT_VAULT_METRICS=true` and optionally set `PROMPT_VAULT_METRICS_PORT` so `/observability/metrics` can be scraped by your platform monitors.
-4. Review `AUTOMATION.md`, `EXTENSION_GUIDE.md`, and `AGENTS.md` for the latest automation and plugin guidance before delegating work.
+4. Set `PROMPT_VAULT_STATIC_DIR` when serving a custom web build and review startup logs for configuration warnings.
+5. Review `AUTOMATION.md`, `EXTENSION_GUIDE.md`, and `AGENTS.md` for the latest automation and plugin guidance before delegating work.
 
 ### Breaking Changes
 - None.
@@ -21,7 +25,7 @@
 - HTTP metrics now include request duration histograms (`prompt_vault_http_request_duration_seconds`) and counters for prompt write activity. Add alerting thresholds that reflect your SLOs.
 - The operational telemetry plugin records lifecycle events; disable it only if you replace it with an equivalent handler to avoid losing write metrics.
 - Coverage reporting still requires a V8 provider—expect warnings until `@vitest/coverage-v8` (or similar) is available in restricted registries.
-- Every API response returns an `x-request-id` header mirrored in JSON error payloads; include it in support requests to speed log correlation.
+- Every API response returns an `x-request-id` header mirrored in JSON error payloads; when metrics/tracing are enabled the payloads also expose `traceId` and the HTTP layer emits `x-trace-id` for span correlation.
 
 ## 0.2.0 (2025-10-26)
 

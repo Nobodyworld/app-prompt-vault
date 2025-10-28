@@ -176,19 +176,20 @@ export function createPromptVaultRouter(
     next: NextFunction
   ) => {
     const requestId = response.locals?.requestId;
+    const traceId = response.locals?.traceId;
     if (error instanceof ValidationError || error instanceof z.ZodError) {
       const issues = error instanceof ValidationError ? error.issues : error.issues.map((issue) => issue.message);
-      response.status(400).json({ error: "Request validation failed", details: issues, requestId });
+      response.status(400).json({ error: "Request validation failed", details: issues, requestId, traceId });
       return;
     }
 
     if (error instanceof PromptNotFoundError) {
-      response.status(404).json({ error: error.message, requestId });
+      response.status(404).json({ error: error.message, requestId, traceId });
       return;
     }
 
     if (error instanceof DuplicatePromptError) {
-      response.status(409).json({ error: error.message, requestId });
+      response.status(409).json({ error: error.message, requestId, traceId });
       return;
     }
 
@@ -197,6 +198,7 @@ export function createPromptVaultRouter(
       method: request.method,
       error: error instanceof Error ? error.message : error,
       requestId,
+      traceId,
     });
     telemetry.recordEvent("http.router_error", {
       method: request.method,

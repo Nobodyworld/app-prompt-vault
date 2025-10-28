@@ -6,25 +6,66 @@ import Database from "better-sqlite3";
 import cors from "cors";
 import express, { type ErrorRequestHandler, type NextFunction, type Request, type Response } from "express";
 import { PromptVaultService } from "./src/services/PromptVaultService.js";
-import { bootstrapObservabilityFromEnv } from "./src/observability/index.js";
 import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from "./src/extensions/index.js";
 import { createPromptVaultRouter } from "./src/web/createPromptVaultRouter.js";
-import { createHttpMetricsMiddleware } from "./src/observability/httpInstrumentation.js";
+import {
+  bootstrapObservabilityFromEnv,
+  createHttpMetricsMiddleware,
+  createHttpTracingMiddleware,
+} from "./src/observability/index.js";
 import { createObservabilityRouter } from "./src/web/createObservabilityRouter.js";
-
-const observability = bootstrapObservabilityFromEnv({ serviceName: "prompt-vault-http" });
-const logger = observability.logger.child({ component: "http" });
-
-observability.indicator.setLiveness({ status: "ok" });
-observability.indicator.setReadiness({ status: "degraded", details: { reason: "initialising" } });
+import { ConfigurationError, loadServerConfig, type LoadConfigResult } from "./src/config/serverConfig.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const defaultDbPath = process.env.PROMPT_VAULT_DB_PATH ?? resolve(__dirname, "prompt-vault.db");
-const port = Number.parseInt(process.env.PORT ?? "3001", 10);
-const allowedOrigins = process.env.PROMPT_VAULT_ALLOWED_ORIGINS;
+const defaultStaticDir = resolve(__dirname, "desktop", "dist");
 
-const database = new Database(defaultDbPath);
+let loadedConfig: LoadConfigResult;
+try {
+  loadedConfig = loadServerConfig({
+    defaults: {
+      port: 3001,
+      databasePath: defaultDbPath,
+      staticDirectory: defaultStaticDir,
+    },
+  });
+} catch (error) {
+  if (error instanceof ConfigurationError) {
+    console.error("Failed to load server configuration:", error.issues.join("; "));
+    process.exit(1);
+  }
+  throw error;
+}
+
+const config = loadedConfig.config;
+
+const observability = bootstrapObservabilityFromEnv({
+  serviceName: "prompt-vault-http",
+  enableMetrics: config.metrics.enabled,
+  metricsPort: config.metrics.port,
+});
+const logger = observability.logger.child({ component: "http" });
+
+if (loadedConfig.warnings.length > 0) {
+  for (const warning of loadedConfig.warnings) {
+    logger.warn("configuration_warning", { warning });
+  }
+}
+
+logger.info("configuration_loaded", {
+  port: config.port,
+  databasePath: config.databasePath,
+  allowedOrigins: config.allowedOrigins ?? "*",
+  metricsEnabled: config.metrics.enabled,
+  metricsPort: config.metrics.port,
+  staticDirectory: config.staticDirectory,
+});
+
+observability.indicator.setLiveness({ status: "ok" });
+observability.indicator.setReadiness({ status: "degraded", details: { reason: "initialising" } });
+
+const database = new Database(config.databasePath);
 const service = new PromptVaultService(database, {
   telemetry: observability.telemetry,
   logger: logger.child({ component: "service" }),
@@ -34,13 +75,15 @@ const service = new PromptVaultService(database, {
 const app = express();
 app.disable("x-powered-by");
 
-const parsedAllowedOrigins = allowedOrigins
-  ?.split(",")
-  .map((origin) => origin.trim())
-  .filter((origin) => origin.length > 0);
+app.use(
+  createHttpTracingMiddleware({
+    telemetry: observability.telemetry,
+    logger: logger.child({ subcomponent: "tracing" }),
+  })
+);
 
-if (parsedAllowedOrigins && parsedAllowedOrigins.length > 0) {
-  app.use(cors({ origin: parsedAllowedOrigins }));
+if (config.allowedOrigins && config.allowedOrigins.length > 0) {
+  app.use(cors({ origin: config.allowedOrigins }));
 } else {
   app.use(cors());
 }
@@ -58,6 +101,9 @@ app.use((request, response, next) => {
   const requestId = sanitized ? incomingRequestId : randomUUID();
   response.locals.requestId = requestId;
   response.setHeader("x-request-id", requestId);
+  if (response.locals.traceId) {
+    response.setHeader("x-trace-id", response.locals.traceId);
+  }
 
   const start = process.hrtime.bigint();
   response.on("finish", () => {
@@ -68,6 +114,7 @@ app.use((request, response, next) => {
       status: response.statusCode,
       durationMs,
       requestId,
+      traceId: response.locals.traceId,
     });
   });
 
@@ -87,6 +134,7 @@ app.use((error: unknown, request: Request, response: Response, next: NextFunctio
     logger.warn("malformed_json", {
       path: request.path,
       requestId: response.locals.requestId,
+      traceId: response.locals.traceId,
     });
     response.status(400).json({ error: "Malformed JSON payload" });
     return;
@@ -110,15 +158,15 @@ app.use(
   })
 );
 
-const staticDir = resolve(__dirname, "desktop", "dist");
-if (existsSync(staticDir)) {
-  logger.info("serving_static_assets", { staticDir });
-  app.use(express.static(staticDir));
+const staticDirectory = config.staticDirectory;
+if (staticDirectory && existsSync(staticDirectory)) {
+  logger.info("serving_static_assets", { staticDir: staticDirectory });
+  app.use(express.static(staticDirectory));
   app.get("*", (_request, response) => {
-    response.sendFile(resolve(staticDir, "index.html"));
+    response.sendFile(resolve(staticDirectory, "index.html"));
   });
 } else {
-  logger.warn("static_assets_missing", { staticDir });
+  logger.warn("static_assets_missing", { staticDir: staticDirectory });
 }
 
 const errorHandler: ErrorRequestHandler = (error, request, response, _next) => {
@@ -127,14 +175,17 @@ const errorHandler: ErrorRequestHandler = (error, request, response, _next) => {
     path: request.path,
     error: error instanceof Error ? error.stack ?? error.message : error,
     requestId: response.locals.requestId,
+    traceId: response.locals.traceId,
   });
-  response.status(500).json({ error: "Internal Server Error", requestId: response.locals.requestId });
+  response
+    .status(500)
+    .json({ error: "Internal Server Error", requestId: response.locals.requestId, traceId: response.locals.traceId });
 };
 
 app.use(errorHandler);
 
-const server = app.listen(port, () => {
-  logger.info("server_started", { port, dbPath: defaultDbPath });
+const server = app.listen(config.port, () => {
+  logger.info("server_started", { port: config.port, dbPath: config.databasePath });
   observability.indicator.setReadiness({ status: "ok" });
 });
 
