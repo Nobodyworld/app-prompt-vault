@@ -6,9 +6,23 @@ Use this file to compile and track all tasks that need to be completed for this 
 
 ## Tasks Layout
 
-- [ ] Task 1: Description of what needs to be done - Task Unique Identifier - When completed: Timestamp, Hyperlink to REPORT.md Task Report Unique Identifier
-- [ ] Task 2: Description of what needs to be done - Task Unique Identifier - When completed: Timestamp, Hyperlink to REPORT.md Task Report Unique Identifier
-- [ ] Task 3: Description of what needs to be done - Task Unique Identifier - When completed: Timestamp, Hyperlink to REPORT.md Task Report Unique Identifier
+- [ ] Task Description - Task Unique Identifier - When completed: Timestamp, Hyperlink to REPORT.md Task Report Unique Identifier
+
+## Active Tasks
+
+- [ ] Build the React + Tauri desktop UI that consumes the `PromptVaultService` APIs - TSK-0001 - When completed: Pending (source: docs/step-10-final-documentation-summary.md)
+- [ ] Automate database migrations and integrate CI pipelines for linting, testing, and release packaging - TSK-0002 - When completed: Pending (source: docs/step-10-final-documentation-summary.md)
+- [ ] Add data synchronisation and export capabilities for multi-device use cases - TSK-0003 - When completed: Pending (source: docs/step-10-final-documentation-summary.md)
+- [ ] Restore JavaScript coverage instrumentation (e.g., integrate `@vitest/coverage-v8` or approved alternative) so quality gates can enforce thresholds - TSK-0004 - When completed: Pending (source: STEWARDS_REPORT.md)
+- [ ] Wire `npm run metrics:snapshot` into CI to capture dependency, complexity, and latency artefacts on a scheduled cadence - TSK-0005 - When completed: Pending (source: STEWARDS_REPORT.md)
+- [ ] Extend the metrics snapshot tooling to emit JSON suitable for dashboarding and automated trend analysis - TSK-0006 - When completed: Pending (source: STEWARDS_REPORT.md)
+- [ ] Develop optional PostgreSQL or multi-tenant adapters leveraging the repository transaction simplifications for scalability testing - TSK-0007 - When completed: Pending (source: STEWARDS_REPORT.md)
+- [ ] Containerise the observability stack and CLI doctor workflows to support deployment health diagnostics - TSK-0008 - When completed: Pending (source: STEWARDS_REPORT.md)
+- [ ] Explore intelligent plugins that leverage telemetry spans without adding service complexity (e.g., AI-assisted tagging) - TSK-0009 - When completed: Pending (source: STEWARDS_REPORT.md)
+- [x] Add missing default repository files: `.editorconfig`, `.gitattributes`, and `.github/CODEOWNERS` - TSK-0010 - Completed: 2025-10-30 ([TR-0001](REPORTS.md#2025-10-30---chore-add-repo-defaults-and-audit-binaries))
+- [x] Review tracked binary assets and define a relocation or ignore strategy aligned with repository policy - TSK-0011 - Completed: 2025-10-30 ([TR-0001](REPORTS.md#2025-10-30---chore-add-repo-defaults-and-audit-binaries))
+- [ ] Flesh out the scaffolded plugin template by implementing lifecycle hooks emitted by `scripts/scaffold-extension.ts` - TSK-0012 - When completed: Pending (source: scripts/scaffold-extension.ts)
+- [ ] Provide a downstream metadata sync example for plugins by completing the placeholder in `EXTENSION_GUIDE.md` - TSK-0013 - When completed: Pending (source: EXTENSION_GUIDE.md)
 
 ## Notes
 
