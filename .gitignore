@@ -6,6 +6,7 @@ prompt-vault.db
 .env
 src-tauri/target/
 src-tauri/gen/
+target/
 *.log
 *.tmp
 tests/**/*.js
