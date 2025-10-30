@@ -17,11 +17,13 @@ Use this template to create a repo-local `URGENT.md` when we begin alignment wor
 - **CI Present**: Yes
 - **Tests Present**: Yes
 - **Binary Files**: 268 detected
-- **Defaults Status**: 3 missing: .editorconfig, .gitattributes, .github/CODEOWNERS
+- **Defaults Status**: 0 missing (added .editorconfig, .gitattributes, and refreshed CODEOWNERS on 2025-10-30)
 
 ### Repo-Specific Tasks
-- Add missing default files: .editorconfig, .gitattributes, .github/CODEOWNERS
-- Review binary file policy and relocation strategy
+- Add missing default files: .editorconfig, .gitattributes, .github/CODEOWNERS (Completed 2025-10-30 via TSK-0010)
+- Review binary file policy and relocation strategy (Completed 2025-10-30 via TSK-0011)
+
+See `TASKSLIST.md` items TSK-0010 and TSK-0011 for completion details and links to the associated report.
 
 ## Outputs
 - Paste check-only results (lint/format/tests) into the PR.
@@ -55,10 +57,10 @@ Use this template to create a repo-local `URGENT.md` when we begin alignment wor
 - Special notes: <generated code, LFS, submodules, binaries>
 
 ## Phase 1 � Defaults (no functional changes)
-- [.editorconfig] Add/verify: [ ]
-- [.gitattributes] Add/verify: [ ]
-- [.gitignore] Language-appropriate: [ ]
-- [CODEOWNERS] Define or confirm: [ ]
+- [.editorconfig] Add/verify: [x] (2025-10-30)
+- [.gitattributes] Add/verify: [x] (2025-10-30)
+- [.gitignore] Language-appropriate: [x] (2025-10-30 update)
+- [CODEOWNERS] Define or confirm: [x] (2025-10-30 refresh)
 - [CONTRIBUTING.md] Add/refresh: [ ]
 - [SECURITY.md] Add/refresh: [ ]
 - [PR/Issue templates] Add/refresh: [ ]
