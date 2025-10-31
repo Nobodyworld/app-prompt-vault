@@ -21,9 +21,6 @@ export default [
       "scripts/**",
       "*.cjs",
       "*.js",
-      // common ad-hoc tool files
-      "insert-and-read.*",
-      "inspect-db.*",
       "server.ts"
     ]
   },
