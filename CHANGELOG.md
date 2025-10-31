@@ -5,6 +5,10 @@ All notable changes to Prompt Vault will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Comprehensive README files for all major directories (`src/`, `desktop/`, `scripts/`, `tests/`, `src-tauri/`, `dev-tools/`, `docs/`)
+- LICENSE file with proprietary license terms matching package.json
+- Documentation index in `docs/README.md` covering all architectural and operational guides
+- Enhanced root README with table of contents, detailed usage examples, and navigation links
 - `scripts/metrics-snapshot.ts` for agent-tagged complexity, dependency, and latency reporting alongside `STEWARDS_REPORT.md` and `AUTOMATION_ROLES.md` guidance.
 - Regression test asserting every SQL migration is executed and required indexes are present on new databases.
 - Express observability middleware emitting Prometheus-compatible HTTP counters/histograms and an `/observability` router exposing health and metrics endpoints.
@@ -14,6 +18,13 @@ All notable changes to Prompt Vault will be documented in this file.
 - Express tracing middleware that opens `http.server.request` spans, decorates responses with `x-trace-id`, and ships dedicated tests to guard the instrumentation contract.
 
 ### Changed
+- Reorganized repository structure: moved dev scripts (`insert-and-read.cjs`, `inspect-db.js`) to `dev-tools/` directory
+- Consolidated duplicate task tracking files (removed `TASKLIST.md` in favor of `TASKSLIST.md`)
+- Updated CI workflow to use Node.js 24 (matching package.json engine requirement)
+- Removed redundant `node-24.yml` workflow in favor of comprehensive `ci.yml`
+- Enhanced `.gitignore` with better organization, comments, and coverage of IDE files and SQLite WAL files
+- Cleaned up ESLint configuration to remove redundant ignore patterns
+- Updated `dev-tools/README.md` to document all available utilities
 - Simplified repository transactions by delegating to `better-sqlite3`'s transaction helper and deduplicating tags before persistence.
 - Express server now enforces request correlation IDs, sanitises user-provided identifiers, and returns JSON-formatted parse errors alongside the `x-request-id` header.
 - HTTP error payloads now mirror both `requestId` and `traceId` so operators can stitch support cases to log streams without manual lookup.
@@ -25,6 +36,14 @@ All notable changes to Prompt Vault will be documented in this file.
 - Tag upserts now reuse the persisted identifier returned from SQLite, preventing foreign key errors when reapplying shared labels.
 - Search, tag assignment, and tag removal operations benefit from new SQLite indexes, reducing query latency on vaults with larger datasets.
 - Server configuration loader now de-duplicates repeated `PROMPT_VAULT_ALLOWED_ORIGINS` entries while still surfacing warnings so CORS policies stay deterministic.
+
+### Documentation
+- Created comprehensive README files for all major directories explaining purpose, structure, and usage
+- Added project structure tree with detailed annotations to root README
+- Documented all npm scripts with usage examples and environment variables
+- Added testing guidelines, coverage requirements, and best practices
+- Created architectural documentation index linking all related guides
+- Improved navigation with cross-references between related documentation
 
 ## [0.2.0] - 2025-10-26
 
