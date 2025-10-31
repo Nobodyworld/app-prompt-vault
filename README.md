@@ -3,117 +3,191 @@
 [![CI](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml/badge.svg)](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml)
 [![Codecov](https://codecov.io/gh/Nobodyworld/app-prompt-vault/branch/main/graph/badge.svg)](https://codecov.io/gh/Nobodyworld/app-prompt-vault)
 
-## CI / Codecov token
+> A cross-platform application for collecting, versioning, and managing reusable prompts with rich metadata, semantic versioning, and powerful search capabilities.
 
-To enable authenticated uploads to Codecov (recommended for private repos or org policy), add a repository secret named `CODECOV_TOKEN` with the token from your Codecov project settings.
+## 🚀 Quick Start
 
-On GitHub:
+```bash
+# Install dependencies
+npm install
 
-1. Go to your repository Settings → Secrets → Actions.
-2. Click "New repository secret" and add the `CODECOV_TOKEN` value.
+# Run tests to verify setup
+npm test
 
-The CI workflow will detect the presence of `CODECOV_TOKEN` and upload the generated `coverage/lcov.info` to Codecov. If the token is not provided (e.g., in forks or local runs), uploads are skipped to avoid leaking tokens.
+# Start development CLI
+npm run dev -- --help
 
-Codecov will post PR comments with coverage diffs when uploads are received. You can further customize behavior via `codecov.yml` in the repo.
+# Start desktop app (requires Rust)
+npm run tauri:dev
 
-Prompt Vault is a cross-platform vault for collecting, versioning, and tagging reusable prompts. The project includes a fully typed domain layer, a CLI for quick interactions, and a React UI that works in both desktop (Tauri) and web browser environments, backed by SQLite (desktop) or a demo API server (web).
+# Start web UI + API server
+npm run web:dev
+```
+
+**Prerequisites:** Node.js 24.x (recommended) or Node >= 18.17, Rust (for Tauri desktop app)
+
+## 📚 Table of Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Project Structure](#project-structure)
+- [Installation & Setup](#installation--setup)
+- [Usage](#usage)
+  - [CLI Commands](#cli-commands)
+  - [HTTP API](#http-api)
+  - [Desktop App](#desktop-app)
+- [Development](#development)
+- [Testing](#testing)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Overview
+
+Prompt Vault is a cross-platform application for managing AI prompts with enterprise-grade features:
+
+- **Cross-Platform** – Desktop (Tauri + Rust), Web (Express + React), and CLI
+- **Prompt Library** – Rich metadata, semantic versioning, and complete change history
+- **Tag System** – Organize prompts by workflow, team, or modality with automatic deduplication
+- **SQLite Persistence** – Local-first storage with automatic migrations
+- **Observability** – Built-in metrics, structured logging, and distributed tracing
+- **Extensibility** – Plugin system for custom behaviors without touching core logic
 
 ## Key Features
 
-- **Cross-Platform** – Works in desktop (Tauri) and web browser environments with automatic feature detection.
-- **Prompt Library** – Create prompts with rich metadata, semantic versioning, and change history.
-- **Tag Filtering** – Attach reusable tags to group prompts by workflow, team, or modality with automatic duplicate detection.
-- **SQLite Persistence** – Store data locally with migrations managed inside the repo for reproducible environments.
-- **HTTP API** – Express server that exposes the domain layer over REST using the same SQLite persistence as the CLI.
-- **Command-Line Interface** – Manage your library directly from the terminal with health-aware operations.
-- **Desktop UI** – React-based interface for easy prompt management.
-- **Test Coverage** – Vitest suite exercises core business flows and guards against regressions.
-- **Observability Hooks** – Prometheus-compatible metrics, structured logging, `/observability/*` health endpoints, per-request tracing spans (`x-trace-id` headers), and a CLI doctor command for quick audits.
-- **Extension Layer** – Plugins react to prompt lifecycle events without touching core service logic.
+### Core Functionality
+- ✅ **Create & Version Prompts** – Semantic versioning with changelog support
+- 🏷️ **Tag Management** – Flexible tagging with search and filtering
+- 🔍 **Search & Filter** – Find prompts by title, tags, or content
+- 📊 **Version History** – Track all changes to prompts over time
 
-## Project Layout
+### Technical Features
+- 🏗️ **Clean Architecture** – Layered design (domain, service, repository, presentation)
+- 🔐 **Type Safety** – Full TypeScript + Zod validation
+- 📈 **Observability** – Prometheus metrics, health checks, tracing
+- 🧩 **Plugin System** – React to lifecycle events without modifying core logic
+- 🧪 **Test Coverage** – 85%+ coverage with Vitest
+- 🚦 **CI/CD** – Automated linting, testing, security scanning
+
+## Project Structure
 
 ```text
 app-prompt-vault/
-├─ src/
-│  ├─ cli/                 # Commander-based CLI utilities
-│  ├─ db/                  # SQLite connection factory and migrations
-│  ├─ domain/              # Models, errors, and validation schemas
-│  ├─ repositories/        # Data access layer over SQLite
-│  └─ services/            # PromptVaultService façade
-├─ desktop/
-│  ├─ src/                 # React UI components and pages
-│  ├─ index.html           # App shell
-│  ├─ vite.config.ts       # Vite configuration
-│  └─ tsconfig.json        # TypeScript config for UI
-├─ src-tauri/              # Tauri Rust backend
-├─ tests/                  # Vitest specs for service workflows
-├─ docs/                   # Step-by-step Codex chain documentation and architecture guides
-├─ codex_chain.json        # Automation chain definition
-├─ package.json            # Tooling, dependencies, and scripts
-└─ tsconfig.json           # TypeScript compiler configuration
+│
+├── src/                     # Core TypeScript implementation
+│   ├── cli/                 # Command-line interface (Commander.js)
+│   ├── config/              # Configuration validation
+│   ├── db/                  # Database connection & migrations
+│   ├── domain/              # Models, validation (Zod), errors
+│   ├── extensions/          # Plugin system & built-in plugins
+│   ├── observability/       # Telemetry, logging, tracing, metrics
+│   ├── repositories/        # Data access layer (SQLite)
+│   ├── services/            # Business logic (PromptVaultService)
+│   ├── types/               # TypeScript type definitions
+│   ├── web/                 # HTTP API routers (Express)
+│   └── README.md            # ↗️ Detailed src/ documentation
+│
+├── desktop/                 # React UI (Vite + React 19)
+│   ├── src/
+│   │   ├── components/      # Reusable UI components
+│   │   ├── pages/           # Route-level page components
+│   │   ├── services/        # API client abstraction
+│   │   └── lib/             # Utilities (Tauri detection, clipboard)
+│   ├── vite.config.ts       # Vite configuration
+│   └── README.md            # ↗️ Detailed desktop/ documentation
+│
+├── src-tauri/               # Tauri Rust backend for desktop
+│   ├── src/                 # Rust source code
+│   ├── Cargo.toml           # Rust dependencies
+│   └── README.md            # ↗️ Detailed Tauri documentation
+│
+├── scripts/                 # Build, test, release automation
+│   ├── bootstrap-db.ts      # Database initialization
+│   ├── metrics-snapshot.ts  # Capture repo metrics
+│   ├── observability.ts     # Standalone metrics server
+│   ├── security-scan.ts     # Vulnerability scanning
+│   ├── scaffold-extension.ts # Plugin generator
+│   └── README.md            # ↗️ Detailed scripts documentation
+│
+├── tests/                   # Automated test suite (Vitest)
+│   ├── promptVaultService.test.ts
+│   ├── httpRouter.test.ts
+│   ├── migrations.test.ts
+│   └── README.md            # ↗️ Detailed testing documentation
+│
+├── dev-tools/               # Optional development utilities
+│   ├── capture-console.cjs  # Tauri renderer debugging
+│   ├── insert-and-read.cjs  # SQLite smoke test
+│   └── README.md            # ↗️ Dev tools documentation
+│
+├── docs/                    # Architecture & workflow guides
+│   ├── architecture.md      # Component relationships
+│   ├── workflows.md         # Developer workflows
+│   ├── DEPENDENCIES.md      # Dependency inventory
+│   ├── incident-response.md # Recovery procedures
+│   └── performance-notes.md # Performance guidance
+│
+├── .github/
+│   ├── workflows/           # CI/CD pipelines
+│   ├── CODEOWNERS           # Code ownership
+│   └── copilot-instructions.md  # AI assistant guidelines
+│
+├── package.json             # Dependencies & npm scripts
+├── tsconfig.json            # TypeScript compiler config
+├── vitest.config.ts         # Test configuration
+├── eslint.config.js         # Linting rules
+├── LICENSE                  # License terms
+├── CHANGELOG.md             # Version history
+├── CONTRIBUTING.md          # Contribution guidelines
+├── SECURITY.md              # Security policies
+├── ARCHITECTURE_OVERVIEW.md # High-level architecture
+├── EXTENSION_GUIDE.md       # Plugin development guide
+└── README.md                # ← You are here
 ```
 
-## Getting Started
+**📖 Each major directory has its own README with detailed documentation.**
 
--> **Prerequisites:** Node.js 24.x (recommended) or Node >= 18.17, Rust (for Tauri), and (optionally) SQLite libraries for native bindings.
+## Installation & Setup
+
+### Prerequisites
+
+- **Node.js:** v24.x (recommended) or >= 18.17
+- **npm:** v10+ (comes with Node.js)
+- **Rust:** Latest stable (required only for Tauri desktop app)
+  - Install via [rustup](https://rustup.rs/): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+
+### Install Dependencies
 
 ```bash
-# install dependencies
+# Clone the repository
+git clone https://github.com/Nobodyworld/app-prompt-vault.git
+cd app-prompt-vault
+
+# Install Node dependencies
 npm install
 
-# run unit tests
+# Verify installation
 npm test
+```
 
-# run unit tests with V8 coverage output
-npm run test:coverage
+### Initialize Database
 
-# summarize collected coverage data
-npm run coverage:summary
-
-# capture repository metrics (complexity, dependency graph, latency sample)
-npm run metrics:snapshot
-
-# scaffold a plugin skeleton under src/extensions/plugins/
-npm run extension:scaffold analytics
-
-# lint the project
-npm run lint
-
-# build TypeScript output to dist/
-npm run build
-
-# run security scan with graceful offline handling
-npm run security:scan
-
-# run the full quality gate (lint → build → tests + coverage thresholds → security scan)
-npm run quality:gate
-
-# run desktop app in development
-npm run desktop:dev
-
-# build desktop app for production
-npm run desktop:build
-
-# run web app in development (with demo data)
-npm run web:dev
-
-# build and serve web app for production
-npm run web:build
-
-# start a standalone observability server (metrics + health endpoints)
-npm run observability
-
-# bootstrap a SQLite database with migrations applied
+```bash
+# Create and migrate a new SQLite database
 npm run db:bootstrap ./prompt-vault.db
 ```
 
-## CLI Usage
+This creates `prompt-vault.db` with all migrations applied.
 
-The CLI ships with the project to help you seed and explore the vault.
+
+## Usage
+
+### CLI Commands
+
+The CLI provides command-line access to all Prompt Vault features:
 
 ```bash
-# Create a prompt with tags
+# Create a new prompt
 npm run dev -- create \
   --slug blog-outline \
   --title "Blog Outline Generator" \
@@ -121,93 +195,396 @@ npm run dev -- create \
   --version 1.0.0 \
   --tags marketing,writing
 
+# List all prompts
+npm run dev -- list
+
+# List prompts with specific tags
+npm run dev -- list --tags marketing
+
+# Add a new version to an existing prompt
+npm run dev -- version \
+  --id <prompt-id> \
+  --body "Improved prompt text" \
+  --version 1.1.0
+
 # Remove tags from a prompt
 npm run dev -- untag --id <prompt-id> --tags marketing
 
-# List prompts matching a tag
-npm run dev -- list --tags marketing
-
-# Add a new version
-npm run dev -- version --id <prompt-id> --body "Improved prompt" --version 1.1.0
-
-# Run health checks and integrity inspection
+# Run health checks and database integrity audit
 npm run dev -- doctor
 ```
 
-Enable metrics/health endpoints per invocation with `PROMPT_VAULT_METRICS=true` and optionally `PROMPT_VAULT_METRICS_PORT=9464`. The CLI stores data in `prompt-vault.db` by default—pass `--db` to point to another SQLite database (e.g., `:memory:` during tests).
+**Enable Metrics:**
+```bash
+PROMPT_VAULT_METRICS=true npm run dev -- list
+# Metrics available at http://localhost:9464/metrics
+```
 
-## HTTP API
+See the [CLI documentation](src/README.md#cli) for all available commands and options.
 
-Run `npm run web:dev` to start the combined web UI and HTTP API. The Express server exposes REST endpoints under `/api` and reuses the `PromptVaultService` so all entry points share validation, telemetry, and persistence logic.
+### HTTP API
 
-Available endpoints:
+Start the combined web UI and HTTP API server:
 
-- `GET /api/prompts` – Paginated prompt search accepting `text`, `tags`, `page`, and `pageSize` query parameters.
-- `POST /api/prompts` – Create a prompt. Provide `slug`, `title`, `body`, optional `description`, optional `tags`, and `semanticVersion`.
-- `GET /api/prompts/:id` – Retrieve a single prompt with its latest version and tags.
-- `POST /api/prompts/:id/versions` – Append a new version by submitting `body`, `semanticVersion`, and optional `changelog`.
-- `POST /api/prompts/:id/tags` – Attach one or more tags to the prompt.
-- `DELETE /api/prompts/:id/tags` – Remove tag associations.
+```bash
+npm run web:dev
+# API available at http://localhost:3001/api
+# UI available at http://localhost:3001
+```
 
-Environment configuration:
+#### Available Endpoints
 
-- `PORT` – HTTP port (defaults to `3001`).
-- `PROMPT_VAULT_DB_PATH` – Path to the SQLite database file (defaults to `prompt-vault.db`).
-- `PROMPT_VAULT_ALLOWED_ORIGINS` – Optional comma-separated origin allowlist for CORS responses. When omitted, all origins are permitted.
-- `PROMPT_VAULT_METRICS=true` – Enable the observability server with health checks and metrics.
-- `PROMPT_VAULT_METRICS_PORT` – Override the Prometheus/health listener port (defaults to `9464`).
-- `PROMPT_VAULT_STATIC_DIR` – Path to a directory of pre-built static assets served by the HTTP API (defaults to the bundled desktop build when available).
+**Prompts**
+- `GET /api/prompts` - List/search prompts
+  - Query params: `text`, `tags`, `page`, `pageSize`
+- `POST /api/prompts` - Create a new prompt
+- `GET /api/prompts/:id` - Get single prompt details
+- `POST /api/prompts/:id/versions` - Add a new version
+- `POST /api/prompts/:id/tags` - Attach tags
+- `DELETE /api/prompts/:id/tags` - Remove tags
 
-Operational endpoints are exposed on `/observability`:
+**Observability**
+- `GET /observability/healthz` - Liveness check
+- `GET /observability/readyz` - Readiness check
+- `GET /observability/metrics` - Prometheus metrics
 
-- `GET /observability/healthz` – Liveness signal mirroring the internal health server.
-- `GET /observability/readyz` – Readiness signal that flips to `503` during shutdown or startup.
-- `GET /observability/metrics` – Prometheus exposition format using the in-process registry.
+#### Environment Variables
 
-All HTTP responses carry an `x-request-id` header; when metrics/tracing are enabled (`PROMPT_VAULT_METRICS=true`), responses also emit `x-trace-id` and error payloads mirror `traceId` for rapid correlation in logs and telemetry exports.
+```bash
+PORT=3001                              # HTTP server port
+PROMPT_VAULT_DB_PATH=./prompt-vault.db # Database file path
+PROMPT_VAULT_METRICS=true              # Enable metrics/tracing
+PROMPT_VAULT_METRICS_PORT=9464         # Metrics server port
+PROMPT_VAULT_ALLOWED_ORIGINS=*         # CORS allowed origins
+```
 
-> **Configuration safety:** Startup now validates ports, database paths, allowed origins, and telemetry flags. Invalid values halt the process with actionable error messages, and ambiguous combinations (e.g., metrics port without metrics enabled) surface structured warnings in the logs.
+**Example API Call:**
+```bash
+curl -X POST http://localhost:3001/api/prompts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "test-prompt",
+    "title": "Test Prompt",
+    "body": "This is a test prompt",
+    "semanticVersion": "1.0.0",
+    "tags": ["test"]
+  }'
+```
+
+### Desktop App
+
+Build and run the native desktop application:
+
+```bash
+# Development mode (hot reload)
+npm run tauri:dev
+
+# Build for production
+npm run tauri:build
+```
+
+The desktop app uses the Tauri framework for native performance with a small bundle size (~10MB).
+
+**Features:**
+- Native SQLite database (no HTTP server required)
+- Cross-platform (Windows, macOS, Linux)
+- System tray integration
+- Native file dialogs
+- Clipboard integration
+
+See [desktop/README.md](desktop/README.md) and [src-tauri/README.md](src-tauri/README.md) for details.
+
+## Development
+
+### Available Scripts
+
+```bash
+# Code quality
+npm run lint              # Run ESLint
+npm run build             # Compile TypeScript to dist/
+npm run quality:gate      # Run full quality gate (lint + build + test + coverage + security)
+
+# Testing
+npm test                  # Run all tests once
+npm run test:watch        # Run tests in watch mode
+npm run test:coverage     # Run tests with coverage report
+npm run coverage:summary  # Validate coverage thresholds
+
+# Security
+npm run security:scan     # Scan for vulnerabilities
+
+# Metrics & Observability
+npm run observability     # Start standalone metrics server
+npm run metrics:snapshot  # Capture repository metrics
+
+# Database
+npm run db:bootstrap      # Initialize a new database with migrations
+
+# Extension Development
+npm run extension:scaffold <name>  # Generate plugin boilerplate
+
+# Desktop Development
+npm run desktop:dev       # Start Vite dev server for UI
+npm run desktop:build     # Build UI for production
+
+# Web Development
+npm run web:dev           # Start Express server + UI
+npm run web:build         # Build and serve production bundle
+
+# Tauri Development
+npm run tauri:dev         # Run Tauri in development mode
+npm run tauri:build       # Build native desktop app
+
+# Release
+npm run release:prepare   # Prepare a new release
+```
+
+See [scripts/README.md](scripts/README.md) for detailed script documentation.
+
+### Development Workflow
+
+1. **Make Changes**
+   ```bash
+   # Edit source files in src/
+   npm run lint     # Check for issues
+   npm test         # Verify tests pass
+   ```
+
+2. **Run Quality Gate**
+   ```bash
+   npm run quality:gate
+   ```
+   This runs: lint → build → test with coverage → security scan
+
+3. **Test Locally**
+   ```bash
+   # Test CLI
+   npm run dev -- list
+   
+   # Test API server
+   npm run web:dev
+   
+   # Test desktop app
+   npm run tauri:dev
+   ```
+
+4. **Commit Changes**
+   Follow [Conventional Commits](https://www.conventionalcommits.org/):
+   ```
+   feat: add new feature
+   fix: resolve bug
+   docs: update documentation
+   chore: maintenance tasks
+   test: add or update tests
+   ```
+
+### Code Style
+
+- **TypeScript:** Strict mode enabled
+- **Linting:** ESLint with TypeScript plugin
+- **Formatting:** Enforced via .editorconfig
+- **Naming:**
+  - `PascalCase` for classes, types, interfaces
+  - `camelCase` for variables, functions
+  - `kebab-case` for file names
+  - `snake_case` for database columns
+
+### Architecture Guidelines
+
+1. **Layered Architecture**
+   - Domain layer is pure logic (no I/O)
+   - Service layer orchestrates domain + repository
+   - Repository layer handles persistence
+   - Presentation layer (CLI/HTTP/UI) uses service
+
+2. **Dependency Direction**
+   - Presentation → Service → Repository → Domain
+   - Never reverse (no circular dependencies)
+
+3. **Error Handling**
+   - Use typed errors from `domain/errors.ts`
+   - Repository maps DB errors to domain errors
+   - Service validates and propagates errors
+   - Presentation formats errors for users
+
+4. **Observability**
+   - Wrap operations in telemetry spans
+   - Log structured data with context
+   - Emit metrics for key operations
+   - Include trace IDs in errors
+
+See [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md) for detailed architecture documentation.
 
 ## Testing
 
-Vitest powers the automated test suite.
+### Running Tests
 
 ```bash
-# run tests once
+# Run all tests
 npm test
 
-# run in watch mode
-echo "npm run test:watch"
+# Run with coverage
+npm run test:coverage
+
+# Watch mode for TDD
+npm run test:watch
+
+# Run specific test file
+npx vitest run tests/promptVaultService.test.ts
+
+# Run tests matching pattern
+npx vitest run -t "should create prompt"
 ```
 
-Coverage reports are emitted under `coverage/` when tests run locally.
+### Coverage Requirements
 
-Coverage thresholds (lines/statements ≥ 85%, functions ≥ 80%, branches ≥ 75%) are enforced during `npm run quality:gate`.
+Tests must maintain these minimums (enforced in CI):
+
+- **Lines & Statements:** ≥ 85%
+- **Functions:** ≥ 80%
+- **Branches:** ≥ 75%
+
+### Writing Tests
+
+```typescript
+import { describe, it, expect, beforeEach } from 'vitest';
+import Database from 'better-sqlite3';
+import { PromptRepository } from '../src/repositories/PromptRepository.js';
+
+describe('PromptRepository', () => {
+  let db: Database.Database;
+  let repository: PromptRepository;
+
+  beforeEach(() => {
+    db = new Database(':memory:'); // Fresh in-memory DB per test
+    repository = new PromptRepository(db);
+  });
+
+  it('should create a prompt', () => {
+    const prompt = repository.createPrompt({
+      slug: 'test',
+      title: 'Test',
+      body: 'Content',
+      semanticVersion: '1.0.0'
+    });
+    
+    expect(prompt.slug).toBe('test');
+    expect(prompt.title).toBe('Test');
+  });
+});
+```
+
+See [tests/README.md](tests/README.md) for comprehensive testing documentation.
 
 ## Documentation
 
-- [`ARCHITECTURE_OVERVIEW.md`](ARCHITECTURE_OVERVIEW.md) – current runtime architecture, observability, and extension map.
-- [`docs/architecture.md`](docs/architecture.md) – component relationships, data flow, and migration strategy.
-- [`docs/workflows.md`](docs/workflows.md) – developer workflows, CLI recipes, and testing loops.
-- [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) – dependency inventory with security considerations.
-- [`EXTENSION_GUIDE.md`](EXTENSION_GUIDE.md) – how to build and register plugins.
-- [`AUTOMATION.md`](AUTOMATION.md) – guardrails and scripts for agents/automation.
-- [`docs/incident-response.md`](docs/incident-response.md) – recovery checklist and health endpoint usage.
-- [`docs/performance-notes.md`](docs/performance-notes.md) – baseline metrics and tuning tips.
-- [`docs/future-proofing.md`](docs/future-proofing.md) – strategic roadmap for scaling.
-- [`docs/`](docs/) – contains the full Codex chain step reports.
-- [`RELEASE_NOTES.md`](RELEASE_NOTES.md) – upgrade guidance and operational notes for the latest build.
-- [`STEWARDS_REPORT.md`](STEWARDS_REPORT.md) – stewardship metrics, simplifications, and forward roadmap.
-- [`AUTOMATION_ROLES.md`](AUTOMATION_ROLES.md) – agent responsibilities and triggers for automation.
+### Core Documentation
+
+- **[README.md](README.md)** - This file (overview, quickstart)
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+- **[LICENSE](LICENSE)** - License terms (Proprietary)
+- **[SECURITY.md](SECURITY.md)** - Security policies and reporting
+
+### Architecture & Design
+
+- **[ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md)** - High-level system architecture
+- **[EXTENSION_GUIDE.md](EXTENSION_GUIDE.md)** - Plugin development guide
+- **[docs/architecture.md](docs/architecture.md)** - Detailed component relationships
+- **[docs/workflows.md](docs/workflows.md)** - Developer workflows and recipes
+
+### Module-Specific
+
+- **[src/README.md](src/README.md)** - Core source code organization
+- **[desktop/README.md](desktop/README.md)** - React UI documentation
+- **[src-tauri/README.md](src-tauri/README.md)** - Tauri/Rust backend
+- **[scripts/README.md](scripts/README.md)** - Automation scripts
+- **[tests/README.md](tests/README.md)** - Testing approach and guidelines
+- **[dev-tools/README.md](dev-tools/README.md)** - Development utilities
+
+### Operations & Maintenance
+
+- **[docs/incident-response.md](docs/incident-response.md)** - Recovery procedures
+- **[docs/performance-notes.md](docs/performance-notes.md)** - Performance tuning
+- **[docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)** - Dependency inventory
+- **[AUTOMATION.md](AUTOMATION.md)** - Automation guidelines for agents
+
+## Contributing
+
+We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting pull requests.
+
+### Quickstart for Contributors
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Make your changes
+4. Run quality gate: `npm run quality:gate`
+5. Commit with conventional commits: `git commit -m "feat: add my feature"`
+6. Push and create a pull request
+
+### Code of Conduct
+
+- Be respectful and constructive
+- Follow existing code style and conventions
+- Write tests for new features
+- Update documentation for user-facing changes
+- Keep pull requests focused and atomic
 
 ## Roadmap
 
-1. Polish the UI with additional features like search and advanced filtering.
-2. Introduce synchronization/export features for sharing prompt collections.
-3. Automate release packaging (bundle desktop artifacts, publish changelog summaries).
-4. Extend the desktop and web clients to expose the new tag removal APIs and support bulk-edit workflows.
-5. Ship optional remote sync plugin for collaborative prompt libraries.
+### Planned Features
+
+1. **Enhanced UI** - Search, bulk operations, advanced filtering
+2. **Sync & Export** - Share prompt collections across devices
+3. **Automated Releases** - Package desktop apps, publish changelogs
+4. **Bulk Edit Workflows** - Multi-select and batch operations
+5. **Remote Sync Plugin** - Collaborative prompt libraries
+6. **Import/Export** - JSON, Markdown, CSV formats
+7. **Template System** - Prompt templates with variables
+
+### Future Considerations
+
+- PostgreSQL adapter for multi-tenant deployments
+- AI-assisted tagging and categorization
+- Prompt testing and evaluation framework
+- Integration with popular AI platforms
+
+See [TASKSLIST.md](TASKSLIST.md) for current task tracking.
+
+## CI/CD
+
+Continuous integration runs on every push and pull request:
+
+- ✅ Linting (ESLint)
+- ✅ Type checking (TypeScript)
+- ✅ Unit tests with coverage (Vitest)
+- ✅ Security scanning (npm audit)
+- ✅ Coverage reporting (Codecov)
+
+**CI Configuration:** [.github/workflows/ci.yml](.github/workflows/ci.yml)
+
+### Codecov Setup
+
+To enable authenticated uploads to Codecov:
+
+1. Go to repository Settings → Secrets → Actions
+2. Add secret `CODECOV_TOKEN` with your Codecov project token
+3. CI will automatically upload coverage reports
+
+Without the token, coverage uploads are skipped (useful for forks).
 
 ## License
 
-This repository is distributed under a Proprietary license. All rights reserved.
+This project is licensed under a **Proprietary License** - see [LICENSE](LICENSE) for details.
+
+All rights reserved. Unauthorized copying, distribution, or modification is strictly prohibited.
+
+## Support
+
+- **Issues:** [GitHub Issues](https://github.com/Nobodyworld/app-prompt-vault/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/Nobodyworld/app-prompt-vault/discussions)
+- **Security:** See [SECURITY.md](SECURITY.md) for vulnerability reporting
+
+---
+
+**Built with ❤️ by Nobodyworld**
