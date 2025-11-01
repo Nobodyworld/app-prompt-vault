@@ -16,14 +16,14 @@ Capture console output from the Tauri renderer while the dev server is running.
 node ./dev-tools/capture-console.cjs http://localhost:1420/ tauri-renderer.log
 ```
 
-### insert-and-read.cjs
+### insert-and-read.js
 
 Smoke test script for SQLite database operations. Inserts a test prompt and reads it back.
 
 **Usage:**
 
 ```bash
-node ./dev-tools/insert-and-read.cjs
+node ./dev-tools/insert-and-read.js
 ```
 
 **Note:** Requires `prompt-vault.db` file to exist. Use `npm run db:bootstrap` to create it.
