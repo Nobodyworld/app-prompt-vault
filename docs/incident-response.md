@@ -24,7 +24,7 @@ This playbook outlines the recommended recovery steps when Prompt Vault experien
 
 ## 4. Post-Incident Checklist
 
-- Document the root cause and fix in `RELEASE_NOTES.md` under "Fixed".
+- Document the root cause and fix in `docs/releases/notes.md` under "Fixed".
 - Add regression tests or plugins where appropriate (e.g., validation plugin to reject malformed data).
 - Update monitoring dashboards to alert on the observed metric/signature.
 

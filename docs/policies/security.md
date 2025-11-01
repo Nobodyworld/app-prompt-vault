@@ -28,7 +28,7 @@ ible. Formal support matrix will be published alongside the first stable release
 - Ensure SQLite databases are stored in user-controlled directories with appropriate permissions.
 - Validate all user input using the Zod schemas provided in `src/domain/validation.ts`.
 - Redact secrets or API tokens from logs; Prompt Vault intentionally avoids logging prompt bodies.
-- Review release artifacts against `RELEASE_NOTES.md` for migration or operational calls to action.
+- Review release artifacts against `docs/releases/notes.md` for migration or operational calls to action.
 - Enable observability endpoints only when required and ensure metric exports do not include sensitive prompt content.
 
 ## Residual Risks

@@ -10,13 +10,16 @@
 - Hardened HTTP bootstrap with a validated configuration loader, explicit logging of startup warnings, and regression tests for environment parsing.
 - Normalised duplicate entries in `PROMPT_VAULT_ALLOWED_ORIGINS` to keep CORS filters tight while preserving warning signals for operators.
 - Instrumented every HTTP request with an `http.server.request` span and corresponding `x-trace-id` response header so support teams can pivot from incidents to precise log segments in seconds.
+- Reorganised documentation into topic-based directories (`docs/architecture`, `docs/operations`, `docs/releases`, etc.) to keep the repository root focused on code and essential metadata.
+- Added directory-level README files (including `docs/README.md`, `src/README.md`, and `scripts/README.md`) so contributors can quickly locate relevant guides after the restructure.
+- Improved `scripts/metrics-snapshot.ts` to close SQLite handles safely and surface actionable errors during metric generation.
 
 ### Upgrade Steps
 1. Run `npm install` if dependencies drift (no new runtime packages were added).
 2. Execute `npm run quality:gate` to exercise the updated observability tests.
 3. Enable `PROMPT_VAULT_METRICS=true` and optionally set `PROMPT_VAULT_METRICS_PORT` so `/observability/metrics` can be scraped by your platform monitors.
 4. Set `PROMPT_VAULT_STATIC_DIR` when serving a custom web build and review startup logs for configuration warnings.
-5. Review `AUTOMATION.md`, `EXTENSION_GUIDE.md`, and `AGENTS.md` for the latest automation and plugin guidance before delegating work.
+5. Review `docs/operations/automation.md`, `docs/guides/extension-guide.md`, and `AGENTS.md` for the latest automation and plugin guidance before delegating work.
 
 ### Breaking Changes
 - None.
@@ -31,7 +34,7 @@
 
 ### Highlights
 - Introduced a full observability stack (structured logger, Prometheus metrics, health server) with CLI integration and a `doctor` command.
-- Added plugin host architecture with an audit trail example and new contributor docs (`ARCHITECTURE_OVERVIEW.md`, `EXTENSION_GUIDE.md`, `AUTOMATION.md`).
+- Added plugin host architecture with an audit trail example and new contributor docs (`docs/architecture/overview.md`, `docs/guides/extension-guide.md`, `docs/operations/automation.md`).
 - Established CI/Dependabot automation, quality gate tooling, and new operational playbooks (incident response, performance, future-proofing).
 
 ### Upgrade Steps
@@ -69,4 +72,4 @@
 ### Operational Notes
 - Coverage data is collected using Node's V8 instrumentation (`NODE_V8_COVERAGE`). Ensure CI environments retain the generated `coverage/*.json` files for auditing. Install `@vitest/coverage-v8` (or another provider) when registry access is available so that `npm run coverage:summary` can include project source metrics.
 - The desktop client remains unchanged in this iteration; roadmap items are tracked in `README.md`.
-- Known risks (unencrypted local storage, manual dependency audits) are documented in `SECURITY.md`.
+- Known risks (unencrypted local storage, manual dependency audits) are documented in `docs/policies/security.md`.

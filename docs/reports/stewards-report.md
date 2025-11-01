@@ -18,7 +18,7 @@
 2. Capture and archive `npm run metrics:snapshot` output each release; the dependency graph and latency samples provide early warnings for regression risk.【d4ec42†L1-L17】【0671eb†L1-L17】
 3. Keep the `dist/` footprint lean (<1 MB). If the TypeScript bundle grows beyond the current 324 KB baseline, investigate unused exports or refactor large observability helpers.【d6152e†L1-L2】【d4ec42†L3-L12】
 
-Items 1, 2, and the roadmap actions below are now tracked in `TASKSLIST.md` as tasks TSK-0004 through TSK-0009 to keep follow-up work centralised.
+Items 1, 2, and the roadmap actions below are now tracked in `TASKLIST.md` as tasks TSK-0004 through TSK-0009 to keep follow-up work centralised.
 
 ## Simplification Log
 
@@ -37,5 +37,5 @@ Items 1, 2, and the roadmap actions below are now tracked in `TASKSLIST.md` as t
 - Develop optional PostgreSQL or multi-tenant adapters leveraging the simplified repository transactions for scalability testing.【F:src/repositories/PromptRepository.ts†L69-L108】【F:src/repositories/PromptRepository.ts†L354-L365】
 
 ### Long Term (6-12 months)
-- Containerise the observability stack and CLI doctor workflows so agents can run health diagnostics alongside deployments.【F:AUTOMATION.md†L1-L52】【F:scripts/observability.ts†L1-L24】
+- Containerise the observability stack and CLI doctor workflows so agents can run health diagnostics alongside deployments.【F:docs/operations/automation.md†L1-L44】【F:scripts/observability.ts†L1-L24】
 - Explore intelligent plugins (e.g., AI-assisted tagging) that consume telemetry spans without increasing service complexity, using the dependency map to maintain modular boundaries.【d4ec42†L3-L17】

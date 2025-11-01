@@ -29,7 +29,7 @@ Use this template to create a repo-local `URGENT.md` when we begin alignment wor
 - CI/CD: <workflows + gates>
 - Releases/versioning: <semver/tags/changelog>
 - Security: <secret scanning, SAST/DAST, deps scanning>
-- Docs: <README, docs/, ADRs>
+- Docs: <README, docs/README.md, ADRs>
 - License & NOTICE: <files>
 - Special notes: <generated code, LFS, submodules, binaries>
 
@@ -39,7 +39,7 @@ Use this template to create a repo-local `URGENT.md` when we begin alignment wor
 - [.gitignore] Language-appropriate: [ ]
 - [CODEOWNERS] Define or confirm: [ ]
 - [CONTRIBUTING.md] Add/refresh: [ ]
-- [SECURITY.md] Add/refresh: [ ]
+- [docs/policies/security.md] Add/refresh: [ ]
 - [PR/Issue templates] Add/refresh: [ ]
 - [CI check-only] Lint/format/test baseline: [ ]
 - [Pre-commit] Whitespace/EOL/secret scan (check-only): [ ]

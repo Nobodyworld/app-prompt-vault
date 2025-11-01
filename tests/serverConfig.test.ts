@@ -67,6 +67,21 @@ describe("loadServerConfig", () => {
     expect(warnings).toContain("Duplicate allowed origin detected: https://example.com");
   });
 
+  it("falls back to default allowed origins when env is empty", () => {
+    const { config, warnings } = loadServerConfig({
+      env: {
+        PROMPT_VAULT_ALLOWED_ORIGINS: "   ",
+      },
+      defaults: {
+        ...defaultOptions.defaults,
+        allowedOrigins: ["https://fallback.example"],
+      },
+    });
+
+    expect(config.allowedOrigins).toEqual(["https://fallback.example"]);
+    expect(warnings).toHaveLength(0);
+  });
+
   it("warns when metrics port is set without enabling metrics", () => {
     const { config, warnings } = loadServerConfig({
       env: {

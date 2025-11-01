@@ -11,12 +11,14 @@ Thank you for your interest in improving Prompt Vault! This guide outlines the p
 ## Development Workflow
 
 1. Create a feature branch using the `<type>/<short-description>` convention (e.g., `feat/plugin-audit`).
-2. Make your changes following the architecture documented in `ARCHITECTURE_OVERVIEW.md` and `docs/architecture.md`.
+2. Make your changes following the architecture documented in `docs/architecture/overview.md` and the indices in
+   `docs/README.md`.
 3. Write or update tests under `tests/` to cover your changes.
 4. Run `npm run quality:gate` locally (or `npm run validate` for backwards compatibility).
 5. When adding plugins, prefer the `npm run extension:scaffold <name>` template and export them via `src/extensions/index.ts`.
-6. Document new behaviour in README/guide files and update `CHANGELOG.md` or `RELEASE_NOTES.md` where appropriate.
-6. Commit using descriptive messages and open a pull request against `main`.
+6. Document new behaviour in the relevant directory README/guide and update `CHANGELOG.md` or `docs/releases/notes.md` where
+   appropriate.
+7. Commit using descriptive messages and open a pull request against `main`.
 
 ## Code Style
 
@@ -37,6 +39,6 @@ Thank you for your interest in improving Prompt Vault! This guide outlines the p
 
 1. Search existing issues to avoid duplicates.
 2. Include reproduction steps, expected vs. actual results, and environment details.
-3. If the issue involves security, follow the disclosure process described in `SECURITY.md`.
+3. If the issue involves security, follow the disclosure process described in `docs/policies/security.md`.
 
 We appreciate your contributions and feedback! Together we can build a polished Prompt Vault experience.

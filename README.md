@@ -48,11 +48,23 @@ app-prompt-vault/
 │  └─ tsconfig.json        # TypeScript config for UI
 ├─ src-tauri/              # Tauri Rust backend
 ├─ tests/                  # Vitest specs for service workflows
-├─ docs/                   # Step-by-step Codex chain documentation and architecture guides
+├─ docs/
+│  ├─ README.md            # Directory index that links to topic-specific folders
+│  ├─ architecture/        # System diagrams and design history (see architecture/README.md)
+│  ├─ guides/              # Task-focused walkthroughs (see guides/README.md)
+│  ├─ operations/          # Runbooks and automation guardrails (see operations/README.md)
+│  ├─ policies/            # Governance and compliance policies (see policies/README.md)
+│  ├─ releases/            # Release notes and upgrade guidance (see releases/README.md)
+│  └─ reports/             # Stewardship updates (see reports/README.md)
 ├─ codex_chain.json        # Automation chain definition
+├─ scripts/README.md       # Script catalogue and usage notes
 ├─ package.json            # Tooling, dependencies, and scripts
 └─ tsconfig.json           # TypeScript compiler configuration
 ```
+
+Every major directory now includes a focused `README.md` to explain its contents. Start with [`docs/README.md`](docs/README.md)
+or [`src/README.md`](src/README.md) when navigating the codebase, and reference [`scripts/README.md`](scripts/README.md) for
+automation entry points and [`tests/README.md`](tests/README.md) to understand the current Vitest coverage.
 
 ## Getting Started
 
@@ -186,19 +198,20 @@ Coverage thresholds (lines/statements ≥ 85%, functions ≥ 80%, branches ≥ 7
 
 ## Documentation
 
-- [`ARCHITECTURE_OVERVIEW.md`](ARCHITECTURE_OVERVIEW.md) – current runtime architecture, observability, and extension map.
+- [`docs/architecture/overview.md`](docs/architecture/overview.md) – current runtime architecture, observability, and extension map.
 - [`docs/architecture.md`](docs/architecture.md) – component relationships, data flow, and migration strategy.
 - [`docs/workflows.md`](docs/workflows.md) – developer workflows, CLI recipes, and testing loops.
 - [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) – dependency inventory with security considerations.
-- [`EXTENSION_GUIDE.md`](EXTENSION_GUIDE.md) – how to build and register plugins.
-- [`AUTOMATION.md`](AUTOMATION.md) – guardrails and scripts for agents/automation.
+- [`docs/guides/extension-guide.md`](docs/guides/extension-guide.md) – how to build and register plugins.
+- [`docs/operations/automation.md`](docs/operations/automation.md) – guardrails and scripts for agents/automation.
+- [`docs/operations/automation-roles.md`](docs/operations/automation-roles.md) – automation responsibilities and tagged entry points.
 - [`docs/incident-response.md`](docs/incident-response.md) – recovery checklist and health endpoint usage.
 - [`docs/performance-notes.md`](docs/performance-notes.md) – baseline metrics and tuning tips.
 - [`docs/future-proofing.md`](docs/future-proofing.md) – strategic roadmap for scaling.
-- [`docs/`](docs/) – contains the full Codex chain step reports.
-- [`RELEASE_NOTES.md`](RELEASE_NOTES.md) – upgrade guidance and operational notes for the latest build.
-- [`STEWARDS_REPORT.md`](STEWARDS_REPORT.md) – stewardship metrics, simplifications, and forward roadmap.
-- [`AUTOMATION_ROLES.md`](AUTOMATION_ROLES.md) – agent responsibilities and triggers for automation.
+- [`docs/step-01-comprehend-map.md`](docs/step-01-comprehend-map.md) and related step files – Codex chain history of the build.
+- [`docs/releases/notes.md`](docs/releases/notes.md) – upgrade guidance and operational notes for the latest build.
+- [`docs/reports/stewards-report.md`](docs/reports/stewards-report.md) – stewardship metrics, simplifications, and forward roadmap.
+- [`docs/policies/security.md`](docs/policies/security.md) – security policy, disclosure process, and hardening checklist.
 
 ## Roadmap
 

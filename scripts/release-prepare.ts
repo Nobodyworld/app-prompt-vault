@@ -39,7 +39,7 @@ if (!changelog.includes(`[${version}]`)) {
   writeFileSync(changelogPath, changelog.replace("# Changelog", `# Changelog\n\n${changelogEntry}\n`));
 }
 
-const releaseNotesPath = new URL("../RELEASE_NOTES.md", import.meta.url);
+const releaseNotesPath = new URL("../docs/releases/notes.md", import.meta.url);
 const releaseNotes = readFileSync(releaseNotesPath, "utf8");
 const notesEntry = `## ${version} (${date})\n\n### Highlights\n- TODO(P2, 1d): Summarise highlights.\n\n### Upgrade Steps\n1. TODO(P2, 1d): Document upgrade guidance.\n\n### Breaking Changes\n- TODO(P2, 1d): Document breaking changes or state "None".\n\n### Operational Notes\n- TODO(P3, 1d): Capture operational learnings.\n`;
 if (!releaseNotes.includes(`## ${version} (${date})`)) {
@@ -49,4 +49,4 @@ if (!releaseNotes.includes(`## ${version} (${date})`)) {
   );
 }
 
-console.log(`Prepared release stub for ${version}. Update CHANGELOG.md and RELEASE_NOTES.md before publishing.`);
+console.log(`Prepared release stub for ${version}. Update CHANGELOG.md and docs/releases/notes.md before publishing.`);

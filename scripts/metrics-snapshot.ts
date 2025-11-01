@@ -244,36 +244,43 @@ function logDependencies(summary: DependencySummary): void {
   console.log(`- Longest internal path: ${summary.maxDepth}`);
 }
 
+/**
+ * Measures a representative latency profile by exercising the service layer against an in-memory database. Results help track
+ * regressions over time without requiring a dedicated benchmark harness.
+ */
 function measureServiceLatency(batchSize = 50): PerformanceSample {
   const database = new Database(":memory:");
-  const service = new PromptVaultService(database, {
-    telemetry: createNoopTelemetry(),
-    logger: new StructuredLogger({ level: "error", fields: { service: "steward-metrics" } }),
-  });
-  const startCreate = process.hrtime.bigint();
-  for (let index = 0; index < batchSize; index += 1) {
-    service.createPrompt({
-      id: randomUUID(),
-      slug: `steward-sample-${index}`,
-      title: `Steward Sample ${index}`,
-      description: "Synthetic prompt for latency sampling.",
-      body: "Sample body",
-      semanticVersion: "1.0.0",
-      tags: ["steward"],
-      changelog: undefined,
+  try {
+    const service = new PromptVaultService(database, {
+      telemetry: createNoopTelemetry(),
+      logger: new StructuredLogger({ level: "error", fields: { service: "steward-metrics" } }),
     });
+    const startCreate = process.hrtime.bigint();
+    for (let index = 0; index < batchSize; index += 1) {
+      service.createPrompt({
+        id: randomUUID(),
+        slug: `steward-sample-${index}`,
+        title: `Steward Sample ${index}`,
+        description: "Synthetic prompt for latency sampling.",
+        body: "Sample body",
+        semanticVersion: "1.0.0",
+        tags: ["steward"],
+        changelog: undefined,
+      });
+    }
+    const afterCreate = process.hrtime.bigint();
+    const searchStart = process.hrtime.bigint();
+    const result = service.searchPrompts({ page: 0, pageSize: batchSize, text: "Steward", tags: undefined });
+    const afterSearch = process.hrtime.bigint();
+    return {
+      batchSize,
+      createBatchMs: Number(afterCreate - startCreate) / 1_000_000,
+      searchMs: Number(afterSearch - searchStart) / 1_000_000,
+      totalPrompts: result.total,
+    };
+  } finally {
+    database.close();
   }
-  const afterCreate = process.hrtime.bigint();
-  const searchStart = process.hrtime.bigint();
-  const result = service.searchPrompts({ page: 0, pageSize: batchSize, text: "Steward", tags: undefined });
-  const afterSearch = process.hrtime.bigint();
-  database.close();
-  return {
-    batchSize,
-    createBatchMs: Number(afterCreate - startCreate) / 1_000_000,
-    searchMs: Number(afterSearch - searchStart) / 1_000_000,
-    totalPrompts: result.total,
-  };
 }
 
 function logPerformance(sample: PerformanceSample): void {
@@ -302,4 +309,10 @@ function main(): void {
   logPerformance(performance);
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  console.error("Failed to generate metrics snapshot:");
+  console.error(error instanceof Error ? error.stack ?? error.message : error);
+  process.exitCode = 1;
+}
