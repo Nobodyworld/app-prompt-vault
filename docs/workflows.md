@@ -49,7 +49,7 @@ Enable metrics and health endpoints for any CLI invocation by exporting `PROMPT_
 ## 6. Stewardship Metrics
 
 - Run `npm run metrics:snapshot` to print cyclomatic complexity, dependency fan-out, and a 50-prompt latency sample.
-- Copy relevant numbers into `STEWARDS_REPORT.md` (or dashboards) during major releases.
+- Copy relevant numbers into `docs/reports/stewards-report.md` (or dashboards) during major releases.
 - When metrics regress, prioritise targeted refactors (e.g., repositories > 2.5 average complexity) before shipping new features.
 
 ## 7. Releasing Builds

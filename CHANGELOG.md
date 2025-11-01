@@ -5,21 +5,25 @@ All notable changes to Prompt Vault will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- `scripts/metrics-snapshot.ts` for agent-tagged complexity, dependency, and latency reporting alongside `STEWARDS_REPORT.md` and `AUTOMATION_ROLES.md` guidance.
+- `scripts/metrics-snapshot.ts` for agent-tagged complexity, dependency, and latency reporting alongside `docs/reports/stewards-report.md` and `docs/operations/automation-roles.md` guidance.
 - Regression test asserting every SQL migration is executed and required indexes are present on new databases.
 - Express observability middleware emitting Prometheus-compatible HTTP counters/histograms and an `/observability` router exposing health and metrics endpoints.
 - Operational telemetry plugin that records prompt mutation events and counters for write activity.
 - `npm run extension:scaffold` helper for generating plugin templates plus integration tests covering observability endpoints.
 - Environment-aware server configuration loader with validation, static asset discovery, and dedicated regression tests.
 - Express tracing middleware that opens `http.server.request` spans, decorates responses with `x-trace-id`, and ships dedicated tests to guard the instrumentation contract.
+- Directory-level README files across source, desktop, Tauri, script, test, and documentation folders to guide navigation after the restructure.
+- Additional configuration regression test covering fallback behaviour when defaults supply allowed origins.
 
 ### Changed
+- Consolidated documentation into topic-specific directories under `docs/` to keep the repository root focused on source, tooling, and required governance files.
 - Simplified repository transactions by delegating to `better-sqlite3`'s transaction helper and deduplicating tags before persistence.
 - Express server now enforces request correlation IDs, sanitises user-provided identifiers, and returns JSON-formatted parse errors alongside the `x-request-id` header.
 - HTTP error payloads now mirror both `requestId` and `traceId` so operators can stitch support cases to log streams without manual lookup.
 - Migration runner executes every `.sql` file in order, enabling additive schema upgrades such as the new performance indexes for prompt search and tag operations.
 - Default HTTP bootstrap enables request metrics, exposes `/observability/*` routes, and loads the operational telemetry plugin to keep metrics and logs in sync across entry points.
 - HTTP API now boots with the validated configuration, logging explicit warnings for ambiguous inputs and refusing to start when required values are malformed.
+- Metrics snapshot tooling now guards against uncaught exceptions and guarantees SQLite handles are closed even when sampling fails.
 
 ### Fixed
 - Tag upserts now reuse the persisted identifier returned from SQLite, preventing foreign key errors when reapplying shared labels.
@@ -30,7 +34,7 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ### Added
 - Observability package exposing structured logging, Prometheus-compatible metrics, and a health server with readiness controls.
-- Plugin host with an audit trail reference implementation plus developer docs (`EXTENSION_GUIDE.md`, `ARCHITECTURE_OVERVIEW.md`, `AUTOMATION.md`).
+- Plugin host with an audit trail reference implementation plus developer docs (`docs/guides/extension-guide.md`, `docs/architecture/overview.md`, `docs/operations/automation.md`).
 - CLI doctor command, observability bootstrap script, Dependabot config, and CI workflow running the quality gate.
 
 ### Changed
@@ -47,7 +51,7 @@ All notable changes to Prompt Vault will be documented in this file.
 ### Added
 - Coverage workflow powered by V8 instrumentation (`npm run test:coverage`) and summary script (`npm run coverage:summary`).
 - Repository-level regression tests for tag metadata preservation and service tests for pagination, timestamp updates, and no-op tag handling.
-- Release notes (`RELEASE_NOTES.md`) and expanded security guidance for operational readiness.
+- Release notes (`docs/releases/notes.md`) and expanded security guidance for operational readiness.
 
 ### Changed
 - SQLite connections now enable foreign keys and busy timeouts by default while preserving WAL mode for writable databases.

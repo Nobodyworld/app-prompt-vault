@@ -3,7 +3,7 @@
 ## Scalability Hotspots
 
 - **SQLite concurrency.** For heavier multi-user workloads, migrate to PostgreSQL by reimplementing `PromptRepository` via the same interface and swapping the database adapter. Keep plugin contracts stable to avoid cascading changes.
-- **Desktop sync.** Current architecture assumes local-only storage. Consider introducing a sync plugin that replicates prompt versions to a remote API, using the plugin system described in `EXTENSION_GUIDE.md`.
+- **Desktop sync.** Current architecture assumes local-only storage. Consider introducing a sync plugin that replicates prompt versions to a remote API, using the plugin system described in `docs/guides/extension-guide.md`.
 
 ## Containerisation & Deployment Path
 

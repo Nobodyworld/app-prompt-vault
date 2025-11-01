@@ -31,10 +31,10 @@ This repository is automation-friendly: it ships structured telemetry, determini
 
 ## Agent Safety Patterns
 
-- **Read-only first:** Parse documentation (`ARCHITECTURE_OVERVIEW.md`, `EXTENSION_GUIDE.md`) before editing.
+- **Read-only first:** Parse documentation (`docs/architecture/overview.md`, `docs/guides/extension-guide.md`) before editing.
 - **Dry runs:** Use `npm run dev -- <command>` to validate CLI behaviour against an in-memory database (`--db :memory:`) before touching production files.
 - **Telemetry:** Enable metrics locally during automation to capture span timings and log context for debugging runs (`PROMPT_VAULT_METRICS=true`). Scrape `/observability/metrics` to confirm instrumentation is healthy.
-- **PR Authoring:** Summaries should cite documentation updates and mention any residual risks flagged in `RELEASE_NOTES.md`.
+- **PR Authoring:** Summaries should cite documentation updates and mention any residual risks flagged in `docs/releases/notes.md`.
 
 ## Change Coordination
 

@@ -26,7 +26,7 @@
     {
       "id": 5,
       "name": "Document & Explain",
-      "prompt": "Create or update all Markdown documentation: README.md (clear overview, setup, usage, and examples), /docs/ (architecture diagrams, API reference, and workflows), CHANGELOG.md, CONTRIBUTING.md, and SECURITY.md. Goal: a fully self-documenting repo that any developer can onboard to."
+      "prompt": "Create or update all Markdown documentation: README.md (clear overview, setup, usage, and examples), /docs/ (architecture diagrams, API reference, and workflows), CHANGELOG.md, CONTRIBUTING.md, and docs/policies/security.md. Goal: a fully self-documenting repo that any developer can onboard to."
     },
     {
       "id": 6,

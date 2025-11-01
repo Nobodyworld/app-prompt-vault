@@ -4,7 +4,7 @@
 
 - Declared runtime dependencies only where necessary (SQLite driver, CLI ergonomics, validation library).
 - Documented the dependency graph with security posture in `docs/DEPENDENCIES.md`.
-- Established security policy via `SECURITY.md` including reporting instructions and hardening checklist.
+- Established security policy via `docs/policies/security.md` including reporting instructions and hardening checklist.
 
 ## Risk Mitigation
 

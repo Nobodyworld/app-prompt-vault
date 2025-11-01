@@ -28,6 +28,7 @@ export interface ServerConfig {
   readonly staticDirectory?: string;
 }
 
+/** Error thrown when configuration values fail validation. Contains a flattened list of issues to display to operators. */
 export class ConfigurationError extends Error {
   public readonly issues: readonly string[];
 
@@ -88,6 +89,10 @@ function normalizeDatabasePath(path: string): string {
   return resolve(trimmed);
 }
 
+/**
+ * Normalises the configured CORS allow-list while surfacing duplicate entries as warnings so the caller can surface
+ * actionable feedback without silently ignoring configuration mistakes.
+ */
 function normalizeAllowedOrigins(
   value: string | undefined,
   defaults: readonly string[] | null | undefined
@@ -132,6 +137,7 @@ function normalizeAllowedOrigins(
   return { origins, warnings };
 }
 
+/** Resolves the static asset directory to an absolute path or returns undefined when no assets should be served. */
 function normalizeStaticDirectory(value: string | undefined, defaults: string | null | undefined): string | undefined {
   const candidate = value ?? defaults ?? undefined;
   if (candidate == null) {
@@ -144,6 +150,10 @@ function normalizeStaticDirectory(value: string | undefined, defaults: string | 
   return resolve(trimmed);
 }
 
+/**
+ * Loads and validates server configuration from environment variables while applying optional defaults. Any validation
+ * failure results in a {@link ConfigurationError} so the HTTP bootstrap can abort start-up with a clear error message.
+ */
 export function loadServerConfig(options: ServerConfigOptions = {}): LoadConfigResult {
   const env = options.env ?? process.env;
   const issues: string[] = [];
