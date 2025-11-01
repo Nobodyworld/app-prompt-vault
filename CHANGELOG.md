@@ -18,7 +18,7 @@ All notable changes to Prompt Vault will be documented in this file.
 - Express tracing middleware that opens `http.server.request` spans, decorates responses with `x-trace-id`, and ships dedicated tests to guard the instrumentation contract.
 
 ### Changed
-- Reorganized repository structure: moved dev scripts (`insert-and-read.cjs`, `inspect-db.js`) to `dev-tools/` directory
+- Reorganized repository structure: moved dev scripts (`insert-and-read.js`, `inspect-db.js`) to `dev-tools/` directory
 - Consolidated duplicate task tracking files (removed `TASKLIST.md` in favor of `TASKSLIST.md`)
 - Updated CI workflow to use Node.js 24 (matching package.json engine requirement)
 - Removed redundant `node-24.yml` workflow in favor of comprehensive `ci.yml`
