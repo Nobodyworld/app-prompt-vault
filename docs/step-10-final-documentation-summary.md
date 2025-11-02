@@ -13,7 +13,7 @@
 - Automate migrations and integrate CI pipelines for linting, testing, and release packaging.
 - Add data synchronization/export capabilities for multi-device use cases.
 
-Active tracking for these deliverables now lives in `TASKSLIST.md` under identifiers TSK-0001 through TSK-0003.
+Active tracking for these deliverables now lives in `TASKLIST.md` under identifiers TSK-0001 through TSK-0003.
 
 ## Changelog Commit Message
 
