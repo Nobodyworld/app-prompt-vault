@@ -8,6 +8,7 @@ function warn(message: string): void {
 
 const audit = spawn("npm", ["audit", "--omit=dev", "--json"], {
   stdio: ["ignore", "pipe", "pipe"],
+  shell: true,
 });
 
 let stdout = "";

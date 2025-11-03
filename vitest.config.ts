@@ -6,8 +6,8 @@ export default defineConfig({
     environment: "node",
     exclude: ["dist/**", "node_modules/**"],
     coverage: ( {
-      // Use V8 coverage provider for accurate coverage in Node (faster and more reliable)
-      provider: 'v8',
+      // Use istanbul coverage provider to match the report-coverage script expectations
+      provider: 'istanbul',
       // include server / library code only; exclude desktop renderer and generated assets
       reporter: ["text", "json", "lcov", "html"],
       include: ["src/**/*.ts"],
