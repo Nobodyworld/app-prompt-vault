@@ -1,37 +1,118 @@
-# TASKLIST: Task Compilation
+# TASKLIST: Features to Port from PRM to app-prompt-vault
 
 -*NEVER REMOVE SPEC.md, STYLE-GUIDE.md, or TASKLIST.md FROM THE ROOT*
 
-Use this file to compile and track all tasks that need to be completed for this repository. Check off items as they are finished. Keep each task on a single line. Check off already completed tasks and keep things in chronological order when updating and adding to the file. Follow Template Entry below.
+Use this file to compile and track all features that need to be ported from the PRM (Prompt Rules Manager) project to app-prompt-vault. Check off items as they are completed. Keep each task on a single line. Check off already completed tasks and keep things in chronological order when updating and adding to the file. Follow Template Entry below.
 
 Keep entries one-line, oldest-first. When completing a task, check it off and append a one-line completion note indented underneath (date + PR/link + 1â€“2 sentence summary).
 
 ## Template (single-line + optional completion note)
 
 ```text
-- [ ] Short task description â€” TK-YYYYMMDD-###
+- [ ] Short task description — TK-YYYYMMDD-###
 ```
 
 Completion note (indented, one line):
 
 ```text
-  - Completed: YYYY-MM-DD â€” PR: <url> â€” short summary
+  - Completed: YYYY-MM-DD — PR: <url> — short summary
 ```
 
 ---
 
 ## Tasks
 
-- [ ] Build the React + Tauri desktop UI that consumes the `PromptVaultService` APIs - TSK-0001 - Status: Not started (source: docs/step-10-final-documentation-summary.md)
-- [ ] Automate database migrations and integrate CI pipelines for linting, testing, and release packaging - TSK-0002 - Status: Not started (source: docs/step-10-final-documentation-summary.md)
-- [ ] Add data synchronisation and export capabilities for multi-device use cases - TSK-0003 - Status: Not started (source: docs/step-10-final-documentation-summary.md)
-- [ ] Restore JavaScript coverage instrumentation (e.g., integrate `@vitest/coverage-v8` or approved alternative) so quality gates can enforce thresholds - TSK-0004 - Status: Blocked on registry access (source: docs/reports/stewards-report.md)
-- [ ] Wire `npm run metrics:snapshot` into CI to capture dependency, complexity, and latency artefacts on a scheduled cadence - TSK-0005 - Status: Not started (source: docs/reports/stewards-report.md)
-- [ ] Extend the metrics snapshot tooling to emit JSON suitable for dashboarding and automated trend analysis - TSK-0006 - Status: Not started (source: docs/reports/stewards-report.md)
-- [ ] Develop optional PostgreSQL or multi-tenant adapters leveraging the repository transaction simplifications for scalability testing - TSK-0007 - Status: Not started (source: docs/reports/stewards-report.md)
-- [ ] Containerise the observability stack and CLI doctor workflows to support deployment health diagnostics - TSK-0008 - Status: Not started (source: docs/reports/stewards-report.md)
-- [ ] Explore intelligent plugins that leverage telemetry spans without adding service complexity (e.g., AI-assisted tagging) - TSK-0009 - Status: Ideation (source: docs/reports/stewards-report.md)
-- [x] Add missing default repository files: `.editorconfig`, `.gitattributes`, and `.github/CODEOWNERS` - TSK-0010 - Completed: 2025-10-30 ([TR-0001](docs/reports/README.md#2025-10-30---chore-add-repo-defaults-and-audit-binaries))
-- [x] Review tracked binary assets and define a relocation or ignore strategy aligned with repository policy - TSK-0011 - Completed: 2025-10-30 ([TR-0001](docs/reports/README.md#2025-10-30---chore-add-repo-defaults-and-audit-binaries))
-- [ ] Flesh out the scaffolded plugin template by implementing lifecycle hooks emitted by `scripts/scaffold-extension.ts` - TSK-0012 - Status: Not started (source: scripts/scaffold-extension.ts)
-- [ ] Provide a downstream metadata sync example for plugins by completing the placeholder in `docs/guides/extension-guide.md` - TSK-0013 - Status: Not started (source: docs/guides/extension-guide.md)
+### ✅ Completed Features (Already Ported)
+
+- [x] Advanced search functionality with content search, excerpts, case sensitivity, tag/format filters — TK-20251107-001
+  - Completed: 2025-11-07 — Ported from PRM: Advanced search with detailed match information and CLI command
+- [x] Trash/recovery system with soft deletes and restore functionality — TK-20251107-002
+  - Completed: 2025-11-07 — Ported from PRM: Soft delete system with database migration, service methods, and CLI commands
+
+### 🔄 High Priority Features (Core Functionality)
+
+- [x] MCP integration with JSON schemas for agent automation — TK-20251107-003
+  - Completed: 2025-11-07 — Implemented MCP server with JSON schemas and tool definitions for agent automation
+- [x] Import/export functionality for external files — TK-20251107-004
+  - Completed: 2025-11-07 — Implemented importPromptFromFile() and exportPromptToFile() methods in PromptVaultService with format detection, YAML/JSON conversion, and file system operations
+- [x] Snapshots/backup system for point-in-time library backups — TK-20251107-005
+  - Completed: 2025-11-07 — Implemented SnapshotManager class with create/restore/validate operations, service layer methods, and CLI commands (backup, restore, info)
+- [x] VS Code integration for deep editing of prompts — TK-20251107-006
+  - Completed: 2025-11-07 — Implemented CLI edit command that opens prompts in VS Code, auto-saves changes as new versions, and provides proper version incrementing
+- [x] Format conversion between Markdown ↔ YAML ↔ JSON — TK-20251107-007
+  - Completed: 2025-11-07 — Implemented convertPromptContent() function with full bidirectional conversion, CLI convert command, and MCP convertPrompt tool
+
+### 🔄 Medium Priority Features (Enhanced UX)
+
+- [x] Library diagnostics and integrity checks — TK-20251107-008
+  - Completed: 2025-11-08 — Implemented runDiagnostics(), getLibraryStats(), repairIntegrity() methods in PromptVaultService with CLI commands (diagnostics, stats, repair) and comprehensive testing
+- [x] Library summary/analytics (tag distributions, format breakdowns) — TK-20251107-009
+  - Completed: 2025-11-08 — Implemented comprehensive getLibraryStats() method with tag distributions, format breakdowns, usage analytics, and activity metrics via stats CLI command
+- [x] Health/diagnostics endpoints for monitoring — TK-20251107-010
+  - Completed: 2025-11-08 — Implemented GET /observability/diagnostics, GET /observability/stats, POST /observability/repair endpoints with conditional service injection and JSON responses
+- [x] Enhanced plugin system with filesystem connectors — TK-20251107-011
+  - Completed: 2025-11-08 — Implemented dynamic plugin loading from filesystem, connector interfaces, plugin discovery system, CLI management commands, and filesystem connector example
+- [x] File size limits and validation guards — TK-20251107-012
+  - Completed: 2025-11-08 — Implemented configurable file size limits (10MB default) and prompt content length limits (100KB default) with environment variable support, validation in import/export operations and prompt creation, CLI integration
+
+### 🔄 Low Priority Features (Enterprise/Advanced)
+
+- [ ] Structured logging and telemetry system — TK-20251107-013
+- [ ] Metrics and observability endpoints — TK-20251107-014
+- [ ] Desktop Electron UI (alternative to CLI) — TK-20251107-015
+- [ ] Git integration and sync capabilities — TK-20251107-016
+- [ ] Schema validation and lints for prompts — TK-20251107-017
+
+### 🔄 Nice-to-Have Features (Future Enhancements)
+
+- [ ] Delta snapshots to reduce redundant payload size — TK-20251107-018
+- [ ] End-to-end tests for critical user journeys — TK-20251107-019
+- [ ] Playwright smoke tests for UI validation — TK-20251107-020
+- [ ] Performance benchmarks and guardrails — TK-20251107-021
+- [ ] Semantic release automation with changelogs — TK-20251107-022
+
+---
+
+## Implementation Notes
+
+### Architecture Differences
+- **PRM**: Electron desktop app with filesystem-based storage, React UI, comprehensive MCP server
+- **app-prompt-vault**: CLI-first with SQLite database, Node.js focused, minimal MCP surface
+
+### Migration Strategy
+1. **Phase 1 (High Priority)**: Core functionality (MCP, import/export, snapshots, VS Code, conversion)
+2. **Phase 2 (Medium Priority)**: Enhanced UX (diagnostics, analytics, health endpoints, plugins)
+3. **Phase 3 (Low Priority)**: Enterprise features (logging, metrics, desktop UI)
+4. **Phase 4 (Future)**: Advanced features and optimizations
+
+### Dependencies to Consider
+- MCP integration requires JSON schema definitions and tool implementations
+- Desktop UI would need Electron and React dependencies
+- Snapshots system needs compression and filesystem utilities
+- VS Code integration requires IPC and file watching capabilities
+
+### Testing Strategy
+- Unit tests for all new service methods
+- Integration tests for CLI commands
+- MCP contract tests for agent interfaces
+- E2E tests for critical workflows (if desktop UI is added)
+
+---
+
+## Risk Assessment
+
+### High Risk
+- MCP integration: Complex JSON schemas and tool contracts
+- Desktop UI: Significant architecture change from CLI-first
+- Snapshots: File compression and restoration edge cases
+
+### Medium Risk
+- Import/export: File validation and format detection
+- VS Code integration: Platform-specific binary detection
+- Plugin system: Extension loading and sandboxing
+
+### Low Risk
+- Diagnostics: Read-only operations with clear error boundaries
+- Analytics: Aggregation queries with fallbacks
+- Health endpoints: HTTP server with minimal surface area</content>
+<parameter name="filePath">c:\Users\Nobod\Documents\GitHub\app-prompt-vault\TASKLIST.md

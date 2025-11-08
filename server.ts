@@ -70,6 +70,7 @@ const service = new PromptVaultService(database, {
   telemetry: observability.telemetry,
   logger: logger.child({ component: "service" }),
   plugins: [createAuditTrailPlugin(), createOperationalTelemetryPlugin()],
+  limits: config.limits,
 });
 
 const app = express();
@@ -83,7 +84,7 @@ app.use(
 );
 
 if (config.allowedOrigins && config.allowedOrigins.length > 0) {
-  app.use(cors({ origin: config.allowedOrigins }));
+  app.use(cors({ origin: [...config.allowedOrigins] }));
 } else {
   app.use(cors());
 }
@@ -155,6 +156,7 @@ app.use(
     indicator: observability.indicator,
     registry: observability.telemetry.registry,
     logger: logger.child({ component: "observability-router" }),
+    service,
   })
 );
 

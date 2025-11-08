@@ -61,15 +61,16 @@ describe("PromptVaultService", () => {
     const prompt = service.createPrompt({
       id: randomUUID(),
       slug: "versioned",
-      title: "Versioned Prompt",
+      title: "Versioned",
       description: undefined,
       body: "Initial",
+      format: "markdown",
       semanticVersion: "1.0.0",
       tags: [],
       changelog: undefined,
     });
 
-    const version = service.addVersion(prompt.id, "Updated", "1.1.0", "Improvements");
+    const version = service.addVersion(prompt.id, "Updated", "1.1.0", "markdown", "Improvements");
     expect(version.semanticVersion).toEqual("1.1.0");
     const refreshed = service.getPrompt(prompt.id);
     expect(refreshed.latestVersion?.semanticVersion).toEqual("1.1.0");
@@ -84,6 +85,7 @@ describe("PromptVaultService", () => {
       title: "Timed",
       description: undefined,
       body: "Initial",
+      format: "markdown",
       semanticVersion: "1.0.0",
       tags: [],
       changelog: undefined,
@@ -95,7 +97,7 @@ describe("PromptVaultService", () => {
     const future = new Date(initial.updatedAt.getTime() + 1_000);
     vi.setSystemTime(future);
 
-    service.addVersion(prompt.id, "Updated body", "1.0.1");
+    service.addVersion(prompt.id, "Updated body", "1.0.1", "markdown");
 
     vi.useRealTimers();
     const refreshed = service.getPrompt(prompt.id);
@@ -289,7 +291,7 @@ describe("PromptVaultService", () => {
       changelog: undefined,
     });
 
-    service.addVersion(promptId, "Body 2", "1.0.1");
+    service.addVersion(promptId, "Body 2", "1.0.1", "markdown");
     service.tagPrompt(promptId, ["beta"]);
     service.untagPrompt(promptId, ["beta"]);
 
@@ -309,8 +311,8 @@ describe("PromptRepository", () => {
 
     const prompt: Prompt = {
       id: randomUUID(),
-      slug: "repo-prompt",
-      title: "Repo Prompt",
+      slug: "tag-cleanup",
+      title: "Tag Cleanup",
       description: undefined,
       tags: [],
       createdAt: timestamp,
@@ -322,6 +324,7 @@ describe("PromptRepository", () => {
       promptId: prompt.id,
       semanticVersion: "1.0.0",
       body: "Body",
+      format: "markdown",
       changelog: undefined,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -359,8 +362,8 @@ describe("PromptRepository", () => {
 
     const prompt: Prompt = {
       id: randomUUID(),
-      slug: "tag-cleanup",
-      title: "Tag Cleanup",
+      slug: "tag-upsert",
+      title: "Tag Upsert",
       description: undefined,
       tags: [],
       createdAt: timestamp,
@@ -372,6 +375,7 @@ describe("PromptRepository", () => {
       promptId: prompt.id,
       semanticVersion: "1.0.0",
       body: "Body",
+      format: "markdown",
       changelog: undefined,
       createdAt: timestamp,
       updatedAt: timestamp,

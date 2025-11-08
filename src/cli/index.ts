@@ -7,7 +7,9 @@ import chalk from "chalk";
 import { randomUUID } from "node:crypto";
 import { PromptVaultService } from "../services/PromptVaultService.js";
 import { bootstrapObservabilityFromEnv } from "../observability/index.js";
-import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from "../extensions/index.js";
+import { createAuditTrailPlugin, createOperationalTelemetryPlugin, type PromptVaultPlugin } from "../extensions/index.js";
+import fs from "fs/promises";
+import path from "path";
 
 const program = new Command();
 
@@ -51,10 +53,26 @@ async function useService<T>(
   observability.indicator.setReadiness({ status: "degraded", details: { reason: "connecting" } });
   const database = new Database(dbPath);
   observability.indicator.setReadiness({ status: "ok" });
+
+  // Load plugins
+  const plugins = await loadPlugins();
+
+  // Load limits from environment variables
+  const maxFileSizeBytes = process.env.PROMPT_VAULT_MAX_FILE_SIZE_BYTES
+    ? Number.parseInt(process.env.PROMPT_VAULT_MAX_FILE_SIZE_BYTES, 10)
+    : 10 * 1024 * 1024; // 10MB default
+  const maxPromptContentLength = process.env.PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH
+    ? Number.parseInt(process.env.PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH, 10)
+    : 100 * 1024; // 100KB default
+
   const service = new PromptVaultService(database, {
     telemetry,
     logger: logger.child({ component: "service", dbPath }),
-    plugins: [createAuditTrailPlugin(), createOperationalTelemetryPlugin()],
+    plugins,
+    limits: {
+      maxFileSizeBytes,
+      maxPromptContentLength,
+    },
   });
   try {
     return await handler(service, database);
@@ -65,6 +83,55 @@ async function useService<T>(
     database.close();
     observability.indicator.setReadiness({ status: "degraded", details: { reason: "idle" } });
   }
+}
+
+/**
+ * Load plugins from configured directories and built-in plugins.
+ */
+async function loadPlugins(): Promise<PromptVaultPlugin[]> {
+  const plugins: PromptVaultPlugin[] = [
+    createAuditTrailPlugin(),
+    createOperationalTelemetryPlugin(),
+  ];
+
+  // Load external plugins from environment or default directories
+  const pluginDirs = process.env.PROMPT_VAULT_PLUGIN_DIRS?.split(',') || [
+    './plugins',
+    path.join(process.cwd(), 'plugins'),
+  ];
+
+  try {
+    const { PluginLoader } = await import('../extensions/index.js');
+    const loader = new PluginLoader({
+      pluginDirs,
+      logger: logger.child({ component: 'plugin-loader' }),
+    });
+
+    const discoveredPlugins = loader.discoverPlugins();
+    logger.info("discovered_external_plugins", { count: discoveredPlugins.length });
+
+    for (const metadata of discoveredPlugins) {
+      try {
+        const plugin = await loader.loadPlugin(metadata);
+        if (plugin) {
+          plugins.push(plugin);
+          logger.info("loaded_external_plugin", { name: plugin.name });
+        }
+      } catch (error) {
+        logger.warn("failed_to_load_external_plugin", {
+          name: metadata.name,
+          path: metadata.path,
+          error: error instanceof Error ? error.message : error,
+        });
+      }
+    }
+  } catch (error) {
+    logger.warn("plugin_discovery_failed", {
+      error: error instanceof Error ? error.message : error,
+    });
+  }
+
+  return plugins;
 }
 
 program
@@ -79,6 +146,7 @@ program
   .requiredOption("--title <title>", "Title for the prompt")
   .requiredOption("--body <body>", "Prompt body text")
   .option("--version <version>", "Semantic version", "1.0.0")
+  .option("--format <format>", "Content format (markdown, yaml, json)", "markdown")
   .option("--description <description>", "Optional description")
   .option("--tags <tags>", "Comma separated tag labels", "")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
@@ -97,12 +165,13 @@ program
         title: options.title,
         description: options.description,
         body: options.body,
+        format: options.format,
         semanticVersion: options.version,
         tags,
         changelog: undefined,
       });
 
-      console.log(chalk.green(`Created prompt ${prompt.title} (${prompt.slug})`));
+      console.log(chalk.green(`Created prompt ${prompt.title} (${prompt.slug}) in ${options.format} format`));
       telemetry.recordEvent("cli.prompt_created", { promptId: prompt.id });
     });
   });
@@ -112,6 +181,7 @@ program
   .description("List prompts with optional filters")
   .option("--text <text>", "Search text")
   .option("--tags <tags>", "Comma separated tag filters")
+  .option("--formats <formats>", "Comma separated format filters")
   .option("--page <page>", "Page number", "0")
   .option("--page-size <size>", "Page size", "10")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
@@ -123,9 +193,16 @@ program
             .map((tag) => tag.trim())
             .filter(Boolean)
         : undefined;
+      const formats = options.formats
+        ? (options.formats as string)
+            .split(",")
+            .map((format) => format.trim())
+            .filter(Boolean) as ("markdown" | "yaml" | "json")[]
+        : undefined;
       const result = service.searchPrompts({
         text: options.text,
         tags,
+        formats,
         page: Number.parseInt(options.page as string, 10),
         pageSize: Number.parseInt(options.pageSize as string, 10),
       });
@@ -140,7 +217,7 @@ program
         if (prompt.latestVersion) {
           console.log(
             chalk.gray(
-              `  latest v${prompt.latestVersion.semanticVersion} updated ${prompt.latestVersion.updatedAt.toISOString()}`
+              `  latest v${prompt.latestVersion.semanticVersion} (${prompt.latestVersion.format}) updated ${prompt.latestVersion.updatedAt.toISOString()}`
             )
           );
         }
@@ -191,32 +268,431 @@ program
   .requiredOption("--id <id>", "Prompt identifier")
   .requiredOption("--body <body>", "Prompt body text")
   .option("--version <version>", "Semantic version", "1.0.0")
+  .option("--format <format>", "Content format (markdown, yaml, json)", "markdown")
   .option("--changelog <changelog>", "Changelog text")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
     await useService(options.db, (service) => {
-      const version = service.addVersion(options.id, options.body, options.version, options.changelog);
-      console.log(chalk.green(`Added version ${version.semanticVersion} to prompt ${options.id}`));
+      const version = service.addVersion(options.id, options.body, options.version, options.format, options.changelog);
+      console.log(chalk.green(`Added version ${version.semanticVersion} to prompt ${options.id} in ${options.format} format`));
     });
   });
 
 program
-  .command("doctor")
-  .description("Run integrity checks and summarise prompt vault health")
+  .command("import")
+  .description("Import a prompt from an external file")
+  .requiredOption("--file <path>", "Path to the file to import")
+  .option("--name <name>", "Name for the imported prompt (defaults to filename)")
+  .option("--tags <tags>", "Comma separated tag labels", "")
+  .option("--format <format>", "Content format (markdown, yaml, json) - auto-detected if not specified")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service, database) => {
-      const integrity = database.prepare("PRAGMA integrity_check;").get() as { integrity_check: string };
-      const promptCountRow = database.prepare("SELECT COUNT(*) as count FROM prompts;").get() as { count: number };
-      const tagCountRow = database.prepare("SELECT COUNT(*) as count FROM tags;").get() as { count: number };
-      const sample = service.searchPrompts({ page: 0, pageSize: 5 });
-      console.log(chalk.bold("Prompt Vault Doctor"));
-      console.log(`Integrity: ${integrity.integrity_check}`);
-      console.log(`Prompts: ${promptCountRow.count}`);
-      console.log(`Tags: ${tagCountRow.count}`);
-      console.log(`Sample Prompts: ${sample.prompts.map((prompt) => prompt.slug).join(", ") || "<none>"}`);
+    await useService(options.db, (service) => {
+      const tags = options.tags
+        ? (options.tags as string)
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+        : [];
+
+      const prompt = service.importPromptFromFile(options.file, {
+        name: options.name,
+        tags,
+        format: options.format,
+      });
+
+      console.log(chalk.green(`Imported prompt "${prompt.title}" (${prompt.slug}) from ${options.file}`));
+      telemetry.recordEvent("cli.prompt_imported", { promptId: prompt.id, filePath: options.file });
     });
   });
+
+program
+  .command("export")
+  .description("Export a prompt to a file")
+  .requiredOption("--id <id>", "Prompt identifier")
+  .requiredOption("--output <path>", "Path where to save the exported file")
+  .option("--format <format>", "Target format (markdown, yaml, json)")
+  .option("--include-metadata", "Include metadata in the exported file")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      service.exportPromptToFile(options.id, options.output, {
+        format: options.format,
+        includeMetadata: options.includeMetadata,
+      });
+
+      console.log(chalk.green(`Exported prompt ${options.id} to ${options.output}`));
+      telemetry.recordEvent("cli.prompt_exported", { promptId: options.id, filePath: options.output });
+    });
+  });
+
+program
+  .command("backup")
+  .description("Create a compressed backup snapshot of the database")
+  .requiredOption("--output <path>", "Path where the compressed snapshot should be saved")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, async (service) => {
+      await service.createSnapshot(options.output);
+      console.log(chalk.green(`Database snapshot created: ${options.output}`));
+    });
+  });
+
+program
+  .command("restore")
+  .description("Restore database from a compressed snapshot")
+  .requiredOption("--input <path>", "Path to the compressed snapshot file")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, async (service) => {
+      const isValid = await service.validateSnapshot(options.input);
+      if (!isValid) {
+        console.error(chalk.red(`Invalid or corrupted snapshot file: ${options.input}`));
+        process.exit(1);
+      }
+
+      await service.restoreSnapshot(options.input);
+      console.log(chalk.green(`Database restored from snapshot: ${options.input}`));
+    });
+  });
+
+program
+  .command("info")
+  .description("Get information about a snapshot file")
+  .requiredOption("--input <path>", "Path to the snapshot file")
+  .action(async (options) => {
+    const { SnapshotManager } = await import("../domain/snapshot.js");
+    const info = await SnapshotManager.getSnapshotInfo(options.input);
+    console.log(chalk.bold("Snapshot Information"));
+    console.log(`Path: ${options.input}`);
+    console.log(`Size: ${info.size} bytes`);
+    console.log(`Created: ${info.created.toISOString()}`);
+    console.log(`Compressed: ${info.compressed ? "Yes" : "No"}`);
+  });
+
+program
+  .command("delete")
+  .description("Soft delete a prompt (move to trash)")
+  .requiredOption("--id <id>", "Prompt identifier")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      service.softDeletePrompt(options.id);
+      console.log(chalk.green(`Prompt ${options.id} moved to trash`));
+    });
+  });
+
+program
+  .command("restore-deleted")
+  .description("Restore a soft deleted prompt from trash")
+  .requiredOption("--id <id>", "Prompt identifier")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      service.restorePrompt(options.id);
+      console.log(chalk.green(`Prompt ${options.id} restored from trash`));
+    });
+  });
+
+program
+  .command("list-deleted")
+  .description("List all soft deleted prompts in trash")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      const deletedPrompts = service.getDeletedPrompts();
+
+      if (deletedPrompts.length === 0) {
+        console.log(chalk.yellow("No deleted prompts found."));
+        return;
+      }
+
+      console.log(chalk.bold(`Found ${deletedPrompts.length} deleted prompts:`));
+      console.log();
+
+      for (const prompt of deletedPrompts) {
+        console.log(chalk.red(`- ${prompt.title} (${prompt.slug})`));
+        console.log(chalk.gray(`  ID: ${prompt.id}`));
+        if (prompt.description) {
+          console.log(chalk.gray(`  Description: ${prompt.description}`));
+        }
+        if (prompt.deletedAt) {
+          console.log(chalk.gray(`  Deleted: ${prompt.deletedAt.toISOString()}`));
+        }
+        if (prompt.tags.length > 0) {
+          console.log(chalk.magenta(`  Tags: ${prompt.tags.map((tag) => tag.label).join(", ")}`));
+        }
+        console.log();
+      }
+    });
+  });
+
+program
+  .command("permanently-delete")
+  .description("Permanently delete a prompt and all its data (cannot be undone)")
+  .requiredOption("--id <id>", "Prompt identifier")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      service.permanentlyDeletePrompt(options.id);
+      console.log(chalk.red(`Prompt ${options.id} permanently deleted`));
+    });
+  });
+
+program
+  .command("edit")
+  .description("Open a prompt in VS Code for editing")
+  .requiredOption("--id <id>", "Prompt identifier")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, async (service) => {
+      const prompt = service.getPrompt(options.id);
+      if (!prompt.latestVersion) {
+        console.error(chalk.red(`Prompt ${options.id} has no content to edit`));
+        process.exit(1);
+      }
+
+      // Create a temporary file for VS Code to edit
+      const tempDir = path.join(process.cwd(), 'temp');
+      await fs.mkdir(tempDir, { recursive: true });
+
+      const extension = prompt.latestVersion.format === 'markdown' ? 'md' :
+                       prompt.latestVersion.format === 'yaml' ? 'yaml' :
+                       prompt.latestVersion.format === 'json' ? 'json' : 'txt';
+      const tempFile = path.join(tempDir, `${prompt.slug}.${extension}`);
+
+      // Write current content to temp file
+      await fs.writeFile(tempFile, prompt.latestVersion.body, 'utf-8');
+
+      console.log(chalk.green(`Opening ${prompt.title} in VS Code...`));
+      console.log(chalk.gray(`Edit the file and save your changes. The prompt will be updated automatically.`));
+      console.log(chalk.gray(`File: ${tempFile}`));
+
+      try {
+        // Open in VS Code
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execAsync = promisify(exec);
+
+        await execAsync(`code "${tempFile}"`);
+
+        // Wait for user to finish editing (they can close VS Code when done)
+        console.log(chalk.yellow(`\nPress Enter when you've finished editing in VS Code...`));
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+        await new Promise<void>((resolve) => {
+          process.stdin.once('data', () => {
+            process.stdin.setRawMode(false);
+            process.stdin.pause();
+            resolve();
+          });
+        });
+
+        // Read the edited content
+        const editedContent = await fs.readFile(tempFile, 'utf-8');
+
+        // Check if content changed
+        if (editedContent !== prompt.latestVersion.body) {
+          // Generate next version number
+          const currentVersion = prompt.latestVersion.semanticVersion;
+          const versionParts = currentVersion.split('.');
+          const patch = parseInt(versionParts[2] || '0', 10) + 1;
+          const nextVersion = `${versionParts[0]}.${versionParts[1]}.${patch}`;
+
+          // Create new version with edited content
+          service.addVersion(
+            options.id,
+            editedContent,
+            nextVersion,
+            prompt.latestVersion.format,
+            'Edited in VS Code'
+          );
+          console.log(chalk.green(`✓ Prompt "${prompt.title}" updated successfully!`));
+        } else {
+          console.log(chalk.blue(`No changes detected for prompt "${prompt.title}"`));
+        }
+
+        // Clean up temp file
+        await fs.unlink(tempFile);
+
+      } catch (error) {
+        console.error(chalk.red(`Failed to open in VS Code: ${error instanceof Error ? error.message : error}`));
+        process.exit(1);
+      }
+    });
+  });
+
+program
+  .command('diagnostics')
+  .description('Run comprehensive diagnostics on the prompt library')
+  .option('--db <path>', 'Path to SQLite database', defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      const result = service.runDiagnostics();
+
+      console.log(chalk.bold('\n📊 Library Diagnostics Report\n'));
+
+      console.log(chalk.blue('Summary:'));
+      console.log(`  Total Prompts: ${result.summary.totalPrompts}`);
+      console.log(`  Total Versions: ${result.summary.totalVersions}`);
+      console.log(`  Total Tags: ${result.summary.totalTags}`);
+      console.log(`  Deleted Prompts: ${result.summary.deletedPrompts}`);
+      console.log(`  Orphaned Tags: ${result.summary.orphanedTags}`);
+      console.log(`  Invalid Content: ${result.summary.invalidContent}`);
+
+      if (result.issues.length > 0) {
+        console.log(chalk.yellow('\n⚠️  Issues Found:'));
+        for (const issue of result.issues) {
+          const icon = issue.type === 'error' ? chalk.red('❌') : chalk.yellow('⚠️');
+          const promptInfo = issue.promptId ? ` (Prompt: ${issue.promptId})` : '';
+          console.log(`  ${icon} ${issue.message}${promptInfo}`);
+          if (issue.details) {
+            console.log(`    Details: ${issue.details}`);
+          }
+        }
+      } else {
+        console.log(chalk.green('\n✅ No issues found!'));
+      }
+    });
+  });
+
+program
+  .command('stats')
+  .description('Display library statistics and analytics')
+  .option('--db <path>', 'Path to SQLite database', defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      const stats = service.getLibraryStats();
+
+      console.log(chalk.bold('\n📈 Library Statistics\n'));
+
+      console.log(chalk.blue('Prompts:'));
+      console.log(`  Total: ${stats.prompts.total}`);
+      console.log(`  Active: ${stats.prompts.active}`);
+      console.log(`  Deleted: ${stats.prompts.deleted}`);
+      console.log(`  By Format:`, stats.prompts.byFormat);
+
+      console.log(chalk.blue('\nTags:'));
+      console.log(`  Total: ${stats.tags.total}`);
+      console.log(`  Average per Prompt: ${stats.tags.averagePerPrompt.toFixed(1)}`);
+      console.log(`  Most Used:`);
+      for (const tag of stats.tags.mostUsed) {
+        console.log(`    ${tag.label}: ${tag.count}`);
+      }
+
+      console.log(chalk.blue('\nVersions:'));
+      console.log(`  Total: ${stats.versions.total}`);
+      console.log(`  Average per Prompt: ${stats.versions.averagePerPrompt.toFixed(1)}`);
+
+      console.log(chalk.blue('\nActivity (Last 7 days):'));
+      console.log(`  Created: ${stats.activity.createdThisWeek}`);
+      console.log(`  Updated: ${stats.activity.updatedThisWeek}`);
+      console.log(`  Deleted: ${stats.activity.deletedThisWeek}`);
+    });
+  });
+
+program
+  .command('repair')
+  .description('Repair common data integrity issues')
+  .option('--db <path>', 'Path to SQLite database', defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      const result = service.repairIntegrity();
+
+      console.log(chalk.bold('\n🔧 Integrity Repair Report\n'));
+
+      if (result.repairs.length > 0) {
+        console.log(chalk.green('Repairs Performed:'));
+        for (const repair of result.repairs) {
+          console.log(`  ✅ ${repair.description} (${repair.count} items)`);
+        }
+      } else {
+        console.log(chalk.green('✅ No repairs needed!'));
+      }
+
+      if (result.errors.length > 0) {
+        console.log(chalk.red('\n❌ Repair Errors:'));
+        for (const error of result.errors) {
+          console.log(`  ${error.message}`);
+          if (error.details) {
+            console.log(`    Details: ${error.details}`);
+          }
+        }
+      }
+    });
+  });
+
+program
+  .command('plugins')
+  .description('Manage plugins and connectors')
+  .addCommand(
+    new Command('list')
+      .description('List all registered plugins and connectors')
+      .option('--db <path>', 'Path to SQLite database', defaultDbPath)
+      .action(async (options) => {
+        await useService(options.db, (service) => {
+          const host = service.getPluginHost();
+
+          console.log(chalk.bold('\n🔌 Registered Plugins\n'));
+
+          const plugins = host.getPlugins();
+          if (plugins.length === 0) {
+            console.log(chalk.yellow('No plugins registered.'));
+          } else {
+            for (const plugin of plugins) {
+              console.log(chalk.cyan(`- ${plugin.name} v${plugin.version ?? '1.0.0'}`));
+              if (plugin.description) {
+                console.log(chalk.gray(`  ${plugin.description}`));
+              }
+              if (plugin.connectors && plugin.connectors.length > 0) {
+                console.log(chalk.gray(`  Connectors: ${plugin.connectors.map((c: { name: string }) => c.name).join(', ')}`));
+              }
+            }
+          }
+
+          console.log(chalk.bold('\n🔗 Registered Connectors\n'));
+
+          const connectors = host.getConnectors();
+          if (connectors.length === 0) {
+            console.log(chalk.yellow('No connectors registered.'));
+          } else {
+            for (const connector of connectors) {
+              console.log(chalk.magenta(`- ${connector.name} (${connector.type})`));
+            }
+          }
+        });
+      })
+  )
+  .addCommand(
+    new Command('discover')
+      .description('Discover external plugins in specified directories')
+      .requiredOption('--dirs <dirs>', 'Comma-separated list of directories to scan')
+      .action(async (options) => {
+        const { PluginLoader } = await import('../extensions/index.js');
+        const dirs = (options.dirs as string).split(',').map(d => d.trim());
+
+        const loader = new PluginLoader({
+          pluginDirs: dirs,
+          logger: logger.child({ component: 'plugin-discovery' }),
+        });
+
+        console.log(chalk.bold('\n🔍 Plugin Discovery Results\n'));
+
+        const plugins = loader.discoverPlugins();
+        if (plugins.length === 0) {
+          console.log(chalk.yellow('No plugins found in specified directories.'));
+        } else {
+          console.log(chalk.green(`Found ${plugins.length} plugin(s):`));
+          for (const plugin of plugins) {
+            console.log(chalk.cyan(`- ${plugin.name} v${plugin.version}`));
+            console.log(chalk.gray(`  Path: ${plugin.path}`));
+            if (plugin.description) {
+              console.log(chalk.gray(`  Description: ${plugin.description}`));
+            }
+          }
+        }
+      })
+  );
 
 program.parseAsync(process.argv).catch((error) => {
   console.error(chalk.red(error instanceof Error ? error.message : String(error)));

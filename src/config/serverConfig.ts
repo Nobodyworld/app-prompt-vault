@@ -1,6 +1,10 @@
 import { resolve } from "node:path";
 import { z } from "zod";
 
+// Default configuration values
+const DEFAULT_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+const DEFAULT_MAX_PROMPT_CONTENT_LENGTH = 100 * 1024; // 100KB
+
 export interface EnvironmentVariables {
   readonly [key: string]: string | undefined;
 }
@@ -14,6 +18,8 @@ export interface ServerConfigOptions {
     readonly metricsEnabled?: boolean;
     readonly metricsPort?: number;
     readonly staticDirectory?: string | null;
+    readonly maxFileSizeBytes?: number;
+    readonly maxPromptContentLength?: number;
   };
 }
 
@@ -26,6 +32,10 @@ export interface ServerConfig {
     readonly port?: number;
   };
   readonly staticDirectory?: string;
+  readonly limits: {
+    readonly maxFileSizeBytes: number;
+    readonly maxPromptContentLength: number;
+  };
 }
 
 /** Error thrown when configuration values fail validation. Contains a flattened list of issues to display to operators. */
@@ -215,6 +225,34 @@ export function loadServerConfig(options: ServerConfigOptions = {}): LoadConfigR
 
   const staticDirectory = normalizeStaticDirectory(env.PROMPT_VAULT_STATIC_DIR, options.defaults?.staticDirectory ?? undefined);
 
+  const maxFileSizeBytesResult = (() => {
+    const raw = env.PROMPT_VAULT_MAX_FILE_SIZE_BYTES ?? options.defaults?.maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
+    try {
+      const parsed = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new Error("Must be a positive number");
+      }
+      return parsed;
+    } catch (error) {
+      issues.push(`PROMPT_VAULT_MAX_FILE_SIZE_BYTES: ${error instanceof Error ? error.message : String(error)}`);
+      return DEFAULT_MAX_FILE_SIZE_BYTES;
+    }
+  })();
+
+  const maxPromptContentLengthResult = (() => {
+    const raw = env.PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH ?? options.defaults?.maxPromptContentLength ?? DEFAULT_MAX_PROMPT_CONTENT_LENGTH;
+    try {
+      const parsed = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new Error("Must be a positive number");
+      }
+      return parsed;
+    } catch (error) {
+      issues.push(`PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH: ${error instanceof Error ? error.message : String(error)}`);
+      return DEFAULT_MAX_PROMPT_CONTENT_LENGTH;
+    }
+  })();
+
   if (!metricsEnabledResult && metricsPortResult !== undefined) {
     warnings.push("PROMPT_VAULT_METRICS_PORT is set but PROMPT_VAULT_METRICS is disabled. Metrics will remain disabled.");
   }
@@ -233,6 +271,10 @@ export function loadServerConfig(options: ServerConfigOptions = {}): LoadConfigR
         port: metricsEnabledResult ? metricsPortResult : undefined,
       },
       staticDirectory,
+      limits: {
+        maxFileSizeBytes: maxFileSizeBytesResult,
+        maxPromptContentLength: maxPromptContentLengthResult,
+      },
     },
     warnings,
   };

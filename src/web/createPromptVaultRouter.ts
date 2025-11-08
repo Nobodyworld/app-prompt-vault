@@ -21,6 +21,7 @@ const promptCreateSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters long"),
   description: z.string().max(2000).optional(),
   body: z.string().min(1, "Prompt body is required"),
+  format: z.enum(["markdown", "yaml", "json"]).default("markdown"),
   semanticVersion: semanticVersionSchema.default("1.0.0"),
   tags: z.array(z.string().min(1)).default([]),
   changelog: z.string().max(2000).optional(),
@@ -48,6 +49,7 @@ const promptSearchSchema = z.object({
 
 const versionCreateSchema = z.object({
   body: z.string().min(1, "Prompt body is required"),
+  format: z.enum(["markdown", "yaml", "json"]).default("markdown"),
   semanticVersion: semanticVersionSchema.default("1.0.0"),
   changelog: z.string().max(2000).optional(),
 });
@@ -143,9 +145,22 @@ export function createPromptVaultRouter(
         request.params.promptId,
         payload.body,
         payload.semanticVersion,
+        payload.format,
         payload.changelog
       );
       response.status(201).json({ data: version });
+    })
+  );
+
+  router.post(
+    "/prompts/:promptId/convert",
+    asyncHandler("convert-prompt", (request, response) => {
+      const { targetFormat } = z.object({
+        targetFormat: z.enum(["markdown", "yaml", "json"])
+      }).parse(request.body);
+
+      const converted = service.convertPrompt(request.params.promptId, targetFormat);
+      response.json({ data: { content: converted, format: targetFormat } });
     })
   );
 

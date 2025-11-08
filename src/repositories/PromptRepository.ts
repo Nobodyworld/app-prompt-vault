@@ -7,7 +7,11 @@ import type {
   PromptId,
   PromptSearchResult,
   PromptVersion,
+  PromptFormat,
   Tag,
+  AdvancedPromptSearchResult,
+  PromptSearchMatch,
+  SearchMatch,
 } from "../domain/models.js";
 import { DuplicatePromptError, PromptNotFoundError } from "../domain/errors.js";
 import type { Telemetry } from "../observability/telemetry.js";
@@ -23,13 +27,15 @@ interface PromptRepositoryOptions {
 interface PromptRow {
   readonly id: string;
   readonly slug: string;
-  readonly title: string;
+  readonly title: string | null;
   readonly description: string | null;
   readonly created_at: string;
   readonly updated_at: string;
+  readonly deleted_at: string | null;
   readonly version_id: string | null;
   readonly semantic_version: string | null;
   readonly body: string | null;
+  readonly format: string | null;
   readonly changelog: string | null;
   readonly version_created_at: string | null;
   readonly version_updated_at: string | null;
@@ -60,6 +66,14 @@ export class PromptRepository {
     this.telemetry.withSpan("repository.applyMigrations", {}, () => {
       this.applyMigrations();
     });
+  }
+
+  /**
+   * Get the underlying database instance.
+   * @returns The SQLite database instance.
+   */
+  public getDatabase(): Database.Database {
+    return this.database;
   }
 
   /**
@@ -98,8 +112,8 @@ export class PromptRepository {
     return this.telemetry.withSpan("repository.getPromptById", { promptId }, () => {
       const row = this.database
         .prepare(
-          `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at,
-                  pv.id AS version_id, pv.semantic_version, pv.body, pv.changelog,
+          `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+                  pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
                   pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
            FROM prompts p
            LEFT JOIN prompt_versions pv ON pv.id = (
@@ -108,7 +122,7 @@ export class PromptRepository {
              ORDER BY datetime(created_at) DESC, rowid DESC
              LIMIT 1
            )
-           WHERE p.id = @promptId`
+           WHERE p.id = @promptId AND p.deleted_at IS NULL`
         )
         .get({ promptId }) as PromptRow | undefined;
 
@@ -124,24 +138,25 @@ export class PromptRepository {
   }
 
   /**
-   * Search prompts optionally filtering by text or tags.
+   * Search prompts optionally filtering by text, tags, or formats.
    * @param query - Search filters.
    */
   public searchPrompts(query: {
     readonly text?: string;
     readonly tags?: readonly string[];
+    readonly formats?: readonly string[];
     readonly page: number;
     readonly pageSize: number;
   }): PromptSearchResult {
     return this.telemetry.withSpan(
       "repository.searchPrompts",
-      { text: query.text ?? "", tags: query.tags?.length ?? 0, page: query.page },
+      { text: query.text ?? "", tags: query.tags?.length ?? 0, formats: query.formats?.length ?? 0, page: query.page },
       () => {
         const whereClauses: string[] = [];
         const parameters: Record<string, unknown> = {};
 
         if (query.text) {
-          whereClauses.push("(p.title LIKE @text OR p.description LIKE @text)");
+          whereClauses.push("(p.title LIKE @text OR p.description LIKE @text OR pv.body LIKE @text)");
           parameters.text = `%${query.text}%`;
         }
 
@@ -156,18 +171,25 @@ export class PromptRepository {
           });
         }
 
-        const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+        if (query.formats && query.formats.length > 0) {
+          whereClauses.push(`pv.format IN (${query.formats.map((_, index) => `@format${index}`).join(", ")})`);
+          query.formats.forEach((format, index) => {
+            parameters[`format${index}`] = format;
+          });
+        }
+
+        const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")} AND p.deleted_at IS NULL` : "WHERE p.deleted_at IS NULL";
         const totalRow = this.database
-          .prepare(`SELECT COUNT(*) as count FROM prompts p ${whereClause}`)
+          .prepare(`SELECT COUNT(DISTINCT p.id) as count FROM prompts p LEFT JOIN prompt_versions pv ON pv.prompt_id = p.id ${whereClause}`)
           .get(parameters) as { count: number };
 
         const rows = this.database
           .prepare(
-            `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at,
-                pv.id AS version_id, pv.semantic_version, pv.body, pv.changelog,
+            `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+                pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
                 pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
          FROM prompts p
-         LEFT JOIN prompt_versions pv ON pv.id = (
+         INNER JOIN prompt_versions pv ON pv.id = (
            SELECT id FROM prompt_versions
            WHERE prompt_id = p.id
            ORDER BY datetime(created_at) DESC, rowid DESC
@@ -190,6 +212,292 @@ export class PromptRepository {
         };
       }
     );
+  }
+
+  /**
+   * Advanced search prompts with detailed match information, excerpts, and highlighting.
+   * @param query - Search filters with advanced options.
+   */
+  public advancedSearchPrompts(query: {
+    readonly text?: string;
+    readonly tags?: readonly string[];
+    readonly formats?: readonly string[];
+    readonly page: number;
+    readonly pageSize: number;
+    readonly caseSensitive: boolean;
+    readonly maxResults: number;
+    readonly maxMatchesPerRule: number;
+    readonly maxTotalMatches: number;
+  }): AdvancedPromptSearchResult {
+    return this.telemetry.withSpan(
+      "repository.advancedSearchPrompts",
+      {
+        text: query.text ?? "",
+        tags: query.tags?.length ?? 0,
+        formats: query.formats?.length ?? 0,
+        page: query.page,
+        caseSensitive: query.caseSensitive
+      },
+      () => {
+        const whereClauses: string[] = [];
+        const parameters: Record<string, unknown> = {};
+
+        if (query.text) {
+          whereClauses.push("(p.title LIKE @text OR p.description LIKE @text OR pv.body LIKE @text)");
+          parameters.text = `%${query.text}%`;
+        }
+
+        if (query.tags && query.tags.length > 0) {
+          whereClauses.push(`p.id IN (
+        SELECT pt.prompt_id FROM prompt_tags pt
+        INNER JOIN tags t ON t.id = pt.tag_id
+        WHERE t.label IN (${query.tags.map((_, index) => `@tag${index}`).join(", ")})
+      )`);
+          query.tags.forEach((tag, index) => {
+            parameters[`tag${index}`] = tag;
+          });
+        }
+
+        if (query.formats && query.formats.length > 0) {
+          whereClauses.push(`pv.format IN (${query.formats.map((_, index) => `@format${index}`).join(", ")})`);
+          query.formats.forEach((format, index) => {
+            parameters[`format${index}`] = format;
+          });
+        }
+
+        const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")} AND p.deleted_at IS NULL` : "WHERE p.deleted_at IS NULL";
+        const totalRow = this.database
+          .prepare(`SELECT COUNT(DISTINCT p.id) as count FROM prompts p LEFT JOIN prompt_versions pv ON pv.prompt_id = p.id ${whereClause}`)
+          .get(parameters) as { count: number };
+
+        const rows = this.database
+          .prepare(
+            `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+                pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
+                pv.created_at AS version_created_at, pv.updated_at AS version_created_at
+         FROM prompts p
+         INNER JOIN prompt_versions pv ON pv.id = (
+           SELECT id FROM prompt_versions
+           WHERE prompt_id = p.id
+           ORDER BY datetime(created_at) DESC, rowid DESC
+           LIMIT 1
+         )
+         ${whereClause}
+         ORDER BY p.updated_at DESC
+         LIMIT @limit OFFSET @offset`
+          )
+          .all({ ...parameters, limit: Math.min(query.pageSize, query.maxResults), offset: query.page * query.pageSize }) as PromptRow[];
+
+        const tagsByPrompt = this.fetchTagsForPrompts(rows.map((row) => row.id));
+        const matches: PromptSearchMatch[] = [];
+        let totalMatches = 0;
+
+        for (const row of rows) {
+          const prompt = this.mapPromptRow(row, tagsByPrompt.get(row.id) ?? []);
+          const promptMatches = this.findMatchesInPrompt(prompt, query.text, query.caseSensitive, query.maxMatchesPerRule);
+
+          if (promptMatches.length > 0 && totalMatches + promptMatches.length <= query.maxTotalMatches) {
+            matches.push({
+              prompt,
+              totalMatches: promptMatches.length,
+              matches: promptMatches,
+            });
+            totalMatches += promptMatches.length;
+          }
+
+          if (matches.length >= query.maxResults || totalMatches >= query.maxTotalMatches) {
+            break;
+          }
+        }
+
+        return {
+          matches,
+          page: query.page,
+          pageSize: query.pageSize,
+          total: totalRow.count,
+          totalMatches,
+        };
+      }
+    );
+  }
+
+  /**
+   * Find text matches within a prompt with excerpt generation.
+   * @param prompt - The prompt to search in.
+   * @param searchText - The text to search for.
+   * @param caseSensitive - Whether the search should be case sensitive.
+   * @param maxMatches - Maximum number of matches to return.
+   * @returns Array of search matches with excerpts.
+   */
+  private findMatchesInPrompt(
+    prompt: Prompt,
+    searchText?: string,
+    caseSensitive: boolean = false,
+    maxMatches: number = 3
+  ): SearchMatch[] {
+    if (!searchText) {
+      return [];
+    }
+
+    const matches: SearchMatch[] = [];
+    const searchTerm = caseSensitive ? searchText : searchText.toLowerCase();
+    const flags = caseSensitive ? 'g' : 'gi';
+    const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+
+    // Search in title
+    if (prompt.title) {
+      const text = caseSensitive ? prompt.title : prompt.title.toLowerCase();
+      let match;
+      while ((match = regex.exec(text)) !== null && matches.length < maxMatches) {
+        matches.push(this.createMatchExcerpt(prompt.title, match.index, match[0].length, 100));
+      }
+    }
+
+    // Search in description
+    if (prompt.description) {
+      const text = caseSensitive ? prompt.description : prompt.description.toLowerCase();
+      let match;
+      while ((match = regex.exec(text)) !== null && matches.length < maxMatches) {
+        matches.push(this.createMatchExcerpt(prompt.description, match.index, match[0].length, 100));
+      }
+    }
+
+    // Search in body
+    if (prompt.latestVersion?.body) {
+      const text = caseSensitive ? prompt.latestVersion.body : prompt.latestVersion.body.toLowerCase();
+      let match;
+      while ((match = regex.exec(text)) !== null && matches.length < maxMatches) {
+        matches.push(this.createMatchExcerpt(prompt.latestVersion.body, match.index, match[0].length, 150));
+      }
+    }
+
+    return matches;
+  }
+
+  /**
+   * Create a search match excerpt with context around the match.
+   * @param text - The full text to extract from.
+   * @param position - Position of the match in the text.
+   * @param length - Length of the matched text.
+   * @param contextLength - How much context to include around the match.
+   * @returns Search match with excerpt.
+   */
+  private createMatchExcerpt(text: string, position: number, length: number, contextLength: number): SearchMatch {
+    const start = Math.max(0, position - contextLength);
+    const end = Math.min(text.length, position + length + contextLength);
+    const excerpt = text.substring(start, end);
+
+    // Adjust position relative to the excerpt
+    const relativePosition = position - start;
+
+    return {
+      excerpt: excerpt.length < text.length ? `...${excerpt}...` : excerpt,
+      position: relativePosition,
+      length,
+    };
+  }
+
+  /**
+   * Soft delete a prompt by setting the deleted_at timestamp.
+   * @param promptId - Identifier of the prompt to delete.
+   * @param deletedAt - Timestamp when the prompt was deleted.
+   */
+  public softDeletePrompt(promptId: PromptId, deletedAt: Date = new Date()): void {
+    this.telemetry.withSpan("repository.softDeletePrompt", { promptId }, () => {
+      // First check if the prompt exists and is not already deleted
+      const existing = this.database
+        .prepare("SELECT id FROM prompts WHERE id = @promptId AND deleted_at IS NULL")
+        .get({ promptId }) as { id: string } | undefined;
+
+      if (!existing) {
+        this.logger.warn("repository_prompt_missing_or_deleted", { promptId });
+        throw new PromptNotFoundError(promptId);
+      }
+
+      this.database
+        .prepare("UPDATE prompts SET deleted_at = @deletedAt WHERE id = @promptId")
+        .run({ promptId, deletedAt: deletedAt.toISOString() });
+
+      this.logger.info("prompt_soft_deleted", { promptId });
+    });
+  }
+
+  /**
+   * Restore a soft deleted prompt by clearing the deleted_at timestamp.
+   * @param promptId - Identifier of the prompt to restore.
+   */
+  public restorePrompt(promptId: PromptId): void {
+    this.telemetry.withSpan("repository.restorePrompt", { promptId }, () => {
+      // Check if the prompt exists and is deleted
+      const existing = this.database
+        .prepare("SELECT id FROM prompts WHERE id = @promptId AND deleted_at IS NOT NULL")
+        .get({ promptId }) as { id: string } | undefined;
+
+      if (!existing) {
+        this.logger.warn("repository_prompt_missing_or_not_deleted", { promptId });
+        throw new PromptNotFoundError(promptId);
+      }
+
+      this.database
+        .prepare("UPDATE prompts SET deleted_at = NULL WHERE id = @promptId")
+        .run({ promptId });
+
+      this.logger.info("prompt_restored", { promptId });
+    });
+  }
+
+  /**
+   * Get all soft deleted prompts.
+   * @returns Array of deleted prompts with their metadata.
+   */
+  public getDeletedPrompts(): readonly Prompt[] {
+    return this.telemetry.withSpan("repository.getDeletedPrompts", {}, () => {
+      const rows = this.database
+        .prepare(
+          `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+                  pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
+                  pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
+           FROM prompts p
+           LEFT JOIN prompt_versions pv ON pv.id = (
+             SELECT id FROM prompt_versions
+             WHERE prompt_id = p.id
+             ORDER BY datetime(created_at) DESC, rowid DESC
+             LIMIT 1
+           )
+           WHERE p.deleted_at IS NOT NULL
+           ORDER BY p.deleted_at DESC`
+        )
+        .all() as PromptRow[];
+
+      const tagsByPrompt = this.fetchTagsForPrompts(rows.map((row) => row.id));
+      return rows.map((row) => this.mapPromptRow(row, tagsByPrompt.get(row.id) ?? []));
+    });
+  }
+
+  /**
+   * Permanently delete a prompt and all its associated data.
+   * @param promptId - Identifier of the prompt to permanently delete.
+   */
+  public permanentlyDeletePrompt(promptId: PromptId): void {
+    this.telemetry.withSpan("repository.permanentlyDeletePrompt", { promptId }, () => {
+      this.runTransaction(() => {
+        // Delete prompt_tags first (cascade will handle this, but being explicit)
+        this.database.prepare("DELETE FROM prompt_tags WHERE prompt_id = @promptId").run({ promptId });
+
+        // Delete versions
+        this.database.prepare("DELETE FROM prompt_versions WHERE prompt_id = @promptId").run({ promptId });
+
+        // Delete the prompt itself
+        const result = this.database.prepare("DELETE FROM prompts WHERE id = @promptId").run({ promptId });
+
+        if (result.changes === 0) {
+          this.logger.warn("repository_prompt_missing_for_deletion", { promptId });
+          throw new PromptNotFoundError(promptId);
+        }
+
+        this.logger.info("prompt_permanently_deleted", { promptId });
+      });
+    });
   }
 
   /**
@@ -281,14 +589,25 @@ export class PromptRepository {
   }
 
   private applyMigrations(): void {
-    const migrationsDir = fileURLToPath(new URL("../db/migrations/", import.meta.url));
+    const migrationsDir = fileURLToPath(new URL("../../db/migrations/", import.meta.url));
     const migrationFiles = readdirSync(migrationsDir)
       .filter((file) => file.endsWith(".sql"))
       .sort(); // Apply deterministically (001_*, 002_*, ...).
 
     for (const file of migrationFiles) {
-      const sql = readFileSync(join(migrationsDir, file), "utf8");
-      this.database.exec(sql);
+      try {
+        const sql = readFileSync(join(migrationsDir, file), "utf8");
+        this.database.exec(sql);
+        this.logger.debug("migration_applied", { file });
+      } catch (error) {
+        // Check if this is a "duplicate column name" error, which means the migration was already applied
+        if (error instanceof Error && error.message.includes("duplicate column name")) {
+          this.logger.debug("migration_already_applied", { file });
+          continue;
+        }
+        // Re-throw other errors
+        throw error;
+      }
     }
   }
 
@@ -310,8 +629,8 @@ export class PromptRepository {
 
   private insertVersionRecord(version: PromptVersion): void {
     const statement = this.database.prepare(
-      `INSERT INTO prompt_versions (id, prompt_id, semantic_version, body, changelog, created_at, updated_at)
-       VALUES (@id, @promptId, @semanticVersion, @body, @changelog, @createdAt, @updatedAt)`
+      `INSERT INTO prompt_versions (id, prompt_id, semantic_version, body, format, changelog, created_at, updated_at)
+       VALUES (@id, @promptId, @semanticVersion, @body, @format, @changelog, @createdAt, @updatedAt)`
     );
 
     statement.run({
@@ -319,6 +638,7 @@ export class PromptRepository {
       promptId: version.promptId,
       semanticVersion: version.semanticVersion,
       body: version.body,
+      format: version.format,
       changelog: version.changelog ?? null,
       createdAt: version.createdAt.toISOString(),
       updatedAt: version.updatedAt.toISOString(),
@@ -401,10 +721,11 @@ export class PromptRepository {
     return {
       id: row.id,
       slug: row.slug,
-      title: row.title,
+      title: row.title ?? "",
       description: row.description ?? undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
+      deletedAt: row.deleted_at ? new Date(row.deleted_at) : undefined,
       tags,
       latestVersion: row.version_id
         ? {
@@ -412,6 +733,7 @@ export class PromptRepository {
             promptId: row.id,
             semanticVersion: row.semantic_version ?? "",
             body: row.body ?? "",
+            format: (row.format as PromptFormat) ?? "markdown",
             changelog: row.changelog ?? undefined,
             createdAt: new Date(row.version_created_at ?? row.updated_at),
             updatedAt: new Date(row.version_updated_at ?? row.updated_at),
@@ -424,6 +746,75 @@ export class PromptRepository {
     this.database
       .prepare(`UPDATE prompts SET updated_at = @updatedAt WHERE id = @promptId`)
       .run({ promptId, updatedAt: isoDate });
+  }
+
+  /**
+   * Get all prompts (including deleted ones for diagnostics).
+   * @returns Array of all prompts with their metadata.
+   */
+  public getAllPrompts(): readonly Prompt[] {
+    return this.telemetry.withSpan("repository.getAllPrompts", {}, () => {
+      const rows = this.database
+        .prepare(
+          `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+                  pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
+                  pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
+           FROM prompts p
+           LEFT JOIN prompt_versions pv ON pv.id = (
+             SELECT id FROM prompt_versions
+             WHERE prompt_id = p.id
+             ORDER BY datetime(created_at) DESC, rowid DESC
+             LIMIT 1
+           )
+           ORDER BY p.created_at DESC`
+        )
+        .all() as PromptRow[];
+
+      const tagsByPrompt = this.fetchTagsForPrompts(rows.map((row) => row.id));
+      return rows.map((row) => this.mapPromptRow(row, tagsByPrompt.get(row.id) ?? []));
+    });
+  }
+
+  /**
+   * Get all tags in the system.
+   * @returns Array of all tags.
+   */
+  public getAllTags(): readonly Tag[] {
+    return this.telemetry.withSpan("repository.getAllTags", {}, () => {
+      const rows = this.database
+        .prepare(
+          `SELECT id, label, description, created_at
+           FROM tags
+           ORDER BY LOWER(label), label`
+        )
+        .all() as { id: string; label: string; description: string | null; created_at: string }[];
+
+      return rows.map((row) => ({
+        id: row.id,
+        label: row.label,
+        description: row.description ?? undefined,
+        createdAt: new Date(row.created_at),
+      }));
+    });
+  }
+
+  /**
+   * Update the format of a specific version.
+   * @param versionId - ID of the version to update.
+   * @param format - New format for the version.
+   */
+  public updateVersionFormat(versionId: string, format: PromptFormat): void {
+    this.telemetry.withSpan("repository.updateVersionFormat", { versionId, format }, () => {
+      const result = this.database
+        .prepare("UPDATE prompt_versions SET format = @format WHERE id = @versionId")
+        .run({ versionId, format });
+
+      if (result.changes === 0) {
+        throw new Error(`Version not found: ${versionId}`);
+      }
+
+      this.logger.info("version_format_updated", { versionId, format });
+    });
   }
 
   private runTransaction<T>(operation: () => T): T {
