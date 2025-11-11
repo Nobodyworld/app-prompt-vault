@@ -65,7 +65,31 @@ export class PromptVaultService {
 
   /**
    * Create a prompt with an initial version and optional tags.
-   * @param input - User-supplied prompt payload.
+   *
+   * This method validates the input data, creates both a prompt entity and its initial version,
+   * applies tag normalization and deduplication, and persists everything to the database.
+   * It also triggers plugin events and telemetry tracking for the creation operation.
+   *
+   * @param input - User-supplied prompt payload containing all required fields
+   * @returns The newly created and persisted prompt with all associated data
+   * @throws ValidationError if the input data fails schema validation
+   * @throws ValidationError if the prompt content format is invalid
+   * @throws DuplicatePromptError if a prompt with the same slug already exists
+   *
+   * @example
+   * ```typescript
+   * const prompt = service.createPrompt({
+   *   id: randomUUID(),
+   *   slug: "greeting-prompt",
+   *   title: "Greeting Prompt",
+   *   description: "A friendly greeting prompt",
+   *   body: "Hello! How can I help you today?",
+   *   semanticVersion: "1.0.0",
+   *   format: "markdown",
+   *   tags: ["greeting", "customer-service"],
+   *   changelog: "Initial version"
+   * });
+   * ```
    */
   public createPrompt(input: z.input<typeof promptInputSchema>): Prompt {
     return this.telemetry.withSpan("service.createPrompt", { slug: input.slug }, () => {
@@ -112,7 +136,20 @@ export class PromptVaultService {
 
   /**
    * Retrieve a prompt by identifier.
-   * @param promptId - Identifier to search for.
+   *
+   * Fetches a complete prompt entity including all associated tags, versions,
+   * and metadata. This is the primary method for accessing prompt data.
+   *
+   * @param promptId - Unique identifier of the prompt to retrieve
+   * @returns The complete prompt entity with all associated data
+   * @throws PromptNotFoundError if no prompt exists with the given ID
+   *
+   * @example
+   * ```typescript
+   * const prompt = service.getPrompt("550e8400-e29b-41d4-a716-446655440000");
+   * console.log(prompt.title); // "Greeting Prompt"
+   * console.log(prompt.tags.length); // 2
+   * ```
    */
   public getPrompt(promptId: PromptId): Prompt {
     return this.repository.getPromptById(promptId);
@@ -120,11 +157,30 @@ export class PromptVaultService {
 
   /**
    * Append a new version to an existing prompt.
-   * @param promptId - Identifier of the prompt to update.
-   * @param body - New prompt body text.
-   * @param semanticVersion - Semantic version label.
-   * @param format - Format of the prompt content.
-   * @param changelog - Optional changelog entry.
+   *
+   * Creates a new version of an existing prompt with updated content. The version
+   * is validated for format and size constraints before being persisted. This
+   * enables version control and change tracking for prompt evolution.
+   *
+   * @param promptId - Unique identifier of the prompt to update
+   * @param body - New prompt body text content
+   * @param semanticVersion - Semantic version string (e.g., "1.1.0", "2.0.0-beta")
+   * @param format - Format of the prompt content (defaults to "markdown")
+   * @param changelog - Optional description of changes in this version
+   * @returns The newly created version entity
+   * @throws PromptNotFoundError if the prompt doesn't exist
+   * @throws ValidationError if content exceeds size limits or format is invalid
+   *
+   * @example
+   * ```typescript
+   * const newVersion = service.addVersion(
+   *   "550e8400-e29b-41d4-a716-446655440000",
+   *   "Hello! How may I assist you today?",
+   *   "1.1.0",
+   *   "markdown",
+   *   "Improved greeting language"
+   * );
+   * ```
    */
   public addVersion(
     promptId: PromptId,
@@ -236,7 +292,24 @@ export class PromptVaultService {
 
   /**
    * Search prompts using fuzzy text, tag, and format filters.
-   * @param queryInput - Query filters.
+   *
+   * Performs a comprehensive search across prompt titles, descriptions, content,
+   * and tags using fuzzy matching. Supports filtering by tags and content formats.
+   * Returns basic prompt information without detailed match excerpts.
+   *
+   * @param queryInput - Search query parameters including text, tags, and format filters
+   * @returns Search results containing matching prompts and basic metadata
+   * @throws ValidationError if query parameters are invalid
+   *
+   * @example
+   * ```typescript
+   * const results = service.searchPrompts({
+   *   text: "greeting customer",
+   *   tags: ["customer-service"],
+   *   formats: ["markdown"]
+   * });
+   * console.log(`Found ${results.prompts.length} prompts`);
+   * ```
    */
   public searchPrompts(queryInput: z.input<typeof searchQuerySchema>): PromptSearchResult {
     return this.telemetry.withSpan("service.searchPrompts", {
@@ -255,7 +328,26 @@ export class PromptVaultService {
 
   /**
    * Advanced search prompts with detailed match information, excerpts, and highlighting.
-   * @param queryInput - Query filters with advanced options.
+   *
+   * Performs sophisticated search with configurable match limits, case sensitivity,
+   * and detailed result information including text excerpts and match highlighting.
+   * Provides more granular control over search behavior and result presentation.
+   *
+   * @param queryInput - Advanced search parameters with detailed configuration options
+   * @returns Advanced search results with match details, excerpts, and highlighting
+   * @throws ValidationError if query parameters are invalid
+   *
+   * @example
+   * ```typescript
+   * const results = service.advancedSearchPrompts({
+   *   text: "machine learning",
+   *   caseSensitive: false,
+   *   maxResults: 50,
+   *   maxMatchesPerRule: 5,
+   *   maxTotalMatches: 100
+   * });
+   * // Results include highlighted excerpts and match positions
+   * ```
    */
   public advancedSearchPrompts(queryInput: z.input<typeof searchQuerySchema>): AdvancedPromptSearchResult {
     return this.telemetry.withSpan("service.advancedSearchPrompts", {
@@ -282,8 +374,24 @@ export class PromptVaultService {
 
   /**
    * Attach tags to an existing prompt.
-   * @param promptId - Identifier of the prompt to tag.
-   * @param labels - Tag labels to add.
+   *
+   * Adds new tags to a prompt while automatically handling deduplication and
+   * normalization. Existing tags are preserved, and only new unique tags are added.
+   * Tag labels are normalized (trimmed, lowercased) and duplicates are ignored.
+   *
+   * @param promptId - Unique identifier of the prompt to tag
+   * @param labels - Array of tag labels to add (case-insensitive, whitespace-trimmed)
+   * @throws PromptNotFoundError if the prompt doesn't exist
+   *
+   * @example
+   * ```typescript
+   * service.tagPrompt("550e8400-e29b-41d4-a716-446655440000", [
+   *   "machine-learning",
+   *   "AI",
+   *   "tutorial"
+   * ]);
+   * // Adds tags while preserving existing ones and avoiding duplicates
+   * ```
    */
   public tagPrompt(promptId: PromptId, labels: readonly string[]): void {
     if (labels.length === 0) {
@@ -304,10 +412,24 @@ export class PromptVaultService {
     });
   }
 
-    /**
+  /**
    * Remove tags from an existing prompt.
-   * @param promptId - Identifier of the prompt to modify.
-   * @param labels - Tag labels to remove (case-insensitive).
+   *
+   * Removes specified tags from a prompt by label matching. Tag removal is
+   * case-insensitive and handles partial matches. Only existing tags are affected.
+   *
+   * @param promptId - Unique identifier of the prompt to modify
+   * @param labels - Array of tag labels to remove (case-insensitive matching)
+   * @throws PromptNotFoundError if the prompt doesn't exist
+   *
+   * @example
+   * ```typescript
+   * service.untagPrompt("550e8400-e29b-41d4-a716-446655440000", [
+   *   "deprecated",
+   *   "old-version"
+   * ]);
+   * // Removes matching tags while preserving others
+   * ```
    */
   public untagPrompt(promptId: PromptId, labels: readonly string[]): void {
     const normalized = this.normalizeLabels(labels);
@@ -387,9 +509,29 @@ export class PromptVaultService {
 
   /**
    * Import a prompt from an external file.
-   * @param filePath - Path to the file to import.
-   * @param options - Import options.
-   * @returns The imported prompt.
+   *
+   * Reads content from a file on disk and creates a new prompt with that content.
+   * Automatically detects the format based on file extension, validates file size
+   * and content length, and generates appropriate metadata. Supports importing
+   * from markdown, JSON, and YAML files.
+   *
+   * @param filePath - Absolute path to the file to import
+   * @param options - Import configuration options
+   * @param options.name - Custom name for the prompt (defaults to filename)
+   * @param options.tags - Tags to assign to the imported prompt
+   * @param options.format - Override auto-detected format
+   * @returns The newly created prompt entity
+   * @throws ValidationError if file size or content length exceeds limits
+   * @throws ValidationError if file cannot be read or content is invalid
+   *
+   * @example
+   * ```typescript
+   * const prompt = service.importPromptFromFile("/path/to/prompt.md", {
+   *   name: "Custom Greeting",
+   *   tags: ["greeting", "imported"],
+   *   format: "markdown"
+   * });
+   * ```
    */
   public importPromptFromFile(
     filePath: string,
@@ -442,9 +584,27 @@ export class PromptVaultService {
 
   /**
    * Export a prompt to a file.
-   * @param promptId - Identifier of the prompt to export.
-   * @param filePath - Path where to save the exported file.
-   * @param options - Export options.
+   *
+   * Saves a prompt's content to a file on disk with optional format conversion
+   * and metadata inclusion. Creates parent directories as needed. Supports
+   * exporting to different formats and including comprehensive metadata.
+   *
+   * @param promptId - Unique identifier of the prompt to export
+   * @param filePath - Absolute path where to save the exported file
+   * @param options - Export configuration options
+   * @param options.format - Target format for export (converts if different from source)
+   * @param options.includeMetadata - Whether to include prompt metadata in the file
+   * @throws PromptNotFoundError if the prompt doesn't exist
+   * @throws ValidationError if the prompt has no content to export
+   *
+   * @example
+   * ```typescript
+   * service.exportPromptToFile("550e8400-e29b-41d4-a716-446655440000", "/exports/prompt.md", {
+   *   format: "markdown",
+   *   includeMetadata: true
+   * });
+   * // Exports with frontmatter metadata
+   * ```
    */
   public exportPromptToFile(
     promptId: PromptId,
@@ -551,7 +711,28 @@ export class PromptVaultService {
 
   /**
    * Run comprehensive diagnostics on the prompt library.
-   * @returns Diagnostic report with issues and statistics.
+   *
+   * Performs a thorough health check of the prompt database, identifying data
+   * integrity issues, orphaned records, invalid content, and other potential
+   * problems. Provides detailed statistics and actionable issue reports.
+   *
+   * @returns Comprehensive diagnostic report containing:
+   *   - Summary statistics (prompts, versions, tags, issues counts)
+   *   - Detailed list of identified issues with severity levels
+   *   - Specific prompt IDs and error details for problematic records
+   *
+   * @example
+   * ```typescript
+   * const diagnostics = service.runDiagnostics();
+   * console.log(`Found ${diagnostics.issues.length} issues`);
+   * console.log(`Total prompts: ${diagnostics.summary.totalPrompts}`);
+   *
+   * for (const issue of diagnostics.issues) {
+   *   if (issue.type === 'error') {
+   *     console.error(`Error: ${issue.message}`);
+   *   }
+   * }
+   * ```
    */
   public runDiagnostics(): {
     summary: {
@@ -612,15 +793,15 @@ export class PromptVaultService {
           }
         }
 
-      // Check for orphaned tags (tags not linked to prompts)
-      for (const prompt of allPrompts) {
-        const linkedTagIds = new Set(prompt.tags.map((tag: Tag) => tag.id));
-        for (const tag of allTags) {
-          if (!linkedTagIds.has(tag.id)) {
-            orphanedTags++;
+        // Check for orphaned tags (tags not linked to prompts)
+        for (const prompt of allPrompts) {
+          const linkedTagIds = new Set(prompt.tags.map((tag: Tag) => tag.id));
+          for (const tag of allTags) {
+            if (!linkedTagIds.has(tag.id)) {
+              orphanedTags++;
+            }
           }
         }
-      }
       }
 
       // Check database integrity
@@ -650,7 +831,24 @@ export class PromptVaultService {
 
   /**
    * Get library statistics and analytics.
-   * @returns Comprehensive statistics about the prompt library.
+   *
+   * Computes comprehensive statistics about the prompt library including counts,
+   * distributions, usage patterns, and recent activity. Useful for monitoring
+   * library health and user engagement.
+   *
+   * @returns Detailed statistics covering:
+   *   - Prompt counts by status and format
+   *   - Tag usage statistics and most popular tags
+   *   - Version distribution and averages
+   *   - Recent activity metrics (last 7 days)
+   *
+   * @example
+   * ```typescript
+   * const stats = service.getLibraryStats();
+   * console.log(`Library has ${stats.prompts.total} prompts`);
+   * console.log(`Most used tag: ${stats.tags.mostUsed[0]?.label}`);
+   * console.log(`Created this week: ${stats.activity.createdThisWeek}`);
+   * ```
    */
   public getLibraryStats(): {
     prompts: {
@@ -740,7 +938,24 @@ export class PromptVaultService {
 
   /**
    * Repair common data integrity issues.
-   * @returns Report of repairs performed.
+   *
+   * Attempts to automatically fix detected data integrity problems such as
+   * invalid content formats and orphaned records. Uses diagnostics to identify
+   * issues and applies targeted repairs where possible.
+   *
+   * @returns Repair operation results containing:
+   *   - List of successful repairs with counts
+   *   - Any errors encountered during repair attempts
+   *
+   * @example
+   * ```typescript
+   * const result = service.repairIntegrity();
+   * console.log(`Performed ${result.repairs.length} repairs`);
+   *
+   * for (const repair of result.repairs) {
+   *   console.log(`Fixed ${repair.count} ${repair.type} issues`);
+   * }
+   * ```
    */
   public repairIntegrity(): {
     repairs: Array<{
@@ -827,7 +1042,18 @@ export class PromptVaultService {
 
   /**
    * Get the plugin host for accessing registered plugins and connectors.
-   * @returns The plugin host instance.
+   *
+   * Provides access to the plugin ecosystem for registering new plugins,
+   * emitting events, or querying registered extensions. This enables
+   * integration with external tools and custom functionality.
+   *
+   * @returns The plugin host instance for plugin management
+   *
+   * @example
+   * ```typescript
+   * const pluginHost = service.getPluginHost();
+   * pluginHost.register(myCustomPlugin);
+   * ```
    */
   public getPluginHost(): PluginHost {
     return this.pluginHost;

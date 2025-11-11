@@ -50,12 +50,56 @@ interface TagRow {
 
 /**
  * Provides data access helpers for prompts, tags, and versions.
+ *
+ * The PromptRepository encapsulates all database operations for the prompt vault,
+ * providing a clean interface for CRUD operations on prompts, versions, and tags.
+ * It handles SQL query construction, transaction management, and data mapping
+ * between database rows and domain objects.
+ *
+ * Key responsibilities:
+ * - Database connection and migration management
+ * - CRUD operations for prompts, versions, and tags
+ * - Complex search queries with filtering and pagination
+ * - Transaction management for data consistency
+ * - Data mapping between SQL results and domain models
+ * - Telemetry and logging integration
+ *
+ * @example
+ * ```typescript
+ * const repository = new PromptRepository(database, {
+ *   telemetry: myTelemetry,
+ *   logger: myLogger
+ * });
+ *
+ * const prompt = repository.getPromptById("550e8400-e29b-41d4-a716-446655440000");
+ * ```
  */
 export class PromptRepository {
   private readonly telemetry: Telemetry;
 
   private readonly logger: StructuredLogger;
 
+  /**
+   * Creates a new PromptRepository instance.
+   *
+   * Initializes the repository with a database connection and applies any
+   * pending migrations to ensure the schema is up to date. Sets up telemetry
+   * and logging for observability.
+   *
+   * @param database - SQLite database connection instance
+   * @param options - Configuration options for telemetry and logging
+   * @param options.telemetry - Optional telemetry implementation for observability
+   * @param options.logger - Optional structured logger for operational insights
+   *
+   * @example
+   * ```typescript
+   * const db = new Database('prompt-vault.db');
+   * const repository = new PromptRepository(db, {
+   *   telemetry: createTelemetry(),
+   *   logger: createLogger()
+   * });
+   * ```
+   */
   public constructor(
     private readonly database: Database.Database,
     options: PromptRepositoryOptions = {}
@@ -77,9 +121,36 @@ export class PromptRepository {
 
   /**
    * Insert a new prompt record and its initial version.
-   * @param prompt - Prompt metadata payload.
-   * @param version - Initial prompt version to store.
-   * @param tags - Optional tags to associate during creation.
+   *
+   * Creates a new prompt entity with its first version in a single transaction.
+   * Handles tag association and ensures data consistency. If a prompt with the
+   * same slug already exists, throws a DuplicatePromptError.
+   *
+   * @param prompt - Complete prompt metadata payload
+   * @param version - Initial prompt version to store
+   * @param tags - Optional tags to associate during creation
+   * @throws DuplicatePromptError if a prompt with the same slug already exists
+   *
+   * @example
+   * ```typescript
+   * const prompt: Prompt = {
+   *   id: randomUUID(),
+   *   slug: "greeting-prompt",
+   *   title: "Greeting Prompt",
+   *   // ... other fields
+   * };
+   *
+   * const version: PromptVersion = {
+   *   id: randomUUID(),
+   *   promptId: prompt.id,
+   *   semanticVersion: "1.0.0",
+   *   body: "Hello! How can I help you?",
+   *   format: "markdown",
+   *   // ... other fields
+   * };
+   *
+   * repository.createPrompt(prompt, version, [tag1, tag2]);
+   * ```
    */
   public createPrompt(prompt: Prompt, version: PromptVersion, tags: readonly Tag[] = []): void {
     this.telemetry.withSpan("repository.createPrompt", { promptId: prompt.id }, () => {
@@ -104,8 +175,26 @@ export class PromptRepository {
 
   /**
    * Retrieve a prompt by identifier including tags and latest version.
-   * @param promptId - Identifier of the prompt to fetch.
-   * @returns The prompt if found.
+   *
+   * Fetches a complete prompt entity with all associated tags and the most
+   * recent version. Only returns active (non-deleted) prompts.
+   *
+   * @param promptId - Unique identifier of the prompt to fetch
+   * @returns The complete prompt entity with tags and latest version
+   * @throws PromptNotFoundError if no active prompt exists with the given ID
+   *
+   * @example
+   * ```typescript
+   * try {
+   *   const prompt = repository.getPromptById("550e8400-e29b-41d4-a716-446655440000");
+   *   console.log(`Found prompt: ${prompt.title}`);
+   *   console.log(`Tags: ${prompt.tags.map(t => t.label).join(', ')}`);
+   * } catch (error) {
+   *   if (error instanceof PromptNotFoundError) {
+   *     console.log("Prompt not found");
+   *   }
+   * }
+   * ```
    */
   public getPromptById(promptId: PromptId): Prompt {
     return this.telemetry.withSpan("repository.getPromptById", { promptId }, () => {
@@ -138,7 +227,31 @@ export class PromptRepository {
 
   /**
    * Search prompts optionally filtering by text, tags, or formats.
-   * @param query - Search filters.
+   *
+   * Performs a comprehensive search across prompt titles, descriptions, and content
+   * using SQL LIKE queries. Supports filtering by tags and content formats with
+   * pagination for large result sets.
+   *
+   * @param query - Search criteria and pagination parameters
+   * @param query.text - Optional text to search for in title, description, and body
+   * @param query.tags - Optional array of tag labels to filter by
+   * @param query.formats - Optional array of content formats to filter by
+   * @param query.page - Zero-based page number for pagination
+   * @param query.pageSize - Number of results per page
+   * @returns Paginated search results with total count
+   *
+   * @example
+   * ```typescript
+   * const results = repository.searchPrompts({
+   *   text: "machine learning",
+   *   tags: ["tutorial", "AI"],
+   *   formats: ["markdown"],
+   *   page: 0,
+   *   pageSize: 20
+   * });
+   *
+   * console.log(`Found ${results.total} prompts, showing page ${results.page + 1}`);
+   * ```
    */
   public searchPrompts(query: {
     readonly text?: string;
@@ -729,15 +842,15 @@ export class PromptRepository {
       tags,
       latestVersion: row.version_id
         ? {
-            id: row.version_id,
-            promptId: row.id,
-            semanticVersion: row.semantic_version ?? "",
-            body: row.body ?? "",
-            format: (row.format as PromptFormat) ?? "markdown",
-            changelog: row.changelog ?? undefined,
-            createdAt: new Date(row.version_created_at ?? row.updated_at),
-            updatedAt: new Date(row.version_updated_at ?? row.updated_at),
-          }
+          id: row.version_id,
+          promptId: row.id,
+          semanticVersion: row.semantic_version ?? "",
+          body: row.body ?? "",
+          format: (row.format as PromptFormat) ?? "markdown",
+          changelog: row.changelog ?? undefined,
+          createdAt: new Date(row.version_created_at ?? row.updated_at),
+          updatedAt: new Date(row.version_updated_at ?? row.updated_at),
+        }
         : undefined,
     };
   }

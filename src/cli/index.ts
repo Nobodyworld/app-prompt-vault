@@ -1,4 +1,42 @@
 #!/usr/bin/env node
+/**
+ * @fileoverview Command Line Interface for Prompt Vault
+ *
+ * This module provides a comprehensive CLI for managing prompt libraries through
+ * the PromptVaultService. It supports all core operations including creating,
+ * listing, searching, versioning, and managing prompts with full observability
+ * and plugin support.
+ *
+ * Key Features:
+ * - Full CRUD operations for prompts and versions
+ * - Advanced search and filtering capabilities
+ * - Tag management and organization
+ * - Import/export functionality
+ * - Backup and restore operations
+ * - Comprehensive diagnostics and statistics
+ * - Plugin system integration
+ * - Telemetry and structured logging
+ *
+ * Usage Examples:
+ * ```bash
+ * # Create a new prompt
+ * npm run dev -- create --slug my-prompt --title "My Prompt" --body "Hello world"
+ *
+ * # List prompts with search
+ * npm run dev -- list --text "hello" --tags "greeting,welcome"
+ *
+ * # Add version to existing prompt
+ * npm run dev -- version --id <uuid> --body "Updated content" --version "1.1.0"
+ *
+ * # Run diagnostics
+ * npm run dev -- diagnostics
+ * ```
+ *
+ * @author Prompt Vault Team
+ * @version 0.1.0
+ * @since 2024
+ */
+
 import { Command } from "commander";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,20 +51,35 @@ import path from "path";
 
 const program = new Command();
 
+/**
+ * Default database path resolution relative to the CLI script location.
+ * Points to 'prompt-vault.db' in the project root directory.
+ */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const defaultDbPath = resolve(__dirname, "..", "..", "prompt-vault.db");
 
+/**
+ * Global observability setup for the CLI application.
+ * Initializes telemetry, logging, and health indicators with service-specific configuration.
+ */
 const observability = bootstrapObservabilityFromEnv({ serviceName: "prompt-vault-cli" });
 const telemetry = observability.telemetry;
 const logger = observability.logger.child({ component: "cli" });
 observability.indicator.setLiveness({ status: "ok" });
 observability.indicator.setReadiness({ status: "degraded", details: { reason: "idle" } });
 
+/**
+ * Gracefully shuts down observability components when the process terminates.
+ * Ensures all telemetry data is flushed and connections are properly closed.
+ *
+ * @returns Promise that resolves when shutdown is complete
+ */
 async function shutdownObservability(): Promise<void> {
   await observability.shutdown();
 }
 
+// Signal handlers for graceful shutdown
 process.once("SIGINT", async () => {
   await shutdownObservability();
   process.exit(130);
@@ -42,9 +95,43 @@ process.on("exit", () => {
 });
 
 /**
- * Helper to create a PromptVaultService, run the provided handler, and ensure the database connection closes.
- * @param dbPath - Path to the SQLite database file.
- * @param handler - Callback invoked with the service instance.
+ * Service lifecycle helper that manages database connections and service initialization.
+ *
+ * This function provides a standardized way to:
+ * - Establish database connections with proper error handling
+ * - Initialize the PromptVaultService with all required dependencies
+ * - Load and configure plugins from multiple sources
+ * - Execute user operations within a controlled service context
+ * - Ensure proper cleanup of resources after operation completion
+ *
+ * The service is configured with:
+ * - Telemetry and logging instrumentation
+ * - Plugin system with built-in and external plugins
+ * - Configurable limits for file sizes and content lengths
+ * - Transaction-safe database operations
+ *
+ * @template T - The return type of the handler function
+ * @param dbPath - Absolute path to the SQLite database file
+ * @param handler - Callback function that receives the initialized service and raw database connection
+ * @returns Promise that resolves with the handler's return value
+ *
+ * @example
+ * ```typescript
+ * await useService('./prompt-vault.db', async (service, db) => {
+ *   const prompt = service.createPrompt({
+ *     id: randomUUID(),
+ *     slug: 'example',
+ *     title: 'Example Prompt',
+ *     body: 'Hello World',
+ *     format: 'markdown',
+ *     semanticVersion: '1.0.0',
+ *     tags: []
+ *   });
+ *   return prompt;
+ * });
+ * ```
+ *
+ * @throws Will throw if database connection fails or service initialization encounters errors
  */
 async function useService<T>(
   dbPath: string,
@@ -86,7 +173,26 @@ async function useService<T>(
 }
 
 /**
- * Load plugins from configured directories and built-in plugins.
+ * Loads and initializes all available plugins for the service.
+ *
+ * This function combines built-in plugins with external plugins discovered from
+ * configured directories. It handles plugin loading errors gracefully, logging
+ * warnings for failed external plugins while continuing with successfully loaded ones.
+ *
+ * Built-in plugins include:
+ * - Audit Trail Plugin: Tracks all data modifications for compliance
+ * - Operational Telemetry Plugin: Provides operational metrics and monitoring
+ *
+ * External plugins are loaded from directories specified in the PROMPT_VAULT_PLUGIN_DIRS
+ * environment variable or default locations ('./plugins' and './plugins' in cwd).
+ *
+ * @returns Promise that resolves to an array of successfully loaded plugins
+ *
+ * @example
+ * ```typescript
+ * const plugins = await loadPlugins();
+ * console.log(`Loaded ${plugins.length} plugins`);
+ * ```
  */
 async function loadPlugins(): Promise<PromptVaultPlugin[]> {
   const plugins: PromptVaultPlugin[] = [
@@ -134,6 +240,7 @@ async function loadPlugins(): Promise<PromptVaultPlugin[]> {
   return plugins;
 }
 
+// Configure the main CLI program with metadata and command definitions
 program
   .name("prompt-vault")
   .description("Manage your reusable prompt library from the command line.")
@@ -154,9 +261,9 @@ program
     await useService(options.db, (service) => {
       const tags = options.tags
         ? (options.tags as string)
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
         : [];
 
       const prompt = service.createPrompt({
@@ -189,15 +296,15 @@ program
     await useService(options.db, (service) => {
       const tags = options.tags
         ? (options.tags as string)
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
         : undefined;
       const formats = options.formats
         ? (options.formats as string)
-            .split(",")
-            .map((format) => format.trim())
-            .filter(Boolean) as ("markdown" | "yaml" | "json")[]
+          .split(",")
+          .map((format) => format.trim())
+          .filter(Boolean) as ("markdown" | "yaml" | "json")[]
         : undefined;
       const result = service.searchPrompts({
         text: options.text,
@@ -290,9 +397,9 @@ program
     await useService(options.db, (service) => {
       const tags = options.tags
         ? (options.tags as string)
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
         : [];
 
       const prompt = service.importPromptFromFile(options.file, {
@@ -457,8 +564,8 @@ program
       await fs.mkdir(tempDir, { recursive: true });
 
       const extension = prompt.latestVersion.format === 'markdown' ? 'md' :
-                       prompt.latestVersion.format === 'yaml' ? 'yaml' :
-                       prompt.latestVersion.format === 'json' ? 'json' : 'txt';
+        prompt.latestVersion.format === 'yaml' ? 'yaml' :
+          prompt.latestVersion.format === 'json' ? 'json' : 'txt';
       const tempFile = path.join(tempDir, `${prompt.slug}.${extension}`);
 
       // Write current content to temp file
@@ -694,6 +801,26 @@ program
       })
   );
 
+/**
+ * Parse command line arguments and execute the appropriate command.
+ *
+ * This is the main entry point that processes user input, validates arguments,
+ * and dispatches to the appropriate command handler. All commands are executed
+ * within the useService wrapper which provides proper resource management,
+ * error handling, and observability.
+ *
+ * If command execution fails, the error is logged and the process exits with
+ * code 1 to indicate failure.
+ *
+ * @example
+ * ```bash
+ * # Run from npm script
+ * npm run dev -- create --slug test --title "Test Prompt" --body "Hello"
+ *
+ * # Run directly
+ * node dist/cli/index.js create --slug test --title "Test Prompt" --body "Hello"
+ * ```
+ */
 program.parseAsync(process.argv).catch((error) => {
   console.error(chalk.red(error instanceof Error ? error.message : String(error)));
   process.exit(1);
