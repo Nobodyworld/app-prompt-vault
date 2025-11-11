@@ -23,7 +23,7 @@
     "extension:scaffold": "tsx scripts/scaffold-extension.ts",
     "desktop:dev": "vite --config desktop/vite.config.ts",
     "desktop:build": "vite build --config desktop/vite.config.ts",
-    "web:dev": "tsx server.ts",
+    "web:dev": "tsx src/server.ts",
     "web:build": "npm run desktop:build && npm run web:dev",
     "tauri:dev": "tsx scripts/tauri-run.ts dev",
     "tauri:build": "tsx scripts/tauri-run.ts build"

@@ -43,6 +43,7 @@ export interface HealthServerOptions {
   readonly registry: MetricRegistry;
   readonly logger?: StructuredLogger;
   readonly indicator?: HealthIndicator;
+  readonly statsProvider?: () => Promise<Record<string, unknown>>;
 }
 
 export interface HealthServerHandle {
@@ -64,7 +65,7 @@ export function createHealthServer(options: HealthServerOptions): HealthServerHa
   const indicator = options.indicator ?? new StatefulHealthIndicator();
   const logger = options.logger;
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     if (!req.url) {
       writeJson(res, 400, { error: "Unknown request" });
       return;
@@ -94,6 +95,48 @@ export function createHealthServer(options: HealthServerOptions): HealthServerHa
       const status = indicator.getReadiness();
       writeJson(res, status.status === "ok" ? 200 : 503, status);
       return;
+    }
+
+    if (req.url.startsWith("/diagnostics")) {
+      const snapshot = options.registry.snapshot();
+      const diagnostics = {
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        version: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        pid: process.pid,
+        cwd: process.cwd(),
+        health: {
+          liveness: indicator.getLiveness(),
+          readiness: indicator.getReadiness(),
+        },
+        metrics: {
+          snapshotLines: snapshot.split('\n').length,
+          hasMetrics: snapshot.includes('# HELP'),
+        },
+      };
+      writeJson(res, 200, diagnostics);
+      return;
+    }
+
+    if (req.url.startsWith("/stats")) {
+      if (!options.statsProvider) {
+        writeJson(res, 501, { error: "Stats provider not configured" });
+        return;
+      }
+      try {
+        const stats = await options.statsProvider();
+        writeJson(res, 200, {
+          timestamp: new Date().toISOString(),
+          ...stats,
+        });
+        return;
+      } catch (error) {
+        writeJson(res, 500, { error: "Failed to retrieve stats", details: error instanceof Error ? error.message : error });
+        return;
+      }
     }
 
     writeJson(res, 404, { error: "Not found" });

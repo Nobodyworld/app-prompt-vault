@@ -1,4 +1,4 @@
-import type { PromptVaultPlugin } from "../src/extensions/types.js";
+import type { PromptVaultPlugin } from "../src/extensions/types.ts";
 
 export function createTestPlugin(): PromptVaultPlugin {
   return {

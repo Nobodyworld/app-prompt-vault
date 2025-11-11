@@ -5,16 +5,16 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import cors from "cors";
 import express, { type ErrorRequestHandler, type NextFunction, type Request, type Response } from "express";
-import { PromptVaultService } from "./src/services/PromptVaultService.js";
-import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from "./src/extensions/index.js";
-import { createPromptVaultRouter } from "./src/web/createPromptVaultRouter.js";
+import { PromptVaultService } from "./services/PromptVaultService.js";
+import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from "./extensions/index.js";
+import { createPromptVaultRouter } from "./web/createPromptVaultRouter.js";
 import {
   bootstrapObservabilityFromEnv,
   createHttpMetricsMiddleware,
   createHttpTracingMiddleware,
-} from "./src/observability/index.js";
-import { createObservabilityRouter } from "./src/web/createObservabilityRouter.js";
-import { ConfigurationError, loadServerConfig, type LoadConfigResult } from "./src/config/serverConfig.js";
+} from "./observability/index.js";
+import { createObservabilityRouter } from "./web/createObservabilityRouter.js";
+import { ConfigurationError, loadServerConfig, type LoadConfigResult } from "./config/serverConfig.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

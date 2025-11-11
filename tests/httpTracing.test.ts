@@ -52,6 +52,21 @@ class FakeTelemetry implements Telemetry {
   public getActiveContext(): TelemetrySpanContext | undefined {
     return this.context;
   }
+
+  public createChildSpan(name: string, attributes: TelemetrySpanAttributes = {}): TelemetrySpanContext {
+    return {
+      traceId: this.context?.traceId ?? "trace-test",
+      spanId: `span-child-${Date.now()}`,
+      parentSpanId: this.context?.spanId,
+      name,
+      startTime: Date.now(),
+      attributes,
+    };
+  }
+
+  public withChildSpan<T>(name: string, attributes: TelemetrySpanAttributes = {}, fn: () => T | Promise<T>): T | Promise<T> {
+    return this.withSpan(name, attributes, fn);
+  }
 }
 
 function createLogger(): StructuredLogger {

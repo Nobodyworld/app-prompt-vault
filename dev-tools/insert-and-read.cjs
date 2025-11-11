@@ -1,7 +1,7 @@
 ﻿const Database = require('better-sqlite3');
 const { randomUUID } = require('crypto');
 const fs = require('fs');
-const dbPath = './prompt-vault.db';
+const dbPath = './tests/data/prompt-vault.db';
 console.log('DB path:', dbPath);
 if (!fs.existsSync(dbPath)) { console.error('DB file not found:', dbPath); process.exit(1); }
 const db = new Database(dbPath);

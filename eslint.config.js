@@ -24,7 +24,7 @@ export default [
       // common ad-hoc tool files
       "insert-and-read.*",
       "inspect-db.*",
-      "server.ts"
+      "src/server.ts"
     ]
   },
   js.configs.recommended,
@@ -48,7 +48,7 @@ export default [
       ...tseslint.configs.recommended.rules,
       "@typescript-eslint/explicit-function-return-type": ["error", { "allowExpressions": true }],
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/consistent-type-imports": ["error", { 
+      "@typescript-eslint/consistent-type-imports": ["error", {
         "prefer": "type-imports",
         "fixStyle": "separate-type-imports"
       }]
@@ -76,7 +76,7 @@ export default [
       ...tseslint.configs.recommended.rules,
       "@typescript-eslint/explicit-function-return-type": ["error", { "allowExpressions": true }],
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/consistent-type-imports": ["error", { 
+      "@typescript-eslint/consistent-type-imports": ["error", {
         "prefer": "type-imports",
         "fixStyle": "separate-type-imports"
       }]
@@ -99,7 +99,33 @@ export default [
       ...tseslint.configs.recommended.rules,
       "@typescript-eslint/explicit-function-return-type": ["error", { "allowExpressions": true }],
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/consistent-type-imports": ["error", { 
+      "@typescript-eslint/consistent-type-imports": ["error", {
+        "prefer": "type-imports",
+        "fixStyle": "separate-type-imports"
+      }]
+    }
+  },
+  {
+    files: ["plugins/**/*.ts"],
+    languageOptions: {
+      parser: tsparser,
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname,
+      },
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.node
+      }
+    },
+    plugins: {
+      "@typescript-eslint": tseslint,
+    },
+    rules: {
+      ...tseslint.configs.recommended.rules,
+      "@typescript-eslint/explicit-function-return-type": ["error", { "allowExpressions": true }],
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/consistent-type-imports": ["error", {
         "prefer": "type-imports",
         "fixStyle": "separate-type-imports"
       }]

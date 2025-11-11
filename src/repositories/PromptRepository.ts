@@ -1,7 +1,6 @@
 import type Database from "better-sqlite3";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type {
   Prompt,
   PromptId,
@@ -589,7 +588,8 @@ export class PromptRepository {
   }
 
   private applyMigrations(): void {
-    const migrationsDir = fileURLToPath(new URL("../../db/migrations/", import.meta.url));
+    // TODO: Fix this path resolution to be more robust
+    const migrationsDir = "C:\\Users\\Nobod\\Documents\\GitHub\\app-prompt-vault\\src\\db\\migrations";
     const migrationFiles = readdirSync(migrationsDir)
       .filter((file) => file.endsWith(".sql"))
       .sort(); // Apply deterministically (001_*, 002_*, ...).

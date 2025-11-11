@@ -57,8 +57,10 @@ Completion note (indented, one line):
 
 ### 🔄 Low Priority Features (Enterprise/Advanced)
 
-- [ ] Structured logging and telemetry system — TK-20251107-013
-- [ ] Metrics and observability endpoints — TK-20251107-014
+- [x] Structured logging and telemetry system — TK-20251107-013
+  - Completed: 2025-11-11 — Enhanced telemetry with Gauge/Summary metrics, improved tracing with child spans, structured logging with trace correlation, and comprehensive health endpoints
+- [x] Metrics and observability endpoints — TK-20251107-014
+  - Completed: 2025-11-11 — Added /diagnostics and /stats endpoints, enhanced metrics registry with additional metric types, and improved health monitoring
 - [ ] Desktop Electron UI (alternative to CLI) — TK-20251107-015
 - [ ] Git integration and sync capabilities — TK-20251107-016
 - [ ] Schema validation and lints for prompts — TK-20251107-017
