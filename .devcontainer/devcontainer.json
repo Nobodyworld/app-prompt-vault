@@ -1,0 +1,125 @@
+﻿{
+  "name": "app-prompt-vault Development Container",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/git:1": {
+      "ppa": true,
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20",
+      "nodeGypDependencies": true,
+      "installYarnUsingApt": true
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.vscode-typescript-next",
+        "ms-vscode.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "ms-vscode.vscode-jest",
+        "orta.vscode-jest",
+        "ms-vscode.vscode-json",
+        "ms-vscode.vscode-yaml",
+        "redhat.vscode-yaml",
+        "ms-vscode.vscode-npm-script",
+        "christian-kohler.npm-intellisense",
+        "formulahendry.auto-rename-tag",
+        "ms-vscode.vscode-html-preview",
+        "ms-vscode.live-server",
+        "ms-vscode.vscode-css-preview",
+        "github.vscode-github-actions",
+        "github.copilot",
+        "github.copilot-chat",
+        "ms-vscode.vscode-github-issue-notebooks",
+        "donjayamanne.githistory",
+        "eamodio.gitlens",
+        "streetsidesoftware.code-spell-checker",
+        "ms-vscode.hexeditor",
+        "ms-vscode.vscode-chrome-debug",
+        "firefox-devtools.vscode-firefox-debug"
+      ],
+      "settings": {
+        "typescript.preferences.importModuleSpecifier": "relative",
+        "typescript.updateImportsOnFileMove.enabled": "always",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit",
+          "source.organizeImports": "explicit"
+        },
+        "eslint.workingDirectories": ["."],
+        "eslint.validate": [
+          "javascript",
+          "javascriptreact",
+          "typescript",
+          "typescriptreact"
+        ],
+        "files.exclude": {
+          "**/node_modules": true,
+          "**/dist": true,
+          "**/build": true,
+          "**/.next": true,
+          "**/coverage": true,
+          "**/.nuxt": true,
+          "**/.output": true
+        },
+        "emmet.includeLanguages": {
+          "javascript": "javascriptreact",
+          "typescript": "typescriptreact"
+        },
+        "npm.packageManager": "npm",
+        "css.validate": true,
+        "scss.validate": true,
+        "less.validate": true
+      }
+    }
+  },
+  "forwardPorts": [3000, 5173, 8080, 4000, 5000, 8000],
+  "portsAttributes": {
+    "3000": {
+      "label": "React/Next.js Dev Server",
+      "onAutoForward": "openBrowser"
+    },
+    "5173": {
+      "label": "Vite Dev Server",
+      "onAutoForward": "openBrowser"
+    },
+    "8080": {
+      "label": "Webpack Dev Server",
+      "onAutoForward": "openBrowser"
+    },
+    "4000": {
+      "label": "Vue Dev Server",
+      "onAutoForward": "openBrowser"
+    },
+    "5000": {
+      "label": "Development Server",
+      "onAutoForward": "openBrowser"
+    },
+    "8000": {
+      "label": "Static Server",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "bash -c 'npm --version && node --version && if [ -f package.json ]; then npm install; fi && if [ -f package-lock.json ]; then npm ci; elif [ -f yarn.lock ]; then yarn install; elif [ -f pnpm-lock.yaml ]; then pnpm install; fi && npm run build --if-present || true'",
+  "remoteUser": "node",
+  "containerEnv": {
+    "NODE_ENV": "development",
+    "NPM_CONFIG_UPDATE_NOTIFIER": "false",
+    "BROWSER": "none"
+  },
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind,consistency=cached"
+  ]
+}
+

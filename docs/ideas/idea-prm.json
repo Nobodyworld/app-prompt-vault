@@ -1,0 +1,228 @@
+{
+  "application": {
+    "name": "app-prompt-manager-prm",
+    "description": "A sophisticated Electron-based desktop application for managing prompt rulesets with advanced features like format conversion, versioning, tagging, snapshots, and MCP integration",
+    "version": "Based on package.json analysis",
+    "license": "Proprietary",
+    "architecture": {
+      "type": "Electron Desktop Application",
+      "frameworks": {
+        "frontend": "React + Vite + TypeScript",
+        "backend": "Node.js + TypeScript",
+        "ipc": "Electron IPC with secure preload bridge",
+        "persistence": "Filesystem-based with custom repository pattern"
+      },
+      "processes": {
+        "main": "Electron main process handling window management, IPC validation, and application lifecycle",
+        "preload": "Secure bridge providing type-safe API exposure to renderer process",
+        "renderer": "React UI built with Vite, handling user interactions and displaying prompt rules"
+      },
+      "key_components": {
+        "RulesService": "Application layer facade orchestrating all prompt rules operations",
+        "FileSystemRulesRepository": "Data access layer implementing CRUD operations on filesystem",
+        "RuleSnapshotService": "Handles compressed library snapshots for backup and restore",
+        "PluginManager": "Manages extension lifecycle with filesystem integration hooks",
+        "MCPIntegration": "Model Context Protocol support for agent automation"
+      }
+    },
+    "core_capabilities": {
+      "rules_management": {
+        "description": "Complete CRUD operations for prompt rulesets",
+        "formats_supported": ["Markdown", "YAML", "JSON"],
+        "features": {
+          "create": "Create new prompt rules with metadata",
+          "read": "Retrieve and display rules with full content",
+          "update": "Modify existing rules with change tracking",
+          "delete": "Remove rules from the library",
+          "convert": "Convert between Markdown/YAML/JSON formats automatically",
+          "validate": "Schema validation for rule structure and content"
+        }
+      },
+      "organization_features": {
+        "tagging": "Attach reusable tags for categorization and filtering",
+        "versioning": "Semantic versioning with change history",
+        "search_filtering": "Multi-criteria search across content, tags, and metadata",
+        "categorization": "Group rules by workflow, team, or modality"
+      },
+      "filesystem_integration": {
+        "description": "Direct filesystem operations with security controls",
+        "features": {
+          "secure_access": "Controlled file operations with size limits and validation",
+          "directory_management": "Organized storage structure for rules",
+          "import_export": "Bulk operations for rule libraries",
+          "path_validation": "Secure path handling to prevent directory traversal"
+        }
+      },
+      "snapshot_system": {
+        "description": "Point-in-time backups of entire rule libraries",
+        "features": {
+          "compressed_backups": "Space-efficient snapshots using compression",
+          "staging_restore": "Safe restore process with staging area",
+          "version_control": "Track changes across snapshots",
+          "integrity_checks": "Validate snapshot integrity before restore"
+        }
+      },
+      "clipboard_integration": {
+        "description": "Seamless interaction with system clipboard",
+        "features": {
+          "copy_rules": "Copy rule content to clipboard for external use",
+          "paste_import": "Import rules from clipboard content",
+          "format_preservation": "Maintain formatting when copying between applications"
+        }
+      },
+      "extensibility": {
+        "plugin_system": {
+          "description": "Extension architecture for custom integrations",
+          "lifecycle_hooks": ["onRulesListed", "beforeRuleWrite", "afterRuleWrite"],
+          "connector_types": "Filesystem integrations and external system connections",
+          "plugin_host": "Manages plugin registration and execution"
+        },
+        "mcp_integration": {
+          "description": "Model Context Protocol support for agent automation",
+          "features": {
+            "json_schemas": "Structured API definitions for automation",
+            "manifests": "Extension manifests for capability discovery",
+            "crud_operations": "Full automation support for rules management"
+          }
+        }
+      },
+      "observability": {
+        "health_endpoints": "Application health monitoring and diagnostics",
+        "metrics_collection": "Performance and usage metrics",
+        "structured_logging": "Comprehensive logging with correlation IDs",
+        "tracing": "Request tracing for debugging and monitoring"
+      },
+      "security": {
+        "ipc_validation": "Secure inter-process communication with input validation",
+        "file_size_limits": "Prevent abuse through file size restrictions",
+        "path_sanitization": "Secure file path handling",
+        "error_handling": "Comprehensive error handling without information leakage"
+      }
+    },
+    "technical_stack": {
+      "runtime": "Node.js with Electron",
+      "frontend": {
+        "framework": "React",
+        "build_tool": "Vite",
+        "language": "TypeScript",
+        "styling": "CSS with component-based styling"
+      },
+      "backend": {
+        "language": "TypeScript",
+        "ipc": "Electron IPC",
+        "file_operations": "Node.js fs APIs with security wrappers",
+        "compression": "Built-in compression for snapshots"
+      },
+      "testing": {
+        "framework": "Jest",
+        "coverage": "Code coverage reporting",
+        "integration_tests": "End-to-end testing for Electron application"
+      },
+      "build_distribution": {
+        "builder": "electron-builder",
+        "packaging": "Cross-platform desktop application packaging",
+        "code_signing": "Secure application signing for distribution"
+      }
+    },
+    "user_interface": {
+      "description": "Desktop application with native window management",
+      "features": {
+        "rules_browser": "Browse and search through rule library",
+        "rule_editor": "Rich text editing for rule content",
+        "tag_management": "Visual tag assignment and filtering",
+        "version_history": "View and compare rule versions",
+        "snapshot_management": "Create and restore library snapshots",
+        "import_export": "Bulk operations interface"
+      },
+      "accessibility": "Standard desktop application accessibility features",
+      "responsive_design": "Adapts to different window sizes and resolutions"
+    },
+    "api_interfaces": {
+      "ipc_api": {
+        "description": "Internal Electron IPC API for renderer-main communication",
+        "security": "Preload bridge with validated method exposure",
+        "type_safety": "TypeScript interfaces for all IPC operations"
+      },
+      "mcp_api": {
+        "description": "External Model Context Protocol API for automation",
+        "endpoints": "JSON-RPC style operations for rules management",
+        "schemas": "Zod schemas for request/response validation",
+        "manifests": "Capability discovery and API documentation"
+      }
+    },
+    "data_model": {
+      "rule_entity": {
+        "properties": ["id", "slug", "title", "description", "content", "format", "tags", "versions", "metadata"],
+        "relationships": "Tags, versions, snapshots",
+        "validation": "Schema validation for all properties"
+      },
+      "version_entity": {
+        "properties": ["id", "rule_id", "version", "content", "changelog", "timestamp"],
+        "history_tracking": "Complete change history for each rule"
+      },
+      "tag_entity": {
+        "properties": ["id", "label", "description", "color", "usage_count"],
+        "relationships": "Many-to-many with rules"
+      },
+      "snapshot_entity": {
+        "properties": ["id", "timestamp", "compressed_data", "metadata"],
+        "compression": "Efficient storage of library state"
+      }
+    },
+    "deployment_distribution": {
+      "packaging": "electron-builder for cross-platform distribution",
+      "platforms": ["Windows", "macOS", "Linux"],
+      "installation": "Standard desktop application installation",
+      "updates": "Built-in update mechanism support"
+    },
+    "development_workflow": {
+      "scripts": {
+        "build": "TypeScript compilation and asset bundling",
+        "test": "Jest test execution with coverage",
+        "lint": "ESLint code quality checks",
+        "dev": "Development server with hot reload",
+        "package": "Application packaging for distribution"
+      },
+      "quality_gates": "Linting, testing, and build verification",
+      "ci_cd": "Automated testing and release pipeline"
+    },
+    "unique_differentiators": {
+      "desktop_focused": "Native desktop experience vs web-based solutions",
+      "filesystem_direct": "Direct filesystem operations for performance and reliability",
+      "format_conversion": "Multi-format support with automatic conversion",
+      "snapshot_system": "Advanced backup and restore capabilities",
+      "plugin_architecture": "Extensible plugin system for integrations",
+      "mcp_automation": "Built-in automation support for AI agents",
+      "security_hardened": "Desktop security model with IPC validation"
+    },
+    "comparison_context": {
+      "vs_web_apps": "Native performance, direct file access, offline capability",
+      "vs_cli_tools": "Rich UI, visual organization, integrated workflows",
+      "vs_generic_editors": "Domain-specific features, validation, automation integration"
+    },
+    "consolidation_potential": {
+      "features_to_port": [
+        "Multi-format rule support (Markdown/YAML/JSON)",
+        "Advanced snapshot and backup system",
+        "Plugin architecture for extensibility",
+        "MCP integration for automation",
+        "Filesystem-based persistence layer",
+        "Format conversion utilities",
+        "Tag-based organization system",
+        "Version control and change tracking",
+        "Security-hardened IPC communication",
+        "Comprehensive observability stack"
+      ],
+      "architectural_benefits": [
+        "Desktop-native performance and reliability",
+        "Direct filesystem operations for speed",
+        "Advanced backup/restore capabilities",
+        "Extensible plugin ecosystem",
+        "Agent-ready automation interfaces",
+        "Multi-format content support"
+      ],
+      "integration_complexity": "Medium - requires porting service layer and UI components",
+      "value_add": "High - adds desktop capabilities, automation, and advanced features to web app"
+    }
+  }
+}

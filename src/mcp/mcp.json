@@ -1,0 +1,746 @@
+{
+  "schema_version": "1.0.0",
+  "name": "Prompt Vault MCP Server",
+  "version": "1.0.0",
+  "description": "MCP server for managing prompts in the Prompt Vault app",
+  "tools": [
+    {
+      "name": "listPrompts",
+      "description": "List all available prompts",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": ["string", "null"],
+              "description": "Tag to include; use null for untagged entries"
+            }
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["md", "yaml", "json", "other"]
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Maximum number of prompts to return"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of prompts to skip"
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "prompts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The unique identifier of the prompt"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The name of the prompt"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tags associated with the prompt"
+                },
+                "format": {
+                  "type": "string",
+                  "enum": ["md", "yaml", "json", "other"],
+                  "description": "The format of the prompt"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the prompt was created"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the prompt was last updated"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "tags",
+                "format",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Total number of prompts available"
+          }
+        },
+        "required": ["prompts", "total"]
+      }
+    },
+    {
+      "name": "readPrompt",
+      "description": "Read the content of a specific prompt",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The unique identifier of the prompt to read"
+          }
+        },
+        "required": ["id"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "format": {
+                "type": "string",
+                "enum": ["md", "yaml", "json", "other"]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "content",
+              "tags",
+              "format",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "required": ["prompt"]
+      }
+    },
+    {
+      "name": "writePrompt",
+      "description": "Create or update a prompt",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Optional ID for updating existing prompt, omit for new prompt"
+          },
+          "name": {
+            "type": "string",
+            "description": "The name of the prompt"
+          },
+          "content": {
+            "type": "string",
+            "description": "The content to write to the prompt"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags to associate with the prompt"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["md", "yaml", "json", "other"],
+            "description": "The format of the prompt content"
+          }
+        },
+        "required": ["name", "content"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "format": {
+                "type": "string",
+                "enum": ["md", "yaml", "json", "other"]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "tags",
+              "format",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "required": ["prompt"]
+      }
+    },
+    {
+      "name": "duplicatePrompt",
+      "description": "Duplicate an existing prompt with optional overrides",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the source prompt to duplicate"
+          },
+          "name": {
+            "type": "string",
+            "description": "Optional new name for the duplicate"
+          },
+          "content": {
+            "type": "string",
+            "description": "Optional content override (useful for unsaved buffers)"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional tags override"
+          }
+        },
+        "required": ["sourceId"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "format": {
+                "type": "string",
+                "enum": ["md", "yaml", "json", "other"]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "tags",
+              "format",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "required": ["prompt"]
+      }
+    },
+    {
+      "name": "searchPrompts",
+      "description": "Search prompt contents for a phrase",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Term to search within managed prompts"
+          },
+          "caseSensitive": {
+            "type": "boolean",
+            "description": "When true, matching respects casing"
+          },
+          "maxResults": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxMatchesPerPrompt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxTotalMatches": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": ["string", "null"],
+              "description": "Tag to include; use null for untagged entries"
+            }
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["md", "yaml", "json", "other"]
+            }
+          }
+        },
+        "required": ["query"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "prompt": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": ["md", "yaml", "json", "other"]
+                    }
+                  },
+                  "required": ["id", "name", "tags", "format"]
+                },
+                "totalMatches": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "matches": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "column": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "preview": {
+                        "type": "string"
+                      },
+                      "highlightStart": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "highlightLength": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "line",
+                      "column",
+                      "preview",
+                      "highlightStart",
+                      "highlightLength"
+                    ]
+                  }
+                }
+              },
+              "required": ["prompt", "totalMatches", "matches"]
+            }
+          }
+        },
+        "required": ["results"]
+      }
+    },
+    {
+      "name": "importPrompts",
+      "description": "Import prompts from external sources",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to import"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Optional name for the imported prompt"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Optional tags for the imported prompt"
+                }
+              },
+              "required": ["path"]
+            },
+            "description": "Array of files to import"
+          }
+        },
+        "required": ["files"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "imported": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "success": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": ["id", "name", "path", "success"]
+            }
+          }
+        },
+        "required": ["imported"]
+      }
+    },
+    {
+      "name": "exportPrompt",
+      "description": "Export a prompt to a file",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ID of the prompt to export"
+          },
+          "path": {
+            "type": "string",
+            "description": "The file path to export to"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["md", "yaml", "json"],
+            "description": "Optional format to convert to during export"
+          }
+        },
+        "required": ["id", "path"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": ["string", "null"],
+            "description": "The exported file path, or null if failed"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["success"]
+      }
+    },
+    {
+      "name": "openInVSCode",
+      "description": "Open a prompt in VS Code for editing",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ID of the prompt to open"
+          }
+        },
+        "required": ["id"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation was successful"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["success"]
+      }
+    },
+    {
+      "name": "convertPrompt",
+      "description": "Convert a prompt to a different format",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ID of the prompt to convert"
+          },
+          "to": {
+            "type": "string",
+            "enum": ["md", "yaml", "json"],
+            "description": "The target format"
+          },
+          "createNew": {
+            "type": "boolean",
+            "description": "Whether to create a new prompt or update the existing one",
+            "default": true
+          }
+        },
+        "required": ["id", "to"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string",
+                "enum": ["md", "yaml", "json", "other"]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": ["id", "name", "format", "createdAt", "updatedAt"]
+          },
+          "converted": {
+            "type": "boolean"
+          }
+        },
+        "required": ["converted"]
+      }
+    },
+    {
+      "name": "deletePrompt",
+      "description": "Move a prompt to the application trash",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID of the prompt to remove"
+          }
+        },
+        "required": ["id"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "True when the prompt was moved to the trash"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["success"]
+      }
+    },
+    {
+      "name": "listTrash",
+      "description": "List recently deleted prompts stored in the trash",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "deletedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": ["id", "name", "deletedAt"]
+            }
+          }
+        },
+        "required": ["items"]
+      }
+    },
+    {
+      "name": "restoreTrash",
+      "description": "Restore a prompt from the trash by ID",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID of the prompt to restore"
+          }
+        },
+        "required": ["id"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "prompt": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["success"]
+      }
+    },
+    {
+      "name": "restoreLatestTrash",
+      "description": "Restore the most recently deleted prompt",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "prompt": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["success"]
+      }
+    }
+  ]
+}
