@@ -3,6 +3,8 @@
 [![CI](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml/badge.svg)](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml)
 [![Codecov](https://codecov.io/gh/Nobodyworld/app-prompt-vault/branch/main/graph/badge.svg)](https://codecov.io/gh/Nobodyworld/app-prompt-vault)
 
+> **🎉 Successor to Prompt Rules Manager (PRM)** - This project is the next evolution of PRM with improved architecture, better performance, and enhanced features. See [Migration Guide](#migrating-from-prm) below.
+
 ## CI / Codecov token
 
 To enable authenticated uploads to Codecov (recommended for private repos or org policy), add a repository secret named `CODECOV_TOKEN` with the token from your Codecov project settings.
@@ -30,6 +32,10 @@ Prompt Vault is a cross-platform vault for collecting, versioning, and tagging r
 - **Test Coverage** – Vitest suite exercises core business flows and guards against regressions.
 - **Observability Hooks** – Prometheus-compatible metrics, structured logging, `/observability/*` health endpoints, per-request tracing spans (`x-trace-id` headers), and a CLI doctor command for quick audits.
 - **Extension Layer** – Plugins react to prompt lifecycle events without touching core service logic.
+- **Advanced Search** – Full-text search with content excerpts, case sensitivity, tag/format filters, and highlighting.
+- **Import/Export** – Seamless migration between Markdown, YAML, and JSON formats with external file support.
+- **Snapshots & Recovery** – Point-in-time backups with restore capabilities and integrity validation.
+- **MCP Integration** – Complete Model Context Protocol support for agent automation.
 
 ## Project Layout
 
@@ -119,6 +125,73 @@ npm run observability
 # bootstrap a SQLite database with migrations applied
 npm run db:bootstrap ./prompt-vault.db
 ```
+
+## Migrating from PRM
+
+Prompt Vault is the successor to [Prompt Rules Manager (PRM)](https://github.com/Nobodyworld/app-prompt-manager-prm), featuring improved architecture, better performance, and enhanced features.
+
+### Key Improvements Over PRM
+
+- **SQLite Database**: Robust, ACID-compliant storage vs filesystem-based approach
+- **Better Performance**: Optimized queries and indexing for large prompt libraries
+- **Enhanced Search**: Advanced full-text search with content excerpts and highlighting
+- **Improved MCP**: More comprehensive Model Context Protocol integration
+- **Cross-Platform**: Native desktop apps via Tauri (not just Electron)
+- **Web Interface**: Browser-based UI in addition to desktop
+- **Better Testing**: Higher test coverage and more comprehensive integration tests
+
+### Migration Steps
+
+1. **Export from PRM**:
+
+   ```bash
+   # In your PRM directory
+   npm run build
+   npm run cli export --all --output ./prm-export.zip
+   ```
+
+2. **Import to Prompt Vault**:
+
+   ```bash
+   # In your Prompt Vault directory
+   npm install
+   npm run db:bootstrap ./prompt-vault.db
+
+   # Import individual files
+   npm run dev -- import --file /path/to/prm/rules/file.md --name "My Rule"
+
+   # Or import multiple files at once (if batch import is implemented)
+   npm run dev -- import-batch --dir /path/to/prm/rules/
+   ```
+
+3. **Verify Migration**:
+
+   ```bash
+   npm run dev -- list
+   npm run dev -- stats
+   ```
+
+### Feature Mapping
+
+| PRM Feature | Prompt Vault Equivalent | Status |
+|-------------|------------------------|--------|
+| Rules Library | Prompts Library | ✅ Enhanced |
+| Tag Management | Tag System | ✅ Improved |
+| Search & Filter | Advanced Search | ✅ Enhanced |
+| Import/Export | Import/Export | ✅ Enhanced |
+| Snapshots | Snapshots | ✅ Enhanced |
+| VS Code Integration | VS Code Edit | ✅ Enhanced |
+| MCP Server | MCP Integration | ✅ Enhanced |
+| Trash/Recovery | Soft Delete/Restore | ✅ Enhanced |
+| Format Conversion | Format Conversion | ✅ Enhanced |
+| Desktop UI | Desktop UI | ✅ Enhanced |
+| CLI Tools | CLI Tools | ✅ Enhanced |
+
+### Data Compatibility
+
+- **Formats**: All PRM formats (Markdown, YAML, JSON) are supported
+- **Metadata**: Tags and other metadata are preserved during migration
+- **File Structure**: No specific file structure requirements - import any supported files
 
 ## CLI Usage
 
@@ -214,6 +287,22 @@ Coverage thresholds (lines/statements ≥ 85%, functions ≥ 80%, branches ≥ 7
 - [`docs/policies/security.md`](docs/policies/security.md) – security policy, disclosure process, and hardening checklist.
 
 ## Roadmap
+
+✅ **Completed Features (vs PRM)**:
+
+- Advanced search with content excerpts and highlighting
+- Import/export functionality for external files
+- Snapshots/backup system with integrity validation
+- VS Code integration for deep editing
+- Format conversion between Markdown ↔ YAML ↔ JSON
+- Library diagnostics and integrity checks
+- Library analytics and usage statistics
+- Health/diagnostics endpoints for monitoring
+- Enhanced plugin system with filesystem connectors
+- File size limits and validation guards
+- MCP integration with comprehensive JSON schemas
+
+🔄 **Future Enhancements**:
 
 1. Polish the UI with additional features like search and advanced filtering.
 2. Introduce synchronization/export features for sharing prompt collections.
