@@ -101,6 +101,7 @@ async function trySyncToServer(): Promise<void> {
             slug: localPrompt.slug,
             title: localPrompt.title,
             description: localPrompt.description,
+            category: localPrompt.category,
             body: localLatest?.body || '',
             semanticVersion: localLatest?.semanticVersion || '1.0.0',
             tags: localPrompt.tags || [],
@@ -192,6 +193,7 @@ function listPromptsFromMemory(): Summary[] {
     slug: p.slug,
     title: p.title,
     description: p.description,
+    category: p.category,
     tags: p.tags,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -215,6 +217,7 @@ function createPromptInMemory(input: CreatePromptInput): Summary {
     slug: input.slug,
     title: input.title,
     description: input.description,
+    category: input.category,
     tags: input.tags || [],
     createdAt,
     updatedAt: createdAt,
@@ -230,6 +233,7 @@ function createPromptInMemory(input: CreatePromptInput): Summary {
     slug: prompt.slug,
     title: prompt.title,
     description: prompt.description,
+    category: prompt.category,
     tags: prompt.tags,
     createdAt: prompt.createdAt,
     updatedAt: prompt.updatedAt,
@@ -259,6 +263,7 @@ function updatePromptInMemory(input: UpdatePromptInput): Summary {
   if (!prompt) throw new Error(`Prompt not found: ${input.id}`);
   if (input.title !== undefined) prompt.title = input.title;
   if (input.description !== undefined) prompt.description = input.description;
+  if (input.category !== undefined) prompt.category = input.category;
   if (input.tags !== undefined) prompt.tags = input.tags;
   prompt.updatedAt = nowIso();
   prompt.latestVersion = prompt.versions.length ? prompt.versions[prompt.versions.length - 1] : undefined;
@@ -269,6 +274,7 @@ function updatePromptInMemory(input: UpdatePromptInput): Summary {
     slug: prompt.slug,
     title: prompt.title,
     description: prompt.description,
+    category: prompt.category,
     tags: prompt.tags,
     createdAt: prompt.createdAt,
     updatedAt: prompt.updatedAt,

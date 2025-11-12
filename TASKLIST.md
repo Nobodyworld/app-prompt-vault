@@ -28,6 +28,14 @@ Completion note (indented, one line):
   - Completed: 2025-11-07 — Ported from PRM: Advanced search with detailed match information and CLI command
 - [x] Trash/recovery system with soft deletes and restore functionality — TK-20251107-002
   - Completed: 2025-11-07 — Ported from PRM: Soft delete system with database migration, service methods, and CLI commands
+- [x] Desktop app search and filtering — TK-20251112-001
+  - Completed: 2025-11-12 — Added real-time search functionality to prompt library with filtering by title, tags, and content
+- [x] Desktop app keyboard shortcuts — TK-20251112-002
+  - Completed: 2025-11-12 — Implemented keyboard shortcuts (Ctrl+N for create, Ctrl+K for search focus, Esc to clear) with help documentation
+- [x] Desktop app data import/export UI — TK-20251112-003
+  - Completed: 2025-11-12 — Added JSON import/export functionality to desktop settings with error handling and success notifications
+- [x] Desktop app usage analytics — TK-20251112-004
+  - Completed: 2025-11-12 — Implemented usage statistics dashboard in settings showing prompt counts, tag analytics, and usage metrics
 
 ### 🔄 High Priority Features (Core Functionality)
 
@@ -70,6 +78,23 @@ Completion note (indented, one line):
 - [ ] Schema validation and lints for prompts — TK-20251107-017
   Relevance: High — Core Zod schemas exist in `src/domain/validation.ts`; remaining work is CI integration and a linting tool. Next step: add a `cli lint` command stub that validates a directory of prompt files against the Zod schema and add a CI job to run it on PRs.
 
+### 🔄 Remaining Desktop App Features
+
+- [x] Enhanced error handling and user notifications — TK-20251112-005
+  - Completed: 2025-11-12 — Added toast notification system with success/error/warning/info types, integrated throughout the app for better user feedback
+- [x] Theme switching (dark/light mode toggle) — TK-20251112-006
+  - Completed: 2025-11-12 — Implemented theme provider with CSS variables, theme toggle in settings, and localStorage persistence
+- [ ] Prompt categories/folders for organization — TK-20251112-007
+- [ ] Advanced clipboard management with history — TK-20251112-008
+- [ ] Prompt templates and quick-start wizards — TK-20251112-009
+
+### 🔄 High Priority Remaining Tasks
+
+- [ ] Git integration and sync capabilities — TK-20251107-016
+  - Next step: Implement basic Git operations (init, add, commit, push) with conflict resolution for prompt synchronization
+- [ ] Schema validation and lints for prompts — TK-20251107-017
+  - Next step: Extend CLI lint command to validate external prompt files and add CI integration
+
 ### 🔄 Nice-to-Have Features (Future Enhancements)
 
 - [ ] Delta snapshots to reduce redundant payload size — TK-20251107-018
@@ -77,6 +102,18 @@ Completion note (indented, one line):
 - [ ] Playwright smoke tests for UI validation — TK-20251107-020
 - [ ] Performance benchmarks and guardrails — TK-20251107-021
 - [ ] Semantic release automation with changelogs — TK-20251107-022
+- [ ] Advanced search with fuzzy matching and relevance scoring — TK-20251112-010
+- [ ] Prompt versioning with diff visualization — TK-20251112-011
+- [ ] Collaborative features (shared prompt libraries) — TK-20251112-012
+- [ ] AI-powered prompt suggestions and auto-tagging — TK-20251112-013
+- [ ] Mobile companion app for prompt access — TK-20251112-014
+- [ ] Integration with popular AI tools (ChatGPT, Claude, etc.) — TK-20251112-015
+- [x] Git integration design document — TK-20251111-001
+  - Completed: 2025-11-11 — Created comprehensive design doc at `docs/developer-guide/git-integration.md` covering auth models, conflict resolution, repository structure, and implementation phases.
+- [x] CLI lint command implementation — TK-20251111-002
+  - Completed: 2025-11-11 — Added `lint` CLI command that validates prompt files against Zod schemas, supports JSON/YAML/Markdown formats with auto-detection, and provides detailed validation error reporting
+- [x] E2E test framework scaffolding — TK-20251111-003
+  - Completed: 2025-11-12 — Added comprehensive Vitest E2E scaffold with smoke tests and critical user journey testing (create→list→delete→restore workflows, import/export, diagnostics/stats) plus `test:e2e` npm script
 
 ---
 
@@ -114,19 +151,10 @@ Completion note (indented, one line):
 
 ### High Risk
 
-- MCP integration: Complex JSON schemas and tool contracts
-- Desktop UI: Significant architecture change from CLI-first
-- Snapshots: File compression and restoration edge cases
-
 ### Medium Risk
-
-- Import/export: File validation and format detection
-- VS Code integration: Platform-specific binary detection
-- Plugin system: Extension loading and sandboxing
 
 ### Low Risk
 
-- Diagnostics: Read-only operations with clear error boundaries
-- Analytics: Aggregation queries with fallbacks
-- Health endpoints: HTTP server with minimal surface area</content>
-<parameter name="filePath">c:\Users\Nobod\Documents\GitHub\app-prompt-vault\TASKLIST.md
+ Health endpoints: HTTP server with minimal surface area
+
+- VS Code integration: Platform-specific binary detection

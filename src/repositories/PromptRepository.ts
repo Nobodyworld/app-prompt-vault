@@ -28,6 +28,7 @@ interface PromptRow {
   readonly slug: string;
   readonly title: string | null;
   readonly description: string | null;
+  readonly category: string | null;
   readonly created_at: string;
   readonly updated_at: string;
   readonly deleted_at: string | null;
@@ -200,7 +201,7 @@ export class PromptRepository {
     return this.telemetry.withSpan("repository.getPromptById", { promptId }, () => {
       const row = this.database
         .prepare(
-          `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+          `SELECT p.id, p.slug, p.title, p.description, p.category, p.created_at, p.updated_at, p.deleted_at,
                   pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
                   pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
            FROM prompts p
@@ -297,7 +298,7 @@ export class PromptRepository {
 
         const rows = this.database
           .prepare(
-            `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+            `SELECT p.id, p.slug, p.title, p.description, p.category, p.created_at, p.updated_at, p.deleted_at,
                 pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
                 pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
          FROM prompts p
@@ -384,7 +385,7 @@ export class PromptRepository {
 
         const rows = this.database
           .prepare(
-            `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+            `SELECT p.id, p.slug, p.title, p.description, p.category, p.created_at, p.updated_at, p.deleted_at,
                 pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
                 pv.created_at AS version_created_at, pv.updated_at AS version_created_at
          FROM prompts p
@@ -566,7 +567,7 @@ export class PromptRepository {
     return this.telemetry.withSpan("repository.getDeletedPrompts", {}, () => {
       const rows = this.database
         .prepare(
-          `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+          `SELECT p.id, p.slug, p.title, p.description, p.category, p.created_at, p.updated_at, p.deleted_at,
                   pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
                   pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
            FROM prompts p
@@ -726,8 +727,8 @@ export class PromptRepository {
 
   private insertPromptRecord(prompt: Prompt): void {
     const statement = this.database.prepare(
-      `INSERT INTO prompts (id, slug, title, description, created_at, updated_at)
-       VALUES (@id, @slug, @title, @description, @createdAt, @updatedAt)`
+      `INSERT INTO prompts (id, slug, title, description, category, created_at, updated_at)
+       VALUES (@id, @slug, @title, @description, @category, @createdAt, @updatedAt)`
     );
 
     statement.run({
@@ -735,6 +736,7 @@ export class PromptRepository {
       slug: prompt.slug,
       title: prompt.title,
       description: prompt.description ?? null,
+      category: prompt.category ?? null,
       createdAt: prompt.createdAt.toISOString(),
       updatedAt: prompt.updatedAt.toISOString(),
     });
@@ -836,6 +838,7 @@ export class PromptRepository {
       slug: row.slug,
       title: row.title ?? "",
       description: row.description ?? undefined,
+      category: row.category ?? undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       deletedAt: row.deleted_at ? new Date(row.deleted_at) : undefined,
@@ -869,7 +872,7 @@ export class PromptRepository {
     return this.telemetry.withSpan("repository.getAllPrompts", {}, () => {
       const rows = this.database
         .prepare(
-          `SELECT p.id, p.slug, p.title, p.description, p.created_at, p.updated_at, p.deleted_at,
+          `SELECT p.id, p.slug, p.title, p.description, p.category, p.created_at, p.updated_at, p.deleted_at,
                   pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
                   pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
            FROM prompts p

@@ -801,6 +801,123 @@ program
       })
   );
 
+program
+  .command("lint")
+  .description("Validate prompt files against schema")
+  .requiredOption("--file <path>", "Path to the prompt file to validate")
+  .option("--format <format>", "File format (markdown, yaml, json) - auto-detected if not specified")
+  .action(async (options) => {
+    const { promptInputSchema } = await import("../domain/validation.js");
+    const fs = await import("fs");
+    const path = await import("path");
+    const yaml = await import("yaml");
+
+    try {
+      const filePath = options.file as string;
+
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        console.error(chalk.red(`File not found: ${filePath}`));
+        process.exit(1);
+      }
+
+      // Read file content
+      const content = fs.readFileSync(filePath, 'utf-8');
+
+      // Auto-detect format if not specified
+      let format = options.format as "markdown" | "yaml" | "json" | undefined;
+      if (!format) {
+        const ext = path.extname(filePath).toLowerCase();
+        switch (ext) {
+          case '.yaml':
+          case '.yml':
+            format = 'yaml';
+            break;
+          case '.json':
+            format = 'json';
+            break;
+          case '.md':
+          default:
+            format = 'markdown';
+            break;
+        }
+      }
+
+      let promptData: Record<string, unknown> = {};
+
+      // Parse content based on format
+      if (format === 'json') {
+        try {
+          promptData = JSON.parse(content);
+        } catch (error) {
+          console.error(chalk.red(`Invalid JSON format: ${error instanceof Error ? error.message : error}`));
+          process.exit(1);
+        }
+      } else if (format === 'yaml') {
+        try {
+          promptData = yaml.parse(content);
+        } catch (error) {
+          console.error(chalk.red(`Invalid YAML format: ${error instanceof Error ? error.message : error}`));
+          process.exit(1);
+        }
+      } else if (format === 'markdown') {
+        // Parse frontmatter from markdown
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+        if (frontmatterMatch) {
+          try {
+            const frontmatter = yaml.parse(frontmatterMatch[1]);
+            promptData = {
+              ...frontmatter,
+              body: frontmatterMatch[2].trim(),
+            };
+          } catch (error) {
+            console.error(chalk.red(`Invalid frontmatter in markdown: ${error instanceof Error ? error.message : error}`));
+            process.exit(1);
+          }
+        } else {
+          // No frontmatter, treat as plain markdown content
+          promptData = {
+            body: content.trim(),
+            format: 'markdown',
+          };
+        }
+      }
+
+      // Validate against schema
+      const result = promptInputSchema.safeParse(promptData);
+
+      if (result.success) {
+        console.log(chalk.green(`✅ ${filePath} is valid`));
+        console.log(chalk.gray(`Format: ${format}`));
+        console.log(chalk.gray(`Title: ${result.data.title}`));
+        console.log(chalk.gray(`Slug: ${result.data.slug}`));
+        console.log(chalk.gray(`Version: ${result.data.semanticVersion}`));
+        if (result.data.tags && result.data.tags.length > 0) {
+          console.log(chalk.gray(`Tags: ${result.data.tags.join(', ')}`));
+        }
+      } else {
+        console.log(chalk.red(`❌ ${filePath} has validation errors:`));
+        console.log();
+
+        for (const error of result.error.issues) {
+          const pathStr = error.path.join('.');
+          console.log(chalk.red(`  • ${pathStr}: ${error.message}`));
+        }
+
+        console.log();
+        console.log(chalk.yellow(`Format detected: ${format}`));
+        process.exit(1);
+      }
+
+    } catch (error) {
+      console.error(chalk.red(`Lint failed: ${error instanceof Error ? error.message : error}`));
+      process.exit(1);
+    }
+  });
+
+/**
+ * Parse command line arguments and execute the appropriate command.
+
 /**
  * Parse command line arguments and execute the appropriate command.
  *

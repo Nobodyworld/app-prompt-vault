@@ -98,7 +98,7 @@ export class PromptVaultService {
         throw new ValidationError(result.error.issues.map((error: ZodIssue) => error.message));
       }
 
-      const { id, slug, title, description, body, semanticVersion, tags, changelog, format } = result.data;
+      const { id, slug, title, description, category, body, semanticVersion, tags, changelog, format } = result.data;
 
       // Validate content format
       validatePromptContent(body, format);
@@ -110,6 +110,7 @@ export class PromptVaultService {
         slug,
         title,
         description,
+        category,
         tags: [],
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -539,6 +540,7 @@ export class PromptVaultService {
       name?: string;
       tags?: readonly string[];
       format?: PromptFormat;
+      category?: string;
     } = {}
   ): Prompt {
     return this.telemetry.withSpan("service.importPromptFromFile", { filePath }, () => {
@@ -569,6 +571,7 @@ export class PromptVaultService {
         slug,
         title: baseName,
         description: `Imported from ${filePath}`,
+        category: options.category,
         body: content,
         format,
         semanticVersion: '1.0.0',
@@ -634,6 +637,7 @@ export class PromptVaultService {
           slug: prompt.slug,
           title: prompt.title,
           description: prompt.description,
+          category: prompt.category,
           tags: prompt.tags.map(tag => tag.label),
           format: options.format || prompt.latestVersion.format,
           version: prompt.latestVersion.semanticVersion,

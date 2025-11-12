@@ -141,6 +141,8 @@ export interface Prompt {
   readonly title: string;
   /** Detailed description capturing context, usage tips, or instructions. */
   readonly description?: string;
+  /** Category for organizing prompts into folders/groups. */
+  readonly category?: string;
   /** Tags currently linked to the prompt. */
   readonly tags: readonly Tag[];
   /** Timestamp when the prompt was created. */

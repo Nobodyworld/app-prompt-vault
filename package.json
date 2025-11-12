@@ -16,6 +16,7 @@
     "validate": "npm run quality:gate",
     "test:watch": "vitest",
     "dev": "tsx src/cli/index.ts",
+    "test:e2e": "vitest run tests/e2e",
     "smoke": "node ./scripts/smoke-test-memory.cjs",
     "observability": "PROMPT_VAULT_METRICS=true tsx scripts/observability.ts",
     "db:bootstrap": "tsx scripts/bootstrap-db.ts",

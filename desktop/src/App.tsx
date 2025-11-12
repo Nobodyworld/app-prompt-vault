@@ -34,6 +34,8 @@ import { CreatePromptPage } from "./pages/CreatePromptPage";
 import { EditPromptPage } from "./pages/EditPromptPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { ToastProvider } from "./components/Toast";
+import { ThemeProvider } from "./components/ThemeProvider";
 
 /**
  * Root application component that configures routing and layout.
@@ -52,17 +54,21 @@ import ErrorBoundary from "./components/ErrorBoundary";
  */
 export function App(): React.JSX.Element {
   return (
-    <BrowserRouter>
-      <ErrorBoundary>
-        <Routes>
-          <Route element={<Layout />}>
-          <Route index element={<PromptListPage />} />
-          <Route path="create" element={<CreatePromptPage />} />
-          <Route path="edit/:id" element={<EditPromptPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          </Route>
-        </Routes>
-      </ErrorBoundary>
-    </BrowserRouter>
+    <ThemeProvider>
+      <ToastProvider>
+        <BrowserRouter>
+          <ErrorBoundary>
+            <Routes>
+              <Route element={<Layout />}>
+              <Route index element={<PromptListPage />} />
+              <Route path="create" element={<CreatePromptPage />} />
+              <Route path="edit/:id" element={<EditPromptPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              </Route>
+            </Routes>
+          </ErrorBoundary>
+        </BrowserRouter>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

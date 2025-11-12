@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { isTauriAvailable } from "../lib/tauri";
 import { subscribeFallback, isUsingFallback } from "../services/promptApi";
 
 export function Layout(): React.JSX.Element {
   const location = useLocation();
+  const navigate = useNavigate();
   const [isHidden, setIsHidden] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
   const [hoverStartTime, setHoverStartTime] = useState<number | null>(null);
@@ -123,10 +124,49 @@ export function Layout(): React.JSX.Element {
     };
   }, [showOverlay, hoverStartTime]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      // Only handle shortcuts when not typing in an input/textarea
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
+        return;
+      }
+
+      // Ctrl/Cmd + N: Create new prompt
+      if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
+        event.preventDefault();
+        navigate('/create');
+        return;
+      }
+
+      // Ctrl/Cmd + K: Focus search (only on library page)
+      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+        event.preventDefault();
+        if (location.pathname === '/') {
+          // Dispatch custom event to focus search in PromptListPage
+          window.dispatchEvent(new CustomEvent('focus-search'));
+        }
+        return;
+      }
+
+      // Escape: Clear search or go back
+      if (event.key === 'Escape') {
+        if (location.pathname === '/') {
+          // Dispatch custom event to clear search in PromptListPage
+          window.dispatchEvent(new CustomEvent('clear-search'));
+        }
+        return;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [navigate, location.pathname]);
+
   return (
     <>
       {isDesktop && showOverlay && (
-        <div 
+        <div
           className="window-overlay"
           onMouseEnter={handleOverlayHover}
         >

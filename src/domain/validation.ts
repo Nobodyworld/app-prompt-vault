@@ -71,6 +71,7 @@ export const promptInputSchema = z.object({
     .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumerics and hyphens"),
   title: z.string().min(3, "Title must be at least 3 characters long"),
   description: z.string().max(2000).optional(),
+  category: z.string().max(100).optional(),
   body: z.string().min(1, "Prompt body is required"),
   format: z.enum(["markdown", "yaml", "json"]).default("markdown"),
   semanticVersion: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/, "Version must follow semantic versioning"),

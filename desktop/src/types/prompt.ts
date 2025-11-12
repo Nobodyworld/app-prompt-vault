@@ -10,6 +10,7 @@ export interface PromptSummary {
   slug: string;
   title: string;
   description?: string;
+  category?: string;
   tags: string[];
   createdAt: string;
   updatedAt: string;
@@ -20,6 +21,7 @@ export interface CreatePromptInput {
   slug: string;
   title: string;
   description?: string;
+  category?: string;
   body: string;
   semanticVersion: string;
   changelog?: string;
@@ -37,5 +39,6 @@ export interface UpdatePromptInput {
   id: string;
   title?: string;
   description?: string;
+  category?: string;
   tags?: string[];
 }

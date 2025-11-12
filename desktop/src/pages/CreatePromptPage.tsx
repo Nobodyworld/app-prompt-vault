@@ -3,16 +3,19 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPrompt } from "../services/promptApi";
 import { isTauriAvailable } from "../lib/tauri";
+import { useToast } from "../components/Toast";
 
 interface FormState {
   title: string;
   body: string;
+  category: string;
   customTags: string;
 }
 
 const INITIAL_FORM: FormState = {
   title: "",
   body: "",
+  category: "",
   customTags: "",
 };
 
@@ -54,6 +57,7 @@ export function CreatePromptPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { addToast } = useToast();
 
   // Load persisted form data on mount
   useEffect(() => {
@@ -150,12 +154,14 @@ export function CreatePromptPage(): React.JSX.Element {
         slug: slugPreview,
         title,
         description: undefined,
+        category: form.category.trim() || undefined,
         body: form.body,
         semanticVersion: INITIAL_VERSION,
         changelog: undefined,
         tags,
       });
 
+      addToast("Prompt created successfully!", "success");
       resetForm();
       navigate("/");
     } catch (err: unknown) {
@@ -179,6 +185,15 @@ export function CreatePromptPage(): React.JSX.Element {
           value={form.body}
           onChange={(event) => setForm((state) => ({ ...state, body: event.target.value }))}
           placeholder="Paste or write your reusable prompt here"
+        />
+      </label>
+
+      <label>
+        Category (optional)
+        <input
+          value={form.category}
+          onChange={(event) => setForm((state) => ({ ...state, category: event.target.value }))}
+          placeholder="e.g., Writing, Coding, Business"
         />
       </label>
 
@@ -233,9 +248,9 @@ export function CreatePromptPage(): React.JSX.Element {
         <button className="secondary" type="button" onClick={() => navigate("/")}>
           Cancel
         </button>
-        <button 
-          className="danger" 
-          type="button" 
+        <button
+          className="danger"
+          type="button"
           onClick={() => {
             if (confirm('Are you sure you want to clear the form?')) {
               resetForm();

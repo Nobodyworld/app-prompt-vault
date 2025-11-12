@@ -37,6 +37,9 @@ export function PromptList({ prompts, copiedPromptId, onCopy, onEdit, copyError 
               >
                 <div className="prompt-row__content">
                   <span className="prompt-row__title">{prompt.title || "Untitled Prompt"}</span>
+                  {prompt.category && (
+                    <span className="prompt-row__category">{prompt.category}</span>
+                  )}
                   {hasTags && (
                     <div className="prompt-row__tags">
                       {tagsDisplay.map((tag) => (

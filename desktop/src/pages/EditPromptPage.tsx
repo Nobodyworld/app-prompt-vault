@@ -50,6 +50,7 @@ export function EditPromptPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [title, setTitle] = useState(safePrompt.title ?? "");
+  const [category, setCategory] = useState(safePrompt.category ?? "");
 
   const promptId = safePrompt.id;
 
@@ -72,11 +73,12 @@ export function EditPromptPage(): React.JSX.Element {
     setError(null);
 
     try {
-      // Update title if changed
-      if (title.trim() !== (safePrompt?.title ?? "")) {
+      // Update title and category if changed
+      if (title.trim() !== (safePrompt?.title ?? "") || category.trim() !== (safePrompt?.category ?? "")) {
         await updatePrompt({
           id: safePrompt.id,
           title: title.trim() || undefined,
+          category: category.trim() || undefined,
         });
       }
 
@@ -109,6 +111,15 @@ export function EditPromptPage(): React.JSX.Element {
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Prompt title"
           required
+        />
+      </label>
+
+      <label>
+        Category (optional)
+        <input
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+          placeholder="e.g., Writing, Coding, Business"
         />
       </label>
 

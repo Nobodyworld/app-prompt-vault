@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { listPrompts } from "../services/promptApi";
 import type { PromptSummary } from "../types/prompt";
 import { PromptList } from "../components/PromptList";
 import { copyTextToClipboard } from "../lib/clipboard";
+import { useToast } from "../components/Toast";
 
 type LocationState = { refresh?: boolean } | null;
 
@@ -14,9 +15,11 @@ export function PromptListPage(): React.JSX.Element {
   const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
   const { state } = useLocation() as { state: LocationState };
+  const { addToast } = useToast();
 
   const requestReload = useCallback(() => {
     setReloadToken((token) => token + 1);
@@ -58,9 +61,24 @@ export function PromptListPage(): React.JSX.Element {
     };
   }, [reloadToken]);
 
+  const filteredPrompts = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return prompts;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    return prompts.filter((prompt) => {
+      const titleMatch = prompt.title?.toLowerCase().includes(query);
+      const categoryMatch = prompt.category?.toLowerCase().includes(query);
+      const tagMatch = prompt.tags.some((tag) => tag.toLowerCase().includes(query));
+      const bodyMatch = prompt.latestVersion?.body?.toLowerCase().includes(query);
+      return titleMatch || categoryMatch || tagMatch || bodyMatch;
+    });
+  }, [prompts, searchQuery]);
+
   const handleCopy = useCallback(async (prompt: PromptSummary): Promise<void> => {
     if (!prompt.latestVersion?.body) {
-      setCopyError("Prompt body is unavailable. Try opening the editor to refresh this entry.");
+      addToast("Prompt body is unavailable. Try opening the editor to refresh this entry.", "error");
       return;
     }
 
@@ -68,6 +86,7 @@ export function PromptListPage(): React.JSX.Element {
       await copyTextToClipboard(prompt.latestVersion.body);
       setCopyError(null);
       setCopiedPromptId(prompt.id);
+      addToast("Prompt copied to clipboard!", "success", 2000);
       if (clearTimerRef.current) {
         clearTimeout(clearTimerRef.current);
       }
@@ -79,16 +98,16 @@ export function PromptListPage(): React.JSX.Element {
       const errorMessage = err instanceof Error ? err.message : "Unable to copy prompt to the clipboard.";
       // Provide more helpful error messages for common clipboard issues
       if (errorMessage === 'CLIPBOARD_PERMISSIONS_BLOCKED') {
-        setCopyError("Clipboard access blocked. Try using Ctrl+C/Cmd+C to copy manually, or enable clipboard permissions in your browser settings.");
+        addToast("Clipboard access blocked. Try using Ctrl+C/Cmd+C to copy manually, or enable clipboard permissions in your browser settings.", "error");
       } else if (errorMessage === 'FALLBACK_COPY_FAILED') {
-        setCopyError("Automatic copying failed. The prompt text has been displayed in an alert - please copy it manually.");
+        addToast("Automatic copying failed. The prompt text has been displayed in an alert - please copy it manually.", "warning");
       } else if (errorMessage === 'MANUAL_COPY_REQUIRED') {
-        setCopyError("Prompt text displayed in alert popup. Please copy it manually using Ctrl+C/Cmd+C.");
+        addToast("Prompt text displayed in alert popup. Please copy it manually using Ctrl+C/Cmd+C.", "info");
       } else {
-        setCopyError(errorMessage);
+        addToast(errorMessage, "error");
       }
     }
-  }, []);
+  }, [addToast]);
 
   const handleEdit = useCallback(
     (prompt: PromptSummary) => {
@@ -105,6 +124,31 @@ export function PromptListPage(): React.JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    const handleFocusSearch = (): void => {
+      const searchInput = document.querySelector('.search-input') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.focus();
+      }
+    };
+
+    const handleClearSearch = (): void => {
+      setSearchQuery('');
+      const searchInput = document.querySelector('.search-input') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.blur();
+      }
+    };
+
+    window.addEventListener('focus-search', handleFocusSearch);
+    window.addEventListener('clear-search', handleClearSearch);
+
+    return () => {
+      window.removeEventListener('focus-search', handleFocusSearch);
+      window.removeEventListener('clear-search', handleClearSearch);
+    };
+  }, []);
+
   if (isLoading) {
     return <p className="status">Loading prompts...</p>;
   }
@@ -113,17 +157,46 @@ export function PromptListPage(): React.JSX.Element {
     return <p className="error">{error}</p>;
   }
 
-  if (prompts.length === 0) {
-    return <p className="status">No prompts yet - create your first prompt to get started.</p>;
-  }
-
   return (
-    <PromptList
-      prompts={prompts}
-      copiedPromptId={copiedPromptId}
-      copyError={copyError}
-      onCopy={handleCopy}
-      onEdit={handleEdit}
-    />
+    <div className="library-panel">
+      <div className="library-header">
+        <div className="search-container">
+          <input
+            type="text"
+            placeholder="Search prompts... (Ctrl+K to focus, Esc to clear)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="search-clear"
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        {searchQuery && (
+          <p className="search-results">
+            {filteredPrompts.length === 0
+              ? "No prompts match your search."
+              : `Found ${filteredPrompts.length} prompt${filteredPrompts.length === 1 ? "" : "s"}`}
+          </p>
+        )}
+      </div>
+
+      {copyError && <p className="error library-error">{copyError}</p>}
+
+      <PromptList
+        prompts={filteredPrompts}
+        copiedPromptId={copiedPromptId}
+        copyError={copyError}
+        onCopy={handleCopy}
+        onEdit={handleEdit}
+      />
+    </div>
   );
 }
