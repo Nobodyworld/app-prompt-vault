@@ -62,8 +62,13 @@ Completion note (indented, one line):
 - [x] Metrics and observability endpoints — TK-20251107-014
   - Completed: 2025-11-11 — Added /diagnostics and /stats endpoints, enhanced metrics registry with additional metric types, and improved health monitoring
 - [ ] Desktop Electron UI (alternative to CLI) — TK-20251107-015
+  Decision: Deferred — The repository targets Tauri for the desktop experience. Prefer extending the existing Tauri desktop UI rather than adding Electron unless a specific blocker arises. Revisit if native Electron-only integrations are requested.
+
 - [ ] Git integration and sync capabilities — TK-20251107-016
+  Relevance: High — Synchronization and versioned prompt sharing are common user needs. Next step: create a design doc at `docs/developer-guide/git-integration.md` that covers auth models, conflict resolution strategy, and on-disk layout. Then open an issue to track implementation and prioritize a spike.
+
 - [ ] Schema validation and lints for prompts — TK-20251107-017
+  Relevance: High — Core Zod schemas exist in `src/domain/validation.ts`; remaining work is CI integration and a linting tool. Next step: add a `cli lint` command stub that validates a directory of prompt files against the Zod schema and add a CI job to run it on PRs.
 
 ### 🔄 Nice-to-Have Features (Future Enhancements)
 
@@ -78,22 +83,26 @@ Completion note (indented, one line):
 ## Implementation Notes
 
 ### Architecture Differences
+
 - **PRM**: Electron desktop app with filesystem-based storage, React UI, comprehensive MCP server
 - **app-prompt-vault**: CLI-first with SQLite database, Node.js focused, minimal MCP surface
 
 ### Migration Strategy
+
 1. **Phase 1 (High Priority)**: Core functionality (MCP, import/export, snapshots, VS Code, conversion)
 2. **Phase 2 (Medium Priority)**: Enhanced UX (diagnostics, analytics, health endpoints, plugins)
 3. **Phase 3 (Low Priority)**: Enterprise features (logging, metrics, desktop UI)
 4. **Phase 4 (Future)**: Advanced features and optimizations
 
 ### Dependencies to Consider
+
 - MCP integration requires JSON schema definitions and tool implementations
 - Desktop UI would need Electron and React dependencies
 - Snapshots system needs compression and filesystem utilities
 - VS Code integration requires IPC and file watching capabilities
 
 ### Testing Strategy
+
 - Unit tests for all new service methods
 - Integration tests for CLI commands
 - MCP contract tests for agent interfaces
@@ -104,16 +113,19 @@ Completion note (indented, one line):
 ## Risk Assessment
 
 ### High Risk
+
 - MCP integration: Complex JSON schemas and tool contracts
 - Desktop UI: Significant architecture change from CLI-first
 - Snapshots: File compression and restoration edge cases
 
 ### Medium Risk
+
 - Import/export: File validation and format detection
 - VS Code integration: Platform-specific binary detection
 - Plugin system: Extension loading and sandboxing
 
 ### Low Risk
+
 - Diagnostics: Read-only operations with clear error boundaries
 - Analytics: Aggregation queries with fallbacks
 - Health endpoints: HTTP server with minimal surface area</content>
