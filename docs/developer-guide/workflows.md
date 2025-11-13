@@ -36,6 +36,7 @@ Enable metrics and health endpoints for any CLI invocation by exporting `PROMPT_
 - Migrations live under `src/db/migrations/`.
 - When introducing a new migration, copy the previous file, increment the prefix, and add your SQL changes.
 - Update `PromptRepository.applyMigrations` if a more sophisticated migration runner is introduced.
+- Deployments that relocate SQL files can set `PROMPT_VAULT_MIGRATIONS_DIR` to point at the correct directory; defaults resolve relative to the running module.
 
 ## 5. Observability Toolkit
 

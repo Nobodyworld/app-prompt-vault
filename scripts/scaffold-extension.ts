@@ -47,16 +47,56 @@ if (existsSync(targetPath)) {
   process.exit(1);
 }
 
-const template = `import type { PromptVaultPlugin } from "../types.js";
+const template = `import type { PromptVaultPlugin, PromptVaultPluginContext } from "../types.js";
 
 export function ${exportName}(): PromptVaultPlugin {
+  let context: PromptVaultPluginContext | undefined;
+
+  function withContext(callback: (ctx: PromptVaultPluginContext) => void): void {
+    if (!context) {
+      return;
+    }
+    callback(context);
+  }
+
   return {
     name: "${camel}",
-    setup({ logger, telemetry }) {
-      logger.info("${camel}_plugin_ready");
-      telemetry.recordEvent("plugin.${camel}.setup");
+    description: "Describe the responsibilities for this plugin.",
+    setup(pluginContext) {
+      context = pluginContext;
+      pluginContext.logger.info("${camel}_plugin_ready");
+      pluginContext.telemetry.recordEvent("plugin.${camel}.setup");
     },
-    // TODO(P3, 1d): Implement lifecycle hooks.
+    onPromptCreated({ prompt, version }) {
+      withContext(({ telemetry }) => {
+        // TODO: Replace with organisation-specific logic (webhooks, analytics, etc.).
+        telemetry.recordEvent("plugin.${camel}.prompt_created", {
+          promptId: prompt.id,
+          semanticVersion: version.semanticVersion,
+        });
+      });
+    },
+    onVersionAdded({ promptId, version }) {
+      withContext(({ telemetry }) => {
+        // TODO: Emit diffs or notify downstream systems about new versions.
+        telemetry.recordEvent("plugin.${camel}.version_added", {
+          promptId,
+          semanticVersion: version.semanticVersion,
+        });
+      });
+    },
+    onPromptTagged({ promptId, tags }) {
+      withContext(({ telemetry }) => {
+        // TODO: Synchronise tag metadata (CRM, analytics, etc.).
+        telemetry.recordEvent("plugin.${camel}.prompt_tagged", { promptId, count: tags.length });
+      });
+    },
+    onPromptUntagged({ promptId, labels }) {
+      withContext(({ telemetry }) => {
+        // TODO: Clean up associations in downstream systems when tags are removed.
+        telemetry.recordEvent("plugin.${camel}.prompt_untagged", { promptId, count: labels.length });
+      });
+    },
   };
 }
 `;

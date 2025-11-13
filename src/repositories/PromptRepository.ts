@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   Prompt,
   PromptId,
@@ -702,8 +703,7 @@ export class PromptRepository {
   }
 
   private applyMigrations(): void {
-    // TODO: Fix this path resolution to be more robust
-    const migrationsDir = "C:\\Users\\Nobod\\Documents\\GitHub\\app-prompt-vault\\src\\db\\migrations";
+    const migrationsDir = this.resolveMigrationsDirectory();
     const migrationFiles = readdirSync(migrationsDir)
       .filter((file) => file.endsWith(".sql"))
       .sort(); // Apply deterministically (001_*, 002_*, ...).
@@ -723,6 +723,46 @@ export class PromptRepository {
         throw error;
       }
     }
+  }
+
+  private resolveMigrationsDirectory(): string {
+    const searchPaths: string[] = [];
+    const envOverride = process.env.PROMPT_VAULT_MIGRATIONS_DIR?.trim();
+
+    if (envOverride) {
+      const resolvedOverride = resolve(envOverride);
+      searchPaths.push(resolvedOverride);
+      if (existsSync(resolvedOverride)) {
+        this.logger.debug("migrations_dir_override_applied", { path: resolvedOverride });
+        return resolvedOverride;
+      }
+      this.logger.warn("migrations_dir_override_missing", { path: resolvedOverride });
+    }
+
+    const moduleRelativeDir = fileURLToPath(new URL("../db/migrations", import.meta.url));
+    searchPaths.push(moduleRelativeDir);
+    if (existsSync(moduleRelativeDir)) {
+      this.logger.debug("migrations_dir_resolved", { path: moduleRelativeDir, strategy: "module-relative" });
+      return moduleRelativeDir;
+    }
+
+    const fallbackDirs = [
+      resolve(process.cwd(), "src", "db", "migrations"),
+      resolve(process.cwd(), "dist", "db", "migrations"),
+    ];
+
+    for (const dir of fallbackDirs) {
+      searchPaths.push(dir);
+      if (existsSync(dir)) {
+        this.logger.debug("migrations_dir_resolved", { path: dir, strategy: "cwd" });
+        return dir;
+      }
+    }
+
+    throw new Error(
+      `Unable to locate SQL migrations. Checked: ${searchPaths.join(", ")}. ` +
+        "Set PROMPT_VAULT_MIGRATIONS_DIR to override."
+    );
   }
 
   private insertPromptRecord(prompt: Prompt): void {

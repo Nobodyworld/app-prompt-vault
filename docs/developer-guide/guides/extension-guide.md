@@ -20,6 +20,7 @@ Keep domain validation, migrations, and persistence inside the core service—pl
    - `onPromptCreated({ prompt, version })`
    - `onVersionAdded({ promptId, version })`
    - `onPromptTagged({ promptId, tags })`
+   - `onPromptUntagged({ promptId, labels })`
 
 Handlers execute inside telemetry spans (`plugin.<name>.<event>`) so metrics capture execution time and failures.
 
@@ -31,19 +32,41 @@ You can scaffold a plugin skeleton with the provided script:
 npm run extension:scaffold operations
 ```
 
-This creates `src/extensions/plugins/operationsPlugin.ts` with a ready-to-edit template. If you prefer to write one manually, create a new file under `src/extensions/plugins/yourPluginName.ts`:
+This command now generates `src/extensions/plugins/operationsPlugin.ts` with stub implementations for every lifecycle hook and a helper that reuses the plugin context (logger + telemetry) outside of `setup()`. Replace the placeholder telemetry calls with your organisation-specific side-effects.
+
+If you prefer to write one manually, start from the same pattern:
 
 ```ts
-import type { PromptVaultPlugin } from "../types.js";
+import type { PromptVaultPlugin, PromptVaultPluginContext } from "../types.js";
 
 export function createExamplePlugin(): PromptVaultPlugin {
+  let context: PromptVaultPluginContext | undefined;
+
+  function withContext(callback: (ctx: PromptVaultPluginContext) => void): void {
+    if (!context) {
+      return;
+    }
+    callback(context);
+  }
+
   return {
     name: "example",
-    setup({ logger }) {
-      logger.info("example_plugin_booted");
+    setup(pluginContext) {
+      context = pluginContext;
+      pluginContext.logger.info("example_plugin_booted");
     },
-    onPromptCreated({ prompt }) {
-      // TODO(P3, 1d): push prompt metadata to downstream system
+    onPromptCreated({ prompt, version }) {
+      withContext(({ telemetry }) => {
+        telemetry.recordEvent("plugin.example.prompt_created", {
+          promptId: prompt.id,
+          semanticVersion: version.semanticVersion,
+        });
+      });
+    },
+    onPromptUntagged({ promptId, labels }) {
+      withContext(({ logger }) => {
+        logger.info("plugin.example.prompt_untagged", { promptId, labels });
+      });
     },
   };
 }

@@ -340,6 +340,7 @@ Environment configuration:
 - `PROMPT_VAULT_METRICS=true` – Enable the observability server with health checks and metrics.
 - `PROMPT_VAULT_METRICS_PORT` – Override the Prometheus/health listener port (defaults to `9464`).
 - `PROMPT_VAULT_STATIC_DIR` – Path to a directory of pre-built static assets served by the HTTP API (defaults to the bundled desktop build when available).
+- `PROMPT_VAULT_MIGRATIONS_DIR` – Absolute or relative path to the directory that stores SQL migrations when the default module-relative lookup does not apply (e.g., custom deployment layouts).
 
 Operational endpoints are exposed on `/observability`:
 

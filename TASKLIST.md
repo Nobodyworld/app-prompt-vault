@@ -99,6 +99,10 @@ Completion note (indented, one line):
   - Completed: 2025-11-12 — Created multi-stage Dockerfile, docker-compose.yml with persistent volumes, deployment script, and npm scripts for easy container management
 - [x] CI/CD pipeline with automated testing — TK-20251112-018
   - Completed: 2025-11-12 — Implemented comprehensive GitHub Actions CI pipeline with build, test, lint, coverage, and UI testing workflows
+- [x] Make PromptRepository migration path resolution portable (stop using absolute Windows path) — TK-20251112-034
+  - Completed: 2025-11-12 — Added module-relative discovery with a PROMPT_VAULT_MIGRATIONS_DIR override plus documentation for the new configuration flag
+- [x] Extend extension scaffolder to generate lifecycle hook stubs and guidance — TK-20251112-035
+  - Completed: 2025-11-12 — Scaffolder now emits all lifecycle hooks with context helpers and the docs/tests were updated to reflect the richer template
 
 ### 🔄 Nice-to-Have Features (Future Enhancements)
 
