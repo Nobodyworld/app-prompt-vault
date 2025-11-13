@@ -60,7 +60,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-error-boundary": "^6.0.0",
-    "react-router-dom": "^7.9.4",
+    "react-router-dom": "^7.9.5",
     "simple-git": "^3.30.0",
     "yaml": "^2.8.1",
     "zod": "^4.1.12"
