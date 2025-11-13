@@ -106,12 +106,9 @@ export default [
     }
   },
   {
-    files: ["plugins/**/*.ts"],
+    files: ["playwright.config.ts"],
     languageOptions: {
       parser: tsparser,
-      parserOptions: {
-        tsconfigRootDir: import.meta.dirname,
-      },
       ecmaVersion: 2022,
       sourceType: "module",
       globals: {
@@ -130,5 +127,5 @@ export default [
         "fixStyle": "separate-type-imports"
       }]
     }
-  }
-];
+  },
+]

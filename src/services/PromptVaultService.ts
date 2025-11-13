@@ -1062,4 +1062,179 @@ export class PromptVaultService {
   public getPluginHost(): PluginHost {
     return this.pluginHost;
   }
+
+  /**
+   * Import multiple prompts from files in bulk.
+   *
+   * Processes multiple prompt files in a single operation, importing each one
+   * as a separate prompt. Provides progress tracking and error handling for
+   * batch operations. Skips files that fail to import and continues with others.
+   *
+   * @param filePaths - Array of absolute file paths to import
+   * @param options - Import configuration options applied to all files
+   * @param options.tags - Tags to apply to all imported prompts
+   * @param options.category - Category to assign to all imported prompts
+   * @param options.format - Format override for all files (auto-detected if not provided)
+   * @param options.skipErrors - Whether to continue importing other files if one fails
+   * @returns Bulk import results with success/failure counts and details
+   *
+   * @example
+   * ```typescript
+   * const result = service.bulkImportPrompts([
+   *   "/prompts/greeting.md",
+   *   "/prompts/farewell.md"
+   * ], {
+   *   tags: ["social"],
+   *   category: "communication"
+   * });
+   *
+   * console.log(`Imported ${result.successful.length} prompts`);
+   * console.log(`Failed ${result.failed.length} imports`);
+   * ```
+   */
+  public bulkImportPrompts(
+    filePaths: readonly string[],
+    options: {
+      tags?: readonly string[];
+      category?: string;
+      format?: PromptFormat;
+      skipErrors?: boolean;
+    } = {}
+  ): {
+    successful: Array<{ filePath: string; prompt: Prompt }>;
+    failed: Array<{ filePath: string; error: string }>;
+  } {
+    return this.telemetry.withSpan("service.bulkImportPrompts", { fileCount: filePaths.length }, () => {
+      const successful: Array<{ filePath: string; prompt: Prompt }> = [];
+      const failed: Array<{ filePath: string; error: string }> = [];
+
+      for (const filePath of filePaths) {
+        try {
+          const prompt = this.importPromptFromFile(filePath, {
+            tags: options.tags,
+            category: options.category,
+            format: options.format,
+          });
+          successful.push({ filePath, prompt });
+          this.logger.info("bulk_import_success", { filePath, promptId: prompt.id });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          failed.push({ filePath, error: errorMessage });
+          this.logger.warn("bulk_import_failed", { filePath, error: errorMessage });
+
+          if (!options.skipErrors) {
+            break;
+          }
+        }
+      }
+
+      this.logger.info("bulk_import_completed", {
+        total: filePaths.length,
+        successful: successful.length,
+        failed: failed.length
+      });
+
+      return { successful, failed };
+    });
+  }
+
+  /**
+   * Export multiple prompts to files in bulk.
+   *
+   * Exports multiple prompts to separate files in a single operation.
+   * Creates output directory structure as needed and provides progress
+   * tracking with error handling for batch operations.
+   *
+   * @param promptIds - Array of prompt IDs to export
+   * @param outputDir - Base directory where files will be created
+   * @param options - Export configuration options
+   * @param options.format - Target format for all exports
+   * @param options.includeMetadata - Whether to include metadata in exported files
+   * @param options.namingPattern - Filename pattern ("{slug}", "{title}", "{id}")
+   * @param options.skipErrors - Whether to continue exporting other prompts if one fails
+   * @returns Bulk export results with success/failure counts and file paths
+   *
+   * @example
+   * ```typescript
+   * const result = service.bulkExportPrompts(
+   *   ["550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440001"],
+   *   "/exports",
+   *   {
+   *     format: "markdown",
+   *     namingPattern: "{slug}",
+   *     includeMetadata: true
+   *   }
+   * );
+   *
+   * console.log(`Exported ${result.successful.length} prompts to ${result.outputDir}`);
+   * ```
+   */
+  public bulkExportPrompts(
+    promptIds: readonly string[],
+    outputDir: string,
+    options: {
+      format?: PromptFormat;
+      includeMetadata?: boolean;
+      namingPattern?: string;
+      skipErrors?: boolean;
+    } = {}
+  ): {
+    successful: Array<{ promptId: string; filePath: string }>;
+    failed: Array<{ promptId: string; error: string }>;
+    outputDir: string;
+  } {
+    return this.telemetry.withSpan("service.bulkExportPrompts", { promptCount: promptIds.length, outputDir }, () => {
+      const successful: Array<{ promptId: string; filePath: string }> = [];
+      const failed: Array<{ promptId: string; error: string }> = [];
+      const namingPattern = options.namingPattern || "{slug}";
+
+      // Ensure output directory exists
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+
+      for (const promptId of promptIds) {
+        try {
+          const prompt = this.repository.getPromptById(promptId);
+
+          // Generate filename based on pattern
+          let filename = namingPattern;
+          filename = filename.replace("{slug}", prompt.slug);
+          filename = filename.replace("{title}", prompt.title.replace(/[^a-zA-Z0-9]/g, "_"));
+          filename = filename.replace("{id}", promptId);
+
+          // Add appropriate extension
+          const targetFormat = options.format || prompt.latestVersion?.format || "markdown";
+          const extension = targetFormat === "markdown" ? "md" :
+            targetFormat === "yaml" ? "yaml" : "json";
+          const filePath = path.join(outputDir, `${filename}.${extension}`);
+
+          this.exportPromptToFile(promptId, filePath, {
+            format: options.format,
+            includeMetadata: options.includeMetadata,
+          });
+
+          successful.push({ promptId, filePath });
+          this.logger.info("bulk_export_success", { promptId, filePath });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          failed.push({ promptId, error: errorMessage });
+          this.logger.warn("bulk_export_failed", { promptId, error: errorMessage });
+
+          if (!options.skipErrors) {
+            break;
+          }
+        }
+      }
+
+      this.logger.info("bulk_export_completed", {
+        total: promptIds.length,
+        successful: successful.length,
+        failed: failed.length,
+        outputDir
+      });
+
+      return { successful, failed, outputDir };
+    });
+  }
 }

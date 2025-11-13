@@ -119,12 +119,110 @@ npm run web:dev
 # build and serve web app for production
 npm run web:build
 
-# start a standalone observability server (metrics + health endpoints)
+# run a standalone observability server (metrics + health endpoints)
 npm run observability
 
 # bootstrap a SQLite database with migrations applied
 npm run db:bootstrap ./prompt-vault.db
 ```
+
+## Docker Deployment
+
+Prompt Vault can be easily deployed using Docker for production environments.
+
+### Quick Start with Docker
+
+```bash
+# Build and start the application
+npm run docker:start
+
+# Or use the deployment script
+npm run docker:deploy start
+
+# Check status
+npm run docker:status
+
+# View logs
+npm run docker:logs
+```
+
+The application will be available at `http://localhost:3001`.
+
+### Docker Commands
+
+```bash
+# Build the Docker image
+npm run docker:build
+
+# Start containers in background
+npm run docker:start
+
+# Stop containers
+npm run docker:stop
+
+# Restart containers
+npm run docker:restart
+
+# View container logs
+npm run docker:logs
+
+# Check container status
+npm run docker:status
+
+# Use the interactive deployment script
+npm run docker:deploy
+```
+
+### Docker Configuration
+
+The Docker setup includes:
+
+- **Multi-stage build** for optimized production images
+- **SQLite persistence** with named volumes for data safety
+- **Health checks** for container monitoring
+- **Environment configuration** for easy customization
+- **Security hardening** with non-root user execution
+
+### Environment Variables
+
+Configure the deployment using environment variables:
+
+```bash
+# Port configuration
+PROMPT_VAULT_PORT=3001
+
+# Database configuration
+PROMPT_VAULT_DB_PATH=/app/data/prompt-vault.db
+
+# CORS configuration
+PROMPT_VAULT_CORS_ORIGINS=*
+
+# Metrics and observability
+PROMPT_VAULT_METRICS=true
+PROMPT_VAULT_METRICS_PORT=9090
+
+# File size limits
+PROMPT_VAULT_MAX_FILE_SIZE_BYTES=10485760
+PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH=102400
+```
+
+### Data Persistence
+
+The Docker setup uses named volumes to persist SQLite data:
+
+- Database files are stored in `/app/data/` inside the container
+- Data survives container restarts and updates
+- Use `docker volume ls` and `docker volume rm` to manage volumes
+
+### Production Deployment
+
+For production deployments:
+
+1. **Customize environment variables** in `docker-compose.yml`
+2. **Configure reverse proxy** (nginx, Caddy, etc.) for SSL termination
+3. **Set up monitoring** using the exposed metrics endpoints
+4. **Configure backups** of the named volume for data safety
+5. **Use secrets management** for sensitive configuration
 
 ## Migrating from PRM
 

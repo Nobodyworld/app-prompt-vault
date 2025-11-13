@@ -4,8 +4,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    exclude: ["dist/**", "node_modules/**"],
-    coverage: ( {
+    exclude: ["dist/**", "node_modules/**", "tests/playwright/**"],
+    coverage: ({
       // Use istanbul coverage provider to match the report-coverage script expectations
       provider: 'istanbul',
       // include server / library code only; exclude desktop renderer and generated assets
@@ -18,6 +18,6 @@ export default defineConfig({
         functions: 80,
         branches: 75,
       },
-    } as any ),
+    } as any),
   },
 });

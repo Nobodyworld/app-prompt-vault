@@ -53,7 +53,7 @@ function computeFunctionComplexities(sourceFile: ts.SourceFile): number[] {
 
   const collect = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) {
-      complexities.push(calculateCyclomaticComplexity(node));
+      complexities.push(calculateCyclomaticComplexity(node as ts.FunctionLikeDeclarationBase));
       return;
     }
     ts.forEachChild(node, collect);

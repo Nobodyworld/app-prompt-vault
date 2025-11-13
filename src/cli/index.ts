@@ -321,6 +321,7 @@ program
 
       for (const prompt of result.prompts) {
         console.log(chalk.cyan(`- ${prompt.title} (${prompt.slug})`));
+        console.log(chalk.gray(`  ID: ${prompt.id}`));
         if (prompt.latestVersion) {
           console.log(
             chalk.gray(
@@ -430,6 +431,92 @@ program
 
       console.log(chalk.green(`Exported prompt ${options.id} to ${options.output}`));
       telemetry.recordEvent("cli.prompt_exported", { promptId: options.id, filePath: options.output });
+    });
+  });
+
+program
+  .command("bulk-import")
+  .description("Import multiple prompts from files in bulk")
+  .requiredOption("--files <files>", "Comma-separated list of file paths to import")
+  .option("--tags <tags>", "Comma separated tag labels to apply to all prompts", "")
+  .option("--category <category>", "Category to assign to all imported prompts")
+  .option("--format <format>", "Format override for all files (markdown, yaml, json) - auto-detected if not specified")
+  .option("--skip-errors", "Continue importing other files if one fails")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      const filePaths = (options.files as string).split(',').map(f => f.trim()).filter(Boolean);
+      const tags = options.tags
+        ? (options.tags as string)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+        : [];
+
+      console.log(chalk.blue(`Importing ${filePaths.length} files...`));
+
+      const result = service.bulkImportPrompts(filePaths, {
+        tags,
+        category: options.category,
+        format: options.format,
+        skipErrors: options.skipErrors,
+      });
+
+      console.log(chalk.green(`✅ Successfully imported ${result.successful.length} prompts`));
+
+      if (result.failed.length > 0) {
+        console.log(chalk.yellow(`⚠️  Failed to import ${result.failed.length} files:`));
+        for (const failure of result.failed) {
+          console.log(chalk.red(`  • ${failure.filePath}: ${failure.error}`));
+        }
+      }
+
+      telemetry.recordEvent("cli.bulk_import_completed", {
+        totalFiles: filePaths.length,
+        successful: result.successful.length,
+        failed: result.failed.length
+      });
+    });
+  });
+
+program
+  .command("bulk-export")
+  .description("Export multiple prompts to files in bulk")
+  .requiredOption("--ids <ids>", "Comma-separated list of prompt IDs to export")
+  .requiredOption("--output-dir <path>", "Directory where files will be created")
+  .option("--format <format>", "Target format for all exports (markdown, yaml, json)")
+  .option("--include-metadata", "Include metadata in exported files")
+  .option("--naming-pattern <pattern>", "Filename pattern using {slug}, {title}, or {id}", "{slug}")
+  .option("--skip-errors", "Continue exporting other prompts if one fails")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, (service) => {
+      const promptIds = (options.ids as string).split(',').map(id => id.trim()).filter(Boolean);
+
+      console.log(chalk.blue(`Exporting ${promptIds.length} prompts to ${options.outputDir}...`));
+
+      const result = service.bulkExportPrompts(promptIds, options.outputDir, {
+        format: options.format,
+        includeMetadata: options.includeMetadata,
+        namingPattern: options.namingPattern,
+        skipErrors: options.skipErrors,
+      });
+
+      console.log(chalk.green(`✅ Successfully exported ${result.successful.length} prompts to ${result.outputDir}`));
+
+      if (result.failed.length > 0) {
+        console.log(chalk.yellow(`⚠️  Failed to export ${result.failed.length} prompts:`));
+        for (const failure of result.failed) {
+          console.log(chalk.red(`  • ${failure.promptId}: ${failure.error}`));
+        }
+      }
+
+      telemetry.recordEvent("cli.bulk_export_completed", {
+        totalPrompts: promptIds.length,
+        successful: result.successful.length,
+        failed: result.failed.length,
+        outputDir: result.outputDir
+      });
     });
   });
 
@@ -915,30 +1002,117 @@ program
     }
   });
 
-/**
- * Parse command line arguments and execute the appropriate command.
+program
+  .command('sync')
+  .description('Manage Git synchronization for prompt libraries')
+  .addCommand(
+    new Command('init')
+      .description('Initialize Git sync for a prompt library')
+      .requiredOption('--repo <path>', 'Path to the sync repository directory')
+      .option('--remote <url>', 'Remote Git repository URL')
+      .option('--db <path>', 'Path to SQLite database', defaultDbPath)
+      .action(async (options) => {
+        await useService(options.db, async (service) => {
+          const { SyncService } = await import('../services/SyncService.js');
 
-/**
- * Parse command line arguments and execute the appropriate command.
- *
- * This is the main entry point that processes user input, validates arguments,
- * and dispatches to the appropriate command handler. All commands are executed
- * within the useService wrapper which provides proper resource management,
- * error handling, and observability.
- *
- * If command execution fails, the error is logged and the process exits with
- * code 1 to indicate failure.
- *
- * @example
- * ```bash
- * # Run from npm script
- * npm run dev -- create --slug test --title "Test Prompt" --body "Hello"
- *
- * # Run directly
- * node dist/cli/index.js create --slug test --title "Test Prompt" --body "Hello"
- * ```
- */
-program.parseAsync(process.argv).catch((error) => {
-  console.error(chalk.red(error instanceof Error ? error.message : String(error)));
-  process.exit(1);
-});
+          const syncService = new SyncService(service, {
+            repoPath: options.repo,
+          });
+
+          await syncService.initialize(options.remote);
+
+          console.log(chalk.green(`Git sync initialized at ${options.repo}`));
+          if (options.remote) {
+            console.log(chalk.gray(`Remote repository: ${options.remote}`));
+          }
+        });
+      })
+  )
+  .addCommand(
+    new Command('push')
+      .description('Push local changes to remote repository')
+      .requiredOption('--repo <path>', 'Path to the sync repository directory')
+      .option('--message <msg>', 'Commit message', `Sync: ${new Date().toISOString()}`)
+      .option('--db <path>', 'Path to SQLite database', defaultDbPath)
+      .action(async (options) => {
+        await useService(options.db, async (service) => {
+          const { SyncService } = await import('../services/SyncService.js');
+
+          const syncService = new SyncService(service, {
+            repoPath: options.repo,
+          });
+
+          await syncService.push(options.message);
+
+          console.log(chalk.green(`Changes pushed to remote repository`));
+        });
+      })
+  )
+  .addCommand(
+    new Command('pull')
+      .description('Pull latest changes from remote repository')
+      .requiredOption('--repo <path>', 'Path to the sync repository directory')
+      .option('--db <path>', 'Path to SQLite database', defaultDbPath)
+      .action(async (options) => {
+        await useService(options.db, async (service) => {
+          const { SyncService } = await import('../services/SyncService.js');
+
+          const syncService = new SyncService(service, {
+            repoPath: options.repo,
+          });
+
+          await syncService.pull();
+
+          console.log(chalk.green(`Changes pulled from remote repository`));
+        });
+      })
+  )
+  .addCommand(
+    new Command('status')
+      .description('Check sync status and pending changes')
+      .requiredOption('--repo <path>', 'Path to the sync repository directory')
+      .option('--db <path>', 'Path to SQLite database', defaultDbPath)
+      .action(async (options) => {
+        await useService(options.db, async (service) => {
+          const { SyncService } = await import('../services/SyncService.js');
+
+          const syncService = new SyncService(service, {
+            repoPath: options.repo,
+          });
+
+          const status = await syncService.getStatus();
+
+          console.log(chalk.bold('\n🔄 Sync Status\n'));
+
+          if (status.lastSync) {
+            console.log(chalk.blue(`Last sync: ${status.lastSync.toISOString()}`));
+          } else {
+            console.log(chalk.yellow(`No sync history found`));
+          }
+
+          if (status.hasChanges) {
+            console.log(chalk.yellow(`⚠️  Local changes pending`));
+          } else {
+            console.log(chalk.green(`✅ No local changes`));
+          }
+
+          if (status.remoteAhead) {
+            console.log(chalk.yellow(`⬇️  Remote has newer changes`));
+          }
+
+          if (status.localAhead) {
+            console.log(chalk.yellow(`⬆️  Local has unpushed changes`));
+          }
+
+          if (status.conflicts.length > 0) {
+            console.log(chalk.red(`❌ Conflicts detected:`));
+            for (const conflict of status.conflicts) {
+              console.log(`  ${conflict}`);
+            }
+          }
+        });
+      })
+  );
+
+// Parse command line arguments
+program.parse();

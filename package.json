@@ -17,6 +17,9 @@
     "test:watch": "vitest",
     "dev": "tsx src/cli/index.ts",
     "test:e2e": "vitest run tests/e2e",
+    "test:ui": "playwright test",
+    "test:ui:headed": "playwright test --headed",
+    "test:ui:debug": "playwright test --debug",
     "smoke": "node ./scripts/smoke-test-memory.cjs",
     "observability": "PROMPT_VAULT_METRICS=true tsx scripts/observability.ts",
     "db:bootstrap": "tsx scripts/bootstrap-db.ts",
@@ -27,7 +30,13 @@
     "web:dev": "tsx src/server.ts",
     "web:build": "npm run desktop:build && npm run web:dev",
     "tauri:dev": "tsx scripts/tauri-run.ts dev",
-    "tauri:build": "tsx scripts/tauri-run.ts build"
+    "docker:build": "docker-compose build",
+    "docker:start": "docker-compose up -d",
+    "docker:stop": "docker-compose down",
+    "docker:restart": "docker-compose restart",
+    "docker:logs": "docker-compose logs -f",
+    "docker:status": "docker-compose ps",
+    "docker:deploy": "tsx scripts/docker-deploy.ts"
   },
   "keywords": [
     "prompt",
@@ -52,10 +61,12 @@
     "react-dom": "^19.2.0",
     "react-error-boundary": "^6.0.0",
     "react-router-dom": "^7.9.4",
+    "simple-git": "^3.30.0",
     "yaml": "^2.8.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@tauri-apps/cli": "^2.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",

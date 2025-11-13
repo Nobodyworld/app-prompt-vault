@@ -72,36 +72,44 @@ Completion note (indented, one line):
 - [ ] Desktop Electron UI (alternative to CLI) — TK-20251107-015
   Decision: Deferred — The repository targets Tauri for the desktop experience. Prefer extending the existing Tauri desktop UI rather than adding Electron unless a specific blocker arises. Revisit if native Electron-only integrations are requested.
 
-- [ ] Git integration and sync capabilities — TK-20251107-016
-  Relevance: High — Synchronization and versioned prompt sharing are common user needs. Next step: create a design doc at `docs/developer-guide/git-integration.md` that covers auth models, conflict resolution strategy, and on-disk layout. Then open an issue to track implementation and prioritize a spike.
-
-- [ ] Schema validation and lints for prompts — TK-20251107-017
-  Relevance: High — Core Zod schemas exist in `src/domain/validation.ts`; remaining work is CI integration and a linting tool. Next step: add a `cli lint` command stub that validates a directory of prompt files against the Zod schema and add a CI job to run it on PRs.
-
 ### 🔄 Remaining Desktop App Features
 
 - [x] Enhanced error handling and user notifications — TK-20251112-005
   - Completed: 2025-11-12 — Added toast notification system with success/error/warning/info types, integrated throughout the app for better user feedback
 - [x] Theme switching (dark/light mode toggle) — TK-20251112-006
   - Completed: 2025-11-12 — Implemented theme provider with CSS variables, theme toggle in settings, and localStorage persistence
-- [ ] Prompt categories/folders for organization — TK-20251112-007
+- [x] Prompt categories/folders for organization — TK-20251112-007
+  - Completed: 2025-11-12 — Implemented category field in domain model, database migration, UI forms, search filtering, and import/export support
 - [ ] Advanced clipboard management with history — TK-20251112-008
 - [ ] Prompt templates and quick-start wizards — TK-20251112-009
+- [x] Bulk operations (import/export multiple prompts) — TK-20251112-019
+  - Completed: 2025-11-12 — Implemented bulk-import and bulk-export CLI commands with progress tracking, error handling, and comprehensive options for tags, categories, formats, and naming patterns
+- [ ] Prompt versioning with diff visualization — TK-20251112-020
+- [ ] Advanced search with fuzzy matching and AI suggestions — TK-20251112-021
 
 ### 🔄 High Priority Remaining Tasks
 
-- [ ] Git integration and sync capabilities — TK-20251107-016
-  - Next step: Implement basic Git operations (init, add, commit, push) with conflict resolution for prompt synchronization
-- [ ] Schema validation and lints for prompts — TK-20251107-017
-  - Next step: Extend CLI lint command to validate external prompt files and add CI integration
+- [x] Git integration and sync capabilities — TK-20251107-016
+  - Completed: 2025-11-12 — Implemented GitService and SyncService with CLI commands (sync init/push/pull/status) for cross-device prompt synchronization, conflict resolution, and Git-based version control
+- [x] Schema validation and lints for prompts — TK-20251107-017
+  - Completed: 2025-11-12 — Implemented CLI lint command that validates external prompt files against Zod schemas with auto-detection of JSON/YAML/Markdown formats, plus CI integration in quality gate pipeline
+- [x] API documentation with OpenAPI specification — TK-20251112-016
+  - Completed: 2025-11-12 — Created comprehensive OpenAPI 3.0.3 specification at docs/api-reference/openapi.yaml documenting all REST API endpoints with request/response schemas, error handling, and pagination
+- [x] Docker containerization and deployment — TK-20251112-017
+  - Completed: 2025-11-12 — Created multi-stage Dockerfile, docker-compose.yml with persistent volumes, deployment script, and npm scripts for easy container management
+- [x] CI/CD pipeline with automated testing — TK-20251112-018
+  - Completed: 2025-11-12 — Implemented comprehensive GitHub Actions CI pipeline with build, test, lint, coverage, and UI testing workflows
 
 ### 🔄 Nice-to-Have Features (Future Enhancements)
 
 - [ ] Delta snapshots to reduce redundant payload size — TK-20251107-018
-- [ ] End-to-end tests for critical user journeys — TK-20251107-019
-- [ ] Playwright smoke tests for UI validation — TK-20251107-020
+- [x] End-to-end tests for critical user journeys — TK-20251107-019
+  - Completed: 2025-11-12 — Added comprehensive Vitest E2E test framework with smoke tests and critical user journey testing (create→list→delete→restore workflows, import/export, diagnostics/stats) plus `test:e2e` npm script
+- [x] Playwright smoke tests for UI validation — TK-20251107-020
+  - Completed: 2025-11-12 — Implemented comprehensive Playwright smoke tests with 7 test cases covering app loading, navigation, sidebar elements, page transitions, basic interactions, responsiveness, and error boundaries. Fixed ESLint configuration for playwright.config.ts and excluded Playwright tests from Vitest to prevent conflicts.
 - [ ] Performance benchmarks and guardrails — TK-20251107-021
-- [ ] Semantic release automation with changelogs — TK-20251107-022
+- [x] Semantic release automation with changelogs — TK-20251107-022
+  - Completed: 2025-11-12 — Implemented automated release preparation script (`npm run release:prepare`) that handles version bumping, package.json updates, and generates changelog/release notes stubs
 - [ ] Advanced search with fuzzy matching and relevance scoring — TK-20251112-010
 - [ ] Prompt versioning with diff visualization — TK-20251112-011
 - [ ] Collaborative features (shared prompt libraries) — TK-20251112-012
@@ -111,9 +119,22 @@ Completion note (indented, one line):
 - [x] Git integration design document — TK-20251111-001
   - Completed: 2025-11-11 — Created comprehensive design doc at `docs/developer-guide/git-integration.md` covering auth models, conflict resolution, repository structure, and implementation phases.
 - [x] CLI lint command implementation — TK-20251111-002
-  - Completed: 2025-11-11 — Added `lint` CLI command that validates prompt files against Zod schemas, supports JSON/YAML/Markdown formats with auto-detection, and provides detailed validation error reporting
+  - Completed: 2025-11-12 — Added `lint` CLI command that validates prompt files against Zod schemas, supports JSON/YAML/Markdown formats with auto-detection, and provides detailed validation error reporting
 - [x] E2E test framework scaffolding — TK-20251111-003
   - Completed: 2025-11-12 — Added comprehensive Vitest E2E scaffold with smoke tests and critical user journey testing (create→list→delete→restore workflows, import/export, diagnostics/stats) plus `test:e2e` npm script
+- [x] Security audit and dependency vulnerability scanning — TK-20251112-022
+  - Completed: 2025-11-12 — Implemented comprehensive security scanning with `npm run security:scan` script that checks for vulnerabilities, insecure dependencies, and security best practices
+- [ ] Multi-language support (i18n) for international users — TK-20251112-023
+- [ ] Plugin marketplace and registry system — TK-20251112-024
+- [ ] Backup encryption and secure storage options — TK-20251112-025
+- [ ] Data migration tools for upgrading between versions — TK-20251112-026
+- [ ] Web-based UI alternative to desktop app — TK-20251112-027
+- [ ] Offline mode with local synchronization — TK-20251112-028
+- [ ] Real-time collaboration and sharing features — TK-20251112-029
+- [ ] Advanced permission and access control system — TK-20251112-030
+- [ ] Audit logging and compliance reporting — TK-20251112-031
+- [ ] Integration with external AI APIs and services — TK-20251112-032
+- [ ] Performance monitoring and optimization — TK-20251112-033
 
 ---
 

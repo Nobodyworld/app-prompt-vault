@@ -1,0 +1,748 @@
+openapi: 3.0.3
+info:
+  title: Prompt Vault API
+  description: REST API for managing reusable prompt libraries with versioning, tagging, and format conversion capabilities.
+  version: 1.0.0
+  contact:
+    name: Prompt Vault Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3001
+    description: Local development server
+  - url: https://api.prompt-vault.dev
+    description: Production server
+
+paths:
+  /api/prompts:
+    get:
+      summary: Search and list prompts
+      description: Search prompts by text content, tags, with pagination support.
+      operationId: searchPrompts
+      parameters:
+        - name: text
+          in: query
+          description: Search text to match against prompt content
+          schema:
+            type: string
+            maxLength: 200
+        - name: tags
+          in: query
+          description: Comma-separated list of tag labels to filter by
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: Page number (0-based)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: pageSize
+          in: query
+          description: Number of results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Successful search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Prompt"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+    post:
+      summary: Create a new prompt
+      description: Create a new prompt with initial version and metadata.
+      operationId: createPrompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptCreate"
+      responses:
+        "201":
+          description: Prompt created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Prompt"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/DuplicateError"
+
+  /api/prompts/{promptId}:
+    get:
+      summary: Get prompt details
+      description: Retrieve detailed information about a specific prompt including all versions.
+      operationId: getPrompt
+      parameters:
+        - name: promptId
+          in: path
+          required: true
+          description: Unique identifier of the prompt
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Prompt details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Prompt"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/prompts/{promptId}/versions:
+    post:
+      summary: Add new version to prompt
+      description: Create a new version of an existing prompt with updated content.
+      operationId: addVersion
+      parameters:
+        - name: promptId
+          in: path
+          required: true
+          description: Unique identifier of the prompt
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionCreate"
+      responses:
+        "201":
+          description: Version added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PromptVersion"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/prompts/{promptId}/convert:
+    post:
+      summary: Convert prompt format
+      description: Convert a prompt to a different format (markdown, yaml, or json).
+      operationId: convertPrompt
+      parameters:
+        - name: promptId
+          in: path
+          required: true
+          description: Unique identifier of the prompt
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - targetFormat
+              properties:
+                targetFormat:
+                  type: string
+                  enum: [markdown, yaml, json]
+      responses:
+        "200":
+          description: Prompt converted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      content:
+                        type: string
+                      format:
+                        type: string
+                        enum: [markdown, yaml, json]
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/prompts/{promptId}/tags:
+    post:
+      summary: Add tags to prompt
+      description: Add one or more tags to an existing prompt.
+      operationId: tagPrompt
+      parameters:
+        - name: promptId
+          in: path
+          required: true
+          description: Unique identifier of the prompt
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tags
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+                    minLength: 1
+                  minItems: 1
+      responses:
+        "200":
+          description: Tags added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Prompt"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    delete:
+      summary: Remove tags from prompt
+      description: Remove one or more tags from an existing prompt.
+      operationId: untagPrompt
+      parameters:
+        - name: promptId
+          in: path
+          required: true
+          description: Unique identifier of the prompt
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tags
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+                    minLength: 1
+                  minItems: 1
+      responses:
+        "200":
+          description: Tags removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Prompt"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /observability/healthz:
+    get:
+      summary: Health check
+      description: Check if the service is healthy and running.
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /observability/readyz:
+    get:
+      summary: Readiness check
+      description: Check if the service is ready to accept requests.
+      operationId: getReadiness
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /observability/metrics:
+    get:
+      summary: Prometheus metrics
+      description: Get service metrics in Prometheus format.
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Metrics retrieved successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Prometheus metrics in text format
+
+  /observability/diagnostics:
+    get:
+      summary: Run diagnostics
+      description: Run comprehensive diagnostics on the prompt library.
+      operationId: runDiagnostics
+      responses:
+        "200":
+          description: Diagnostics completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  summary:
+                    $ref: "#/components/schemas/DiagnosticsSummary"
+                  issues:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiagnosticIssue"
+        "500":
+          description: Diagnostics failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /observability/stats:
+    get:
+      summary: Get library statistics
+      description: Retrieve comprehensive statistics about the prompt library.
+      operationId: getLibraryStats
+      responses:
+        "200":
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  prompts:
+                    $ref: "#/components/schemas/PromptStats"
+                  tags:
+                    $ref: "#/components/schemas/TagStats"
+                  versions:
+                    $ref: "#/components/schemas/VersionStats"
+                  activity:
+                    $ref: "#/components/schemas/ActivityStats"
+        "500":
+          description: Failed to retrieve statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /observability/repair:
+    post:
+      summary: Repair data integrity
+      description: Run automatic repairs for common data integrity issues.
+      operationId: repairIntegrity
+      responses:
+        "200":
+          description: Repair completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  repairs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RepairResult"
+                  errors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RepairError"
+        "500":
+          description: Repair failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    Prompt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          pattern: "^[a-z0-9-]+$"
+        title:
+          type: string
+        description:
+          type: string
+        latestVersion:
+          $ref: "#/components/schemas/PromptVersion"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    PromptVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        promptId:
+          type: string
+          format: uuid
+        semanticVersion:
+          type: string
+          pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+        body:
+          type: string
+        format:
+          type: string
+          enum: [markdown, yaml, json]
+        changelog:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Tag:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PromptCreate:
+      type: object
+      required:
+        - slug
+        - title
+        - body
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          minLength: 3
+          pattern: "^[a-z0-9-]+$"
+        title:
+          type: string
+          minLength: 3
+        description:
+          type: string
+          maxLength: 2000
+        body:
+          type: string
+          minLength: 1
+        format:
+          type: string
+          enum: [markdown, yaml, json]
+          default: markdown
+        semanticVersion:
+          type: string
+          pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+          default: "1.0.0"
+        tags:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          default: []
+        changelog:
+          type: string
+          maxLength: 2000
+
+    VersionCreate:
+      type: object
+      required:
+        - body
+      properties:
+        body:
+          type: string
+          minLength: 1
+        format:
+          type: string
+          enum: [markdown, yaml, json]
+          default: markdown
+        semanticVersion:
+          type: string
+          pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+          default: "1.0.0"
+        changelog:
+          type: string
+          maxLength: 2000
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 0
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total:
+          type: integer
+          minimum: 0
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, failed, degraded]
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: object
+          additionalProperties: true
+
+    DiagnosticsSummary:
+      type: object
+      properties:
+        totalPrompts:
+          type: integer
+        totalVersions:
+          type: integer
+        totalTags:
+          type: integer
+        deletedPrompts:
+          type: integer
+        orphanedTags:
+          type: integer
+        invalidContent:
+          type: integer
+
+    DiagnosticIssue:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [error, warning]
+        message:
+          type: string
+        promptId:
+          type: string
+          format: uuid
+          nullable: true
+        details:
+          type: string
+          nullable: true
+
+    PromptStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        active:
+          type: integer
+        deleted:
+          type: integer
+        byFormat:
+          type: object
+          additionalProperties:
+            type: integer
+
+    TagStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        averagePerPrompt:
+          type: number
+        mostUsed:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              count:
+                type: integer
+
+    VersionStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        averagePerPrompt:
+          type: number
+
+    ActivityStats:
+      type: object
+      properties:
+        createdThisWeek:
+          type: integer
+        updatedThisWeek:
+          type: integer
+        deletedThisWeek:
+          type: integer
+
+    RepairResult:
+      type: object
+      properties:
+        description:
+          type: string
+        count:
+          type: integer
+
+    RepairError:
+      type: object
+      properties:
+        message:
+          type: string
+        details:
+          type: string
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+        requestId:
+          type: string
+        traceId:
+          type: string
+
+  responses:
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Request validation failed"
+              details:
+                type: array
+                items:
+                  type: string
+              requestId:
+                type: string
+              traceId:
+                type: string
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Prompt not found"
+              requestId:
+                type: string
+              traceId:
+                type: string
+
+    DuplicateError:
+      description: Resource already exists
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Prompt with this slug already exists"
+              requestId:
+                type: string
+              traceId:
+                type: string
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: API key for authentication (if implemented)
