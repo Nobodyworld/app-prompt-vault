@@ -244,7 +244,66 @@ async function loadPlugins(): Promise<PromptVaultPlugin[]> {
 program
   .name("prompt-vault")
   .description("Manage your reusable prompt library from the command line.")
-  .version("0.1.0");
+  .version("0.2.0");
+
+function parseTags(tags?: string): string[] | undefined {
+  if (!tags) return undefined;
+  return tags
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function parseLimit(value: string | undefined, fallback: number): number {
+  const parsed = value ? Number.parseInt(value, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+program
+  .command("export-buttons")
+  .description("Export prompts as a Buttons switchboard payload (JSON to stdout)")
+  .option("--text <query>", "Text to search within prompts")
+  .option("--tags <tags>", "Comma separated tags to filter by")
+  .option("--limit <number>", "Max phrases to include (default: 12)")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    const limit = parseLimit(options.limit, 12);
+    await useService(options.db, async (service) => {
+      const results = service.searchPrompts({
+        text: options.text,
+        tags: parseTags(options.tags),
+      });
+      const payload = service.exportButtonsSwitchboard(results.prompts, limit);
+      if (!payload) {
+        console.error(chalk.yellow("No prompts with bodies to export."));
+        return;
+      }
+      process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
+    });
+  });
+
+program
+  .command("export-planner")
+  .description("Export prompts as a Planner bucket draft (JSON to stdout)")
+  .option("--text <query>", "Text to search within prompts")
+  .option("--tags <tags>", "Comma separated tags to filter by")
+  .option("--limit <number>", "Max tasks to include (default: 10)")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    const limit = parseLimit(options.limit, 10);
+    await useService(options.db, async (service) => {
+      const results = service.searchPrompts({
+        text: options.text,
+        tags: parseTags(options.tags),
+      });
+      const payload = service.exportPlannerBucket(results.prompts, limit);
+      if (!payload) {
+        console.error(chalk.yellow("No prompts available to export."));
+        return;
+      }
+      process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
+    });
+  });
 
 program
   .command("create")

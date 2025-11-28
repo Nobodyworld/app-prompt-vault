@@ -107,7 +107,7 @@ export function createPromptVaultRouter(
       });
 
       response.json({
-        data: result.prompts,
+        prompts: result.prompts,
         pagination: {
           page: result.page,
           pageSize: result.pageSize,
@@ -121,7 +121,7 @@ export function createPromptVaultRouter(
     "/prompts/:promptId",
     asyncHandler("get-prompt", (request, response) => {
       const prompt = service.getPrompt(request.params.promptId);
-      response.json({ data: prompt });
+      response.json({ prompt });
     })
   );
 
@@ -133,7 +133,22 @@ export function createPromptVaultRouter(
         ...payload,
         id: payload.id ?? randomUUID(),
       });
-      response.status(201).json({ data: prompt });
+      response.status(201).json({ prompt });
+    })
+  );
+
+  router.put(
+    "/prompts/:promptId",
+    asyncHandler("update-prompt", (request, response) => {
+      const payload = z.object({
+        title: z.string().min(1).max(200).optional(),
+        description: z.string().max(2000).optional(),
+        category: z.string().max(100).optional(),
+        tags: z.array(z.string().min(1)).optional(),
+      }).parse(request.body);
+
+      const prompt = service.updatePrompt(request.params.promptId, payload);
+      response.json({ prompt });
     })
   );
 
@@ -148,7 +163,7 @@ export function createPromptVaultRouter(
         payload.format,
         payload.changelog
       );
-      response.status(201).json({ data: version });
+      response.status(201).json({ version });
     })
   );
 

@@ -4,6 +4,7 @@ import { listPrompts } from "../services/promptApi";
 import type { PromptSummary } from "../types/prompt";
 import { PromptList } from "../components/PromptList";
 import { copyTextToClipboard } from "../lib/clipboard";
+import { buildButtonsSwitchboardPayload, buildPlannerBucketDraft } from "../lib/interop";
 import { useToast } from "../components/Toast";
 
 type LocationState = { refresh?: boolean } | null;
@@ -76,6 +77,15 @@ export function PromptListPage(): React.JSX.Element {
     });
   }, [prompts, searchQuery]);
 
+  const buttonsPayload = useMemo(
+    () => buildButtonsSwitchboardPayload(filteredPrompts),
+    [filteredPrompts]
+  );
+  const plannerDraft = useMemo(
+    () => buildPlannerBucketDraft(filteredPrompts),
+    [filteredPrompts]
+  );
+
   const handleCopy = useCallback(async (prompt: PromptSummary): Promise<void> => {
     if (!prompt.latestVersion?.body) {
       addToast("Prompt body is unavailable. Try opening the editor to refresh this entry.", "error");
@@ -108,6 +118,24 @@ export function PromptListPage(): React.JSX.Element {
       }
     }
   }, [addToast]);
+
+  const handleCopyButtonsPayload = useCallback(async () => {
+    if (!buttonsPayload) {
+      addToast("Add prompts with bodies to export a switchboard.", "warning");
+      return;
+    }
+    await copyTextToClipboard(JSON.stringify(buttonsPayload, null, 2));
+    addToast("Buttons switchboard JSON copied", "success");
+  }, [addToast, buttonsPayload]);
+
+  const handleCopyPlannerDraft = useCallback(async () => {
+    if (!plannerDraft) {
+      addToast("No prompts available to stage planner tasks.", "warning");
+      return;
+    }
+    await copyTextToClipboard(JSON.stringify(plannerDraft, null, 2));
+    addToast("Planner bucket draft copied", "success");
+  }, [addToast, plannerDraft]);
 
   const handleEdit = useCallback(
     (prompt: PromptSummary) => {
@@ -186,6 +214,44 @@ export function PromptListPage(): React.JSX.Element {
               : `Found ${filteredPrompts.length} prompt${filteredPrompts.length === 1 ? "" : "s"}`}
           </p>
         )}
+      </div>
+
+      <div className="interop-card">
+        <div className="interop-card__header">
+          <div>
+            <p className="interop-eyebrow">Send to other apps</p>
+            <h3>Reuse these prompts elsewhere</h3>
+            <p className="interop-muted">
+              Copy JSON payloads that drop directly into Buttons (floating switchboard) or Planner (bucket draft).
+            </p>
+          </div>
+          <div className="interop-counts">
+            <span className="interop-pill">{filteredPrompts.length} selected</span>
+            <span className="interop-pill interop-pill--soft">
+              {buttonsPayload?.switchboard.phrases.length ?? 0} phrases
+            </span>
+          </div>
+        </div>
+        <div className="interop-actions">
+          <button
+            type="button"
+            className="interop-btn"
+            onClick={() => void handleCopyButtonsPayload()}
+            disabled={!buttonsPayload}
+            title="Copy a Buttons-compatible switchboard button"
+          >
+            Copy Buttons switchboard JSON
+          </button>
+          <button
+            type="button"
+            className="interop-btn secondary"
+            onClick={() => void handleCopyPlannerDraft()}
+            disabled={!plannerDraft}
+            title="Copy a Planner bucket draft with tasks seeded from these prompts"
+          >
+            Copy Planner bucket draft
+          </button>
+        </div>
       </div>
 
       {copyError && <p className="error library-error">{copyError}</p>}

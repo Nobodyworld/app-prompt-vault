@@ -67,7 +67,7 @@ describe("HTTP router", () => {
       });
       expect(createResponse.status).toBe(201);
       const created = await createResponse.json();
-      const promptId = created.data.id as string;
+      const promptId = created.prompt.id as string;
 
       const versionResponse = await fetch(`${baseUrl}/api/prompts/${promptId}/versions`, {
         method: "POST",
@@ -75,19 +75,63 @@ describe("HTTP router", () => {
         body: JSON.stringify({ body: "Updated", semanticVersion: "1.0.1", changelog: "Update" }),
       });
       expect(versionResponse.status).toBe(201);
+      const versionPayload = await versionResponse.json();
+      expect(versionPayload.version.semanticVersion).toBe("1.0.1");
 
       const getResponse = await fetch(`${baseUrl}/api/prompts/${promptId}`);
       expect(getResponse.status).toBe(200);
       const fetched = await getResponse.json();
-      expect(fetched.data.slug).toBe(created.data.slug);
-      expect(fetched.data.tags).toHaveLength(1);
-      expect(fetched.data.latestVersion.semanticVersion).toBe("1.0.1");
+      expect(fetched.prompt.slug).toBe(created.prompt.slug);
+      expect(fetched.prompt.tags).toHaveLength(1);
+      expect(fetched.prompt.latestVersion.semanticVersion).toBe("1.0.1");
 
       const listResponse = await fetch(`${baseUrl}/api/prompts?page=0&pageSize=5&tags=alpha`);
       expect(listResponse.status).toBe(200);
       const listPayload = await listResponse.json();
       expect(listPayload.pagination.total).toBeGreaterThanOrEqual(1);
-      expect(listPayload.data[0].slug).toBe(created.data.slug);
+      expect(listPayload.prompts[0].slug).toBe(created.prompt.slug);
+    });
+  });
+
+  it("updates prompt metadata and tags", async () => {
+    await withServer(async ({ baseUrl }) => {
+      // Create a prompt
+      const createResponse = await fetch(`${baseUrl}/api/prompts`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          slug: `update-${randomUUID().slice(0, 8)}`,
+          title: "Original Title",
+          description: "Original description",
+          body: "Body content",
+          semanticVersion: "1.0.0",
+          tags: ["original"],
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+      const promptId = created.prompt.id as string;
+
+      // Update the prompt
+      const updateResponse = await fetch(`${baseUrl}/api/prompts/${promptId}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Updated Title",
+          description: "Updated description",
+          tags: ["updated", "new-tag"],
+        }),
+      });
+      expect(updateResponse.status).toBe(200);
+      const updated = await updateResponse.json();
+      expect(updated.prompt.title).toBe("Updated Title");
+      expect(updated.prompt.description).toBe("Updated description");
+      expect(updated.prompt.tags.map((t: { label: string }) => t.label).sort()).toEqual(["new-tag", "updated"]);
+
+      // Verify the update persisted
+      const getResponse = await fetch(`${baseUrl}/api/prompts/${promptId}`);
+      const fetched = await getResponse.json();
+      expect(fetched.prompt.title).toBe("Updated Title");
     });
   });
 
@@ -119,7 +163,7 @@ describe("HTTP router", () => {
         }),
       });
       const created = await createResponse.json();
-      const promptId = created.data.id as string;
+      const promptId = created.prompt.id as string;
 
       const tagResponse = await fetch(`${baseUrl}/api/prompts/${promptId}/tags`, {
         method: "POST",

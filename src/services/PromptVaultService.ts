@@ -13,6 +13,7 @@ import { PluginHost } from "../extensions/PluginHost.js";
 import type { PromptVaultPlugin } from "../extensions/types.js";
 import { convertPromptContent, validatePromptContent, detectPromptFormat } from "../domain/conversion.js";
 import { SnapshotManager } from "../domain/snapshot.js";
+import { buildButtonsSwitchboardPayload, buildPlannerBucketDraft, type ButtonsSwitchboardPayload, type PlannerBucketDraft } from "../domain/interop.js";
 import fs from "fs";
 import path from "path";
 import yaml from "yaml";
@@ -61,6 +62,21 @@ export class PromptVaultService {
     for (const plugin of options.plugins ?? []) {
       this.pluginHost.register(plugin);
     }
+  }
+
+  /**
+   * List all prompts (excluding soft-deleted ones) with their latest version metadata.
+   *
+   * This is intended for export/interop flows where a complete snapshot is needed
+   * (e.g., generating payloads for other apps). It avoids pagination and returns
+   * the newest version per prompt.
+   */
+  public listAllPrompts(): readonly Prompt[] {
+    return this.telemetry.withSpan("service.listAllPrompts", {}, () => {
+      return this.repository
+        .getAllPrompts()
+        .filter((prompt) => !prompt.deletedAt);
+    });
   }
 
   /**
@@ -154,6 +170,68 @@ export class PromptVaultService {
    */
   public getPrompt(promptId: PromptId): Prompt {
     return this.repository.getPromptById(promptId);
+  }
+
+  /**
+   * Update a prompt's metadata and optionally its tags.
+   *
+   * This method updates the prompt's title, description, category, and/or tags.
+   * It validates input data and updates timestamps accordingly.
+   *
+   * @param promptId - Unique identifier of the prompt to update
+   * @param data - Partial update data (title, description, category, tags)
+   * @returns The updated prompt entity with all associated data
+   * @throws PromptNotFoundError if no active prompt exists with the given ID
+   * @throws ValidationError if the input data fails schema validation
+   *
+   * @example
+   * ```typescript
+   * const updated = service.updatePrompt("550e8400-e29b-41d4-a716-446655440000", {
+   *   title: "Updated Title",
+   *   tags: ["new-tag", "updated"]
+   * });
+   * ```
+   */
+  public updatePrompt(
+    promptId: PromptId,
+    data: { title?: string; description?: string; category?: string; tags?: readonly string[] }
+  ): Prompt {
+    return this.telemetry.withSpan("service.updatePrompt", { promptId }, () => {
+      // Update metadata (title, description, category)
+      const metadataUpdates: { title?: string; description?: string; category?: string } = {};
+      if (data.title !== undefined) metadataUpdates.title = data.title;
+      if (data.description !== undefined) metadataUpdates.description = data.description;
+      if (data.category !== undefined) metadataUpdates.category = data.category;
+
+      if (Object.keys(metadataUpdates).length > 0) {
+        this.repository.updatePromptMetadata(promptId, metadataUpdates);
+      }
+
+      // Update tags if provided
+      if (data.tags !== undefined) {
+        // Get existing tags and compute the diff
+        const prompt = this.repository.getPromptById(promptId);
+        const existingLabels = new Set(prompt.tags.map(t => t.label));
+        const newLabels = new Set(this.normalizeLabels(data.tags));
+
+        // Remove tags that are no longer in the list
+        const toRemove = [...existingLabels].filter(label => !newLabels.has(label));
+        if (toRemove.length > 0) {
+          this.repository.removeTags(promptId, toRemove);
+        }
+
+        // Add new tags
+        const toAdd = [...newLabels].filter(label => !existingLabels.has(label));
+        if (toAdd.length > 0) {
+          const newTags = this.prepareTags(toAdd, existingLabels);
+          this.repository.upsertTags(promptId, newTags);
+        }
+      }
+
+      const updatedPrompt = this.repository.getPromptById(promptId);
+      this.logger.info("prompt_updated", { promptId, fields: Object.keys(data) });
+      return updatedPrompt;
+    });
   }
 
   /**
@@ -325,6 +403,21 @@ export class PromptVaultService {
       });
       return this.repository.searchPrompts(query);
     });
+  }
+
+  /**
+   * Export a Buttons switchboard payload from a set of prompts.
+   * Intended to be copy/pasted into the Buttons app without coupling.
+   */
+  public exportButtonsSwitchboard(prompts: readonly Prompt[], limit = 12): ButtonsSwitchboardPayload | null {
+    return buildButtonsSwitchboardPayload(prompts, limit);
+  }
+
+  /**
+   * Export a Planner bucket draft seeded with prompt bodies.
+   */
+  public exportPlannerBucket(prompts: readonly Prompt[], limit = 10): PlannerBucketDraft | null {
+    return buildPlannerBucketDraft(prompts, limit);
   }
 
   /**

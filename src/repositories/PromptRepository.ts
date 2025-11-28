@@ -561,6 +561,58 @@ export class PromptRepository {
   }
 
   /**
+   * Update prompt metadata (title, description, category).
+   * @param promptId - Identifier of the prompt to update.
+   * @param data - Partial data to update.
+   * @returns The updated prompt.
+   */
+  public updatePromptMetadata(
+    promptId: PromptId,
+    data: { title?: string; description?: string; category?: string }
+  ): Prompt {
+    return this.telemetry.withSpan("repository.updatePromptMetadata", { promptId }, () => {
+      // First check if the prompt exists and is not deleted
+      const existing = this.database
+        .prepare("SELECT id FROM prompts WHERE id = @promptId AND deleted_at IS NULL")
+        .get({ promptId }) as { id: string } | undefined;
+
+      if (!existing) {
+        this.logger.warn("repository_prompt_missing_for_update", { promptId });
+        throw new PromptNotFoundError(promptId);
+      }
+
+      const updates: string[] = [];
+      const params: Record<string, string | undefined> = { promptId };
+
+      if (data.title !== undefined) {
+        updates.push("title = @title");
+        params.title = data.title;
+      }
+      if (data.description !== undefined) {
+        updates.push("description = @description");
+        params.description = data.description;
+      }
+      if (data.category !== undefined) {
+        updates.push("category = @category");
+        params.category = data.category;
+      }
+
+      if (updates.length > 0) {
+        updates.push("updated_at = @updatedAt");
+        params.updatedAt = new Date().toISOString();
+
+        this.database
+          .prepare(`UPDATE prompts SET ${updates.join(", ")} WHERE id = @promptId`)
+          .run(params);
+
+        this.logger.info("prompt_metadata_updated", { promptId, fields: Object.keys(data) });
+      }
+
+      return this.getPromptById(promptId);
+    });
+  }
+
+  /**
    * Get all soft deleted prompts.
    * @returns Array of deleted prompts with their metadata.
    */
@@ -761,7 +813,7 @@ export class PromptRepository {
 
     throw new Error(
       `Unable to locate SQL migrations. Checked: ${searchPaths.join(", ")}. ` +
-        "Set PROMPT_VAULT_MIGRATIONS_DIR to override."
+      "Set PROMPT_VAULT_MIGRATIONS_DIR to override."
     );
   }
 
