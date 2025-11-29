@@ -12,8 +12,7 @@
     "noEmit": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "types": ["vite/client", "vitest"]
+    "skipLibCheck": true
   },
   "include": ["./src"],
   "exclude": ["../node_modules", "../dist"]
