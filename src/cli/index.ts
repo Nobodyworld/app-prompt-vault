@@ -269,7 +269,7 @@ program
   .action(async (options) => {
     const limit = parseLimit(options.limit, 12);
     await useService(options.db, async (service) => {
-      const results = service.searchPrompts({
+      const results = await service.searchPrompts({
         text: options.text,
         tags: parseTags(options.tags),
       });
@@ -292,7 +292,7 @@ program
   .action(async (options) => {
     const limit = parseLimit(options.limit, 10);
     await useService(options.db, async (service) => {
-      const results = service.searchPrompts({
+      const results = await service.searchPrompts({
         text: options.text,
         tags: parseTags(options.tags),
       });
@@ -317,7 +317,7 @@ program
   .option("--tags <tags>", "Comma separated tag labels", "")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
+    await useService(options.db, async (service) => {
       const tags = options.tags
         ? (options.tags as string)
           .split(",")
@@ -325,7 +325,7 @@ program
           .filter(Boolean)
         : [];
 
-      const prompt = service.createPrompt({
+      const prompt = await service.createPrompt({
         id: randomUUID(),
         slug: options.slug,
         title: options.title,
@@ -352,7 +352,7 @@ program
   .option("--page-size <size>", "Page size", "10")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
+    await useService(options.db, async (service) => {
       const tags = options.tags
         ? (options.tags as string)
           .split(",")
@@ -365,7 +365,7 @@ program
           .map((format) => format.trim())
           .filter(Boolean) as ("markdown" | "yaml" | "json")[]
         : undefined;
-      const result = service.searchPrompts({
+      const result = await service.searchPrompts({
         text: options.text,
         tags,
         formats,
@@ -402,12 +402,12 @@ program
   .requiredOption("--tags <tags>", "Comma separated tags")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
+    await useService(options.db, async (service) => {
       const labels = (options.tags as string)
         .split(",")
         .map((tag) => tag.trim())
         .filter(Boolean);
-      service.tagPrompt(options.id, labels);
+      await service.tagPrompt(options.id, labels);
       console.log(chalk.green(`Tagged prompt ${options.id} with ${labels.join(", ")}`));
     });
   });
@@ -419,12 +419,12 @@ program
   .requiredOption("--tags <tags>", "Comma separated tags to remove")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
+    await useService(options.db, async (service) => {
       const labels = (options.tags as string)
         .split(",")
         .map((tag) => tag.trim())
         .filter(Boolean);
-      service.untagPrompt(options.id, labels);
+      await service.untagPrompt(options.id, labels);
       console.log(chalk.green(`Removed tags ${labels.join(", ")} from prompt ${options.id}`));
     });
   });
@@ -454,7 +454,7 @@ program
   .option("--format <format>", "Content format (markdown, yaml, json) - auto-detected if not specified")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
+    await useService(options.db, async (service) => {
       const tags = options.tags
         ? (options.tags as string)
           .split(",")
@@ -462,7 +462,7 @@ program
           .filter(Boolean)
         : [];
 
-      const prompt = service.importPromptFromFile(options.file, {
+      const prompt = await service.importPromptFromFile(options.file, {
         name: options.name,
         tags,
         format: options.format,
@@ -482,8 +482,8 @@ program
   .option("--include-metadata", "Include metadata in the exported file")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
-      service.exportPromptToFile(options.id, options.output, {
+    await useService(options.db, async (service) => {
+      await service.exportPromptToFile(options.id, options.output, {
         format: options.format,
         includeMetadata: options.includeMetadata,
       });
@@ -503,7 +503,7 @@ program
   .option("--skip-errors", "Continue importing other files if one fails")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
+    await useService(options.db, async (service) => {
       const filePaths = (options.files as string).split(',').map(f => f.trim()).filter(Boolean);
       const tags = options.tags
         ? (options.tags as string)
@@ -514,7 +514,7 @@ program
 
       console.log(chalk.blue(`Importing ${filePaths.length} files...`));
 
-      const result = service.bulkImportPrompts(filePaths, {
+      const result = await service.bulkImportPrompts(filePaths, {
         tags,
         category: options.category,
         format: options.format,
@@ -549,12 +549,12 @@ program
   .option("--skip-errors", "Continue exporting other prompts if one fails")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
+    await useService(options.db, async (service) => {
       const promptIds = (options.ids as string).split(',').map(id => id.trim()).filter(Boolean);
 
       console.log(chalk.blue(`Exporting ${promptIds.length} prompts to ${options.outputDir}...`));
 
-      const result = service.bulkExportPrompts(promptIds, options.outputDir, {
+      const result = await service.bulkExportPrompts(promptIds, options.outputDir, {
         format: options.format,
         includeMetadata: options.includeMetadata,
         namingPattern: options.namingPattern,
@@ -629,8 +629,8 @@ program
   .requiredOption("--id <id>", "Prompt identifier")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
-      service.softDeletePrompt(options.id);
+    await useService(options.db, async (service) => {
+      await service.softDeletePrompt(options.id);
       console.log(chalk.green(`Prompt ${options.id} moved to trash`));
     });
   });
@@ -641,8 +641,8 @@ program
   .requiredOption("--id <id>", "Prompt identifier")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
-      service.restorePrompt(options.id);
+    await useService(options.db, async (service) => {
+      await service.restorePrompt(options.id);
       console.log(chalk.green(`Prompt ${options.id} restored from trash`));
     });
   });
@@ -652,8 +652,8 @@ program
   .description("List all soft deleted prompts in trash")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
-      const deletedPrompts = service.getDeletedPrompts();
+    await useService(options.db, async (service) => {
+      const deletedPrompts = await service.getDeletedPrompts();
 
       if (deletedPrompts.length === 0) {
         console.log(chalk.yellow("No deleted prompts found."));
@@ -686,8 +686,8 @@ program
   .requiredOption("--id <id>", "Prompt identifier")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
-      service.permanentlyDeletePrompt(options.id);
+    await useService(options.db, async (service) => {
+      await service.permanentlyDeletePrompt(options.id);
       console.log(chalk.red(`Prompt ${options.id} permanently deleted`));
     });
   });
@@ -699,7 +699,7 @@ program
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
     await useService(options.db, async (service) => {
-      const prompt = service.getPrompt(options.id);
+      const prompt = await service.getPrompt(options.id);
       if (!prompt.latestVersion) {
         console.error(chalk.red(`Prompt ${options.id} has no content to edit`));
         process.exit(1);
@@ -780,8 +780,8 @@ program
   .description('Run comprehensive diagnostics on the prompt library')
   .option('--db <path>', 'Path to SQLite database', defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
-      const result = service.runDiagnostics();
+    await useService(options.db, async (service) => {
+      const result = await service.runDiagnostics();
 
       console.log(chalk.bold('\n📊 Library Diagnostics Report\n'));
 
@@ -814,8 +814,8 @@ program
   .description('Display library statistics and analytics')
   .option('--db <path>', 'Path to SQLite database', defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
-      const stats = service.getLibraryStats();
+    await useService(options.db, async (service) => {
+      const stats = await service.getLibraryStats();
 
       console.log(chalk.bold('\n📈 Library Statistics\n'));
 
@@ -849,8 +849,8 @@ program
   .description('Repair common data integrity issues')
   .option('--db <path>', 'Path to SQLite database', defaultDbPath)
   .action(async (options) => {
-    await useService(options.db, (service) => {
-      const result = service.repairIntegrity();
+    await useService(options.db, async (service) => {
+      const result = await service.repairIntegrity();
 
       console.log(chalk.bold('\n🔧 Integrity Repair Report\n'));
 

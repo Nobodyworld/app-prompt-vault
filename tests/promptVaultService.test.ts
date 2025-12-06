@@ -14,10 +14,10 @@ function createService(): PromptVaultService {
 }
 
 describe("PromptVaultService", () => {
-  it("creates and retrieves prompts", () => {
+  it("creates and retrieves prompts", async () => {
     const service = createService();
     const id = randomUUID();
-    const prompt = service.createPrompt({
+    const prompt = await service.createPrompt({
       id,
       slug: "test-prompt",
       title: "Test Prompt",
@@ -28,16 +28,16 @@ describe("PromptVaultService", () => {
       changelog: "Initial release",
     });
 
-    const fetched = service.getPrompt(id);
+    const fetched = await service.getPrompt(id);
     expect(fetched.title).toEqual(prompt.title);
     expect(fetched.tags.map((tag) => tag.label)).toContain("testing");
     expect(fetched.latestVersion?.semanticVersion).toEqual("1.0.0");
     expect(fetched.createdAt.getTime()).toBeLessThanOrEqual(fetched.updatedAt.getTime());
   });
 
-  it("validates prompt creation input", () => {
+  it("validates prompt creation input", async () => {
     const service = createService();
-    expect(() =>
+    await expect(
       service.createPrompt({
         id: "not-a-uuid",
         slug: "invalid slug",
@@ -48,17 +48,17 @@ describe("PromptVaultService", () => {
         tags: [],
         changelog: undefined,
       })
-    ).toThrow(ValidationError);
+    ).rejects.toThrow(ValidationError);
   });
 
-  it("throws when prompt is missing", () => {
+  it("throws when prompt is missing", async () => {
     const service = createService();
-    expect(() => service.getPrompt(randomUUID())).toThrow(PromptNotFoundError);
+    await expect(service.getPrompt(randomUUID())).rejects.toThrow(PromptNotFoundError);
   });
 
-  it("adds prompt versions", () => {
+  it("adds prompt versions", async () => {
     const service = createService();
-    const prompt = service.createPrompt({
+    const prompt = await service.createPrompt({
       id: randomUUID(),
       slug: "versioned",
       title: "Versioned",
@@ -72,14 +72,14 @@ describe("PromptVaultService", () => {
 
     const version = service.addVersion(prompt.id, "Updated", "1.1.0", "markdown", "Improvements");
     expect(version.semanticVersion).toEqual("1.1.0");
-    const refreshed = service.getPrompt(prompt.id);
+    const refreshed = await service.getPrompt(prompt.id);
     expect(refreshed.latestVersion?.semanticVersion).toEqual("1.1.0");
     expect(refreshed.tags).toHaveLength(0);
   });
 
-  it("updates the prompt timestamp when recording a new version", () => {
+  it("updates the prompt timestamp when recording a new version", async () => {
     const service = createService();
-    const prompt = service.createPrompt({
+    const prompt = await service.createPrompt({
       id: randomUUID(),
       slug: "timed-version",
       title: "Timed",
@@ -91,7 +91,7 @@ describe("PromptVaultService", () => {
       changelog: undefined,
     });
 
-    const initial = service.getPrompt(prompt.id);
+    const initial = await service.getPrompt(prompt.id);
 
     vi.useFakeTimers();
     const future = new Date(initial.updatedAt.getTime() + 1_000);
@@ -100,7 +100,7 @@ describe("PromptVaultService", () => {
     service.addVersion(prompt.id, "Updated body", "1.0.1", "markdown");
 
     vi.useRealTimers();
-    const refreshed = service.getPrompt(prompt.id);
+    const refreshed = await service.getPrompt(prompt.id);
 
     expect(refreshed.updatedAt.getTime()).toBeGreaterThan(initial.updatedAt.getTime());
     expect(refreshed.latestVersion?.semanticVersion).toEqual("1.0.1");
@@ -109,9 +109,9 @@ describe("PromptVaultService", () => {
     );
   });
 
-  it("supports prompt search", () => {
+  it("supports prompt search", async () => {
     const service = createService();
-    const prompt = service.createPrompt({
+    const prompt = await service.createPrompt({
       id: randomUUID(),
       slug: "searchable",
       title: "Searchable Prompt",
@@ -122,21 +122,21 @@ describe("PromptVaultService", () => {
       changelog: undefined,
     });
 
-    service.tagPrompt(prompt.id, ["workflow"]);
+    await service.tagPrompt(prompt.id, ["workflow"]);
 
-    const result = service.searchPrompts({ text: "searchable", tags: ["workflow"], page: 0, pageSize: 10 });
+    const result = await service.searchPrompts({ text: "searchable", tags: ["workflow"], page: 0, pageSize: 10 });
     expect(result.prompts).toHaveLength(1);
     expect(result.prompts[0].id).toEqual(prompt.id);
     expect(result.total).toBe(1);
     expect(result.prompts[0].tags.map((tag) => tag.label)).toEqual(["productivity", "workflow"]);
   });
 
-  it("supports paginated prompt searches", () => {
+  it("supports paginated prompt searches", async () => {
     const service = createService();
     const ids = Array.from({ length: 3 }, () => randomUUID());
 
-    ids.forEach((id, index) => {
-      service.createPrompt({
+    for (const [index, id] of ids.entries()) {
+      await service.createPrompt({
         id,
         slug: `prompt-${index}`,
         title: `Prompt ${index}`,
@@ -146,10 +146,10 @@ describe("PromptVaultService", () => {
         tags: [],
         changelog: undefined,
       });
-    });
+    }
 
-    const firstPage = service.searchPrompts({ page: 0, pageSize: 2 });
-    const secondPage = service.searchPrompts({ page: 1, pageSize: 2 });
+    const firstPage = await service.searchPrompts({ page: 0, pageSize: 2 });
+    const secondPage = await service.searchPrompts({ page: 1, pageSize: 2 });
 
     expect(firstPage.prompts).toHaveLength(2);
     expect(secondPage.prompts).toHaveLength(1);
@@ -160,11 +160,11 @@ describe("PromptVaultService", () => {
     );
   });
 
-  it("prevents duplicate prompt slugs", () => {
+  it("prevents duplicate prompt slugs", async () => {
     const service = createService();
     const slug = "duplicate-slug";
 
-    service.createPrompt({
+    await service.createPrompt({
       id: randomUUID(),
       slug,
       title: "Original",
@@ -175,7 +175,7 @@ describe("PromptVaultService", () => {
       changelog: undefined,
     });
 
-    expect(() =>
+    await expect(
       service.createPrompt({
         id: randomUUID(),
         slug,
@@ -186,12 +186,12 @@ describe("PromptVaultService", () => {
         tags: [],
         changelog: undefined,
       })
-    ).toThrow(DuplicatePromptError);
+    ).rejects.toThrow(DuplicatePromptError);
   });
 
-  it("deduplicates tag labels when tagging prompts", () => {
+  it("deduplicates tag labels when tagging prompts", async () => {
     const service = createService();
-    const prompt = service.createPrompt({
+    const prompt = await service.createPrompt({
       id: randomUUID(),
       slug: "taggable",
       title: "Taggable",
@@ -202,15 +202,15 @@ describe("PromptVaultService", () => {
       changelog: undefined,
     });
 
-    service.tagPrompt(prompt.id, ["workflow", "Workflow", "  productivity  "]);
-    const refreshed = service.getPrompt(prompt.id);
+    await service.tagPrompt(prompt.id, ["workflow", "Workflow", "  productivity  "]);
+    const refreshed = await service.getPrompt(prompt.id);
 
     expect(refreshed.tags.map((tag) => tag.label)).toEqual(["Productivity", "workflow"]);
   });
 
-  it("ignores no-op tag updates", () => {
+  it("ignores no-op tag updates", async () => {
     const service = createService();
-    const prompt = service.createPrompt({
+    const prompt = await service.createPrompt({
       id: randomUUID(),
       slug: "no-op-tags",
       title: "No-op Tags",
@@ -221,24 +221,25 @@ describe("PromptVaultService", () => {
       changelog: undefined,
     });
 
-    const baseline = service.getPrompt(prompt.id);
+    const baseline = await service.getPrompt(prompt.id);
 
     vi.useFakeTimers();
     vi.setSystemTime(new Date(baseline.updatedAt.getTime() + 5_000));
 
-    service.tagPrompt(prompt.id, ["focus", " Focus "]);
-    service.tagPrompt(prompt.id, []);
+    await service.tagPrompt(prompt.id, ["focus", " Focus "]);
+    await service.tagPrompt(prompt.id, []);
 
     vi.useRealTimers();
-    const refreshed = service.getPrompt(prompt.id);
+    const refreshed = await service.getPrompt(prompt.id);
 
     expect(refreshed.tags.map((tag) => tag.label)).toEqual(["Focus"]);
+
     expect(refreshed.updatedAt.getTime()).toEqual(baseline.updatedAt.getTime());
   });
 
-  it("removes tags when requested", () => {
+  it("removes tags when requested", async () => {
     const service = createService();
-    const prompt = service.createPrompt({
+    const prompt = await service.createPrompt({
       id: randomUUID(),
       slug: "untaggable",
       title: "Untag",
@@ -249,23 +250,23 @@ describe("PromptVaultService", () => {
       changelog: undefined,
     });
 
-    const created = service.getPrompt(prompt.id);
+    const created = await service.getPrompt(prompt.id);
     expect(created.tags.map((tag) => tag.label)).toEqual(["Alpha", "Beta"]);
 
     vi.useFakeTimers();
     const future = new Date(created.updatedAt.getTime() + 10_000);
     vi.setSystemTime(future);
 
-    service.untagPrompt(prompt.id, ["beta", "unknown"]);
+    await service.untagPrompt(prompt.id, ["beta", "unknown"]);
 
     vi.useRealTimers();
-    const refreshed = service.getPrompt(prompt.id);
+    const refreshed = await service.getPrompt(prompt.id);
 
     expect(refreshed.tags.map((tag) => tag.label)).toEqual(["Alpha"]);
     expect(refreshed.updatedAt.getTime()).toBeGreaterThan(created.updatedAt.getTime());
   });
 
-  it("notifies registered plugins when prompts change", () => {
+  it("notifies registered plugins when prompts change", async () => {
     const plugin = {
       name: "test-plugin",
       setup: vi.fn(),
@@ -280,7 +281,7 @@ describe("PromptVaultService", () => {
     });
 
     const promptId = randomUUID();
-    service.createPrompt({
+    await service.createPrompt({
       id: promptId,
       slug: "plugin-test",
       title: "Plugin Test",
@@ -292,8 +293,8 @@ describe("PromptVaultService", () => {
     });
 
     service.addVersion(promptId, "Body 2", "1.0.1", "markdown");
-    service.tagPrompt(promptId, ["beta"]);
-    service.untagPrompt(promptId, ["beta"]);
+    await service.tagPrompt(promptId, ["beta"]);
+    await service.untagPrompt(promptId, ["beta"]);
 
     expect(plugin.setup).toHaveBeenCalled();
     expect(plugin.onPromptCreated).toHaveBeenCalled();
@@ -396,8 +397,11 @@ describe("PromptRepository", () => {
 
     expect(refreshed.tags.map((tag) => tag.label)).toEqual(["Alpha"]);
 
+    const tagColumns = database.prepare("PRAGMA table_info(tags)").all() as { name: string }[];
+    const labelColumn = tagColumns.some((column) => column.name === "label") ? "label" : "name";
+
     const remainingTagRow = database
-      .prepare("SELECT COUNT(*) as count FROM tags WHERE LOWER(label) = 'beta'")
+      .prepare(`SELECT COUNT(*) as count FROM tags WHERE LOWER(${labelColumn}) = 'beta'`)
       .get() as { count: number };
     expect(remainingTagRow.count).toBe(0);
   });

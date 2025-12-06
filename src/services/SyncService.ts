@@ -64,7 +64,7 @@ export class SyncService {
      * Export prompts from database to file system
      */
     async export(): Promise<void> {
-        const searchResult = this.vaultService.searchPrompts({
+        const searchResult = await this.vaultService.searchPrompts({
             text: '',
             tags: [],
             page: 0,
@@ -94,14 +94,14 @@ export class SyncService {
 
             // Check if prompt exists
             try {
-                const existing = this.vaultService.getPrompt(prompt.id);
+                const existing = await this.vaultService.getPrompt(prompt.id);
                 if (existing) {
                     // Update existing prompt by adding a new version
                     this.vaultService.addVersion(existing.id, prompt.body, prompt.semanticVersion, prompt.format);
                 }
             } catch {
                 // Prompt doesn't exist, create new one
-                this.vaultService.createPrompt({
+                await this.vaultService.createPrompt({
                     id: prompt.id,
                     slug: prompt.slug,
                     title: prompt.title,

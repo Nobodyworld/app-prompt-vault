@@ -5,7 +5,8 @@
  */
 
 import { registerTool } from '@nw/orchestrator-sdk';
-import type { ToolDefinition, ToolHandler } from '@nw/orchestrator-sdk';
+import type { ToolDefinition, ToolHandler, ToolResult, ToolContext } from '@nw/orchestrator-sdk';
+import * as promptService from "../lib/promptService.js";
 
 // =============================================================================
 // Tool Definitions
@@ -48,6 +49,8 @@ export const pvSearchPromptsDefinition: ToolDefinition = {
     category: 'prompts',
     source: 'prompt-vault',
 };
+
+export const pvListPromptsDefinition = pvSearchPromptsDefinition;
 
 export const pvGetPromptDefinition: ToolDefinition = {
     name: 'pv_get_prompt',
@@ -223,8 +226,7 @@ export const pvListTagsDefinition: ToolDefinition = {
 // Tool Handlers (placeholders - connect to actual prompt-vault logic)
 // =============================================================================
 
-export const pvSearchPromptsHandler: ToolHandler = async (args) => {
-    // TODO: Connect to actual prompt-vault search logic
+export const pvSearchPromptsHandler: ToolHandler = async (args): Promise<ToolResult> => {
     const { query, tags, folder, limit = 20 } = args as {
         query?: string;
         tags?: string[];
@@ -232,34 +234,59 @@ export const pvSearchPromptsHandler: ToolHandler = async (args) => {
         limit?: number;
     };
 
-    console.log('[pv_search_prompts]', { query, tags, folder, limit });
-
-    // Placeholder - return empty array
-    return [];
+    try {
+        const prompts = await promptService.listPrompts({
+            query,
+            // tags are expressed as tag IDs in the shared system; folder is ignored for now
+            tagIds: tags as string[] | undefined,
+        });
+        const limited = prompts.slice(0, limit);
+        return { success: true, data: limited };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+    }
 };
 
-export const pvGetPromptHandler: ToolHandler = async (args) => {
+export const pvGetPromptHandler: ToolHandler = async (args): Promise<ToolResult> => {
     const { id } = args as { id: string };
-    console.log('[pv_get_prompt]', { id });
 
-    // Placeholder
-    return null;
+    try {
+        const prompt = await promptService.getPrompt(id);
+        if (!prompt) {
+            return { success: false, error: "Prompt not found" };
+        }
+        return { success: true, data: prompt };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+    }
 };
 
-export const pvCreatePromptHandler: ToolHandler = async (args) => {
-    const { title, content, tags, folder } = args as {
+export const pvCreatePromptHandler: ToolHandler = async (args, ctx): Promise<ToolResult> => {
+    const { title, content, tags } = args as {
         title: string;
         content: string;
         tags?: string[];
-        folder?: string;
     };
-    console.log('[pv_create_prompt]', { title, content, tags, folder });
 
-    // Placeholder
-    return { id: 'placeholder-id', title, content, tags, folder };
+    const projectSlug = (ctx.projectSlug as string | undefined | null) ?? undefined;
+
+    try {
+        const created = await promptService.createPrompt({
+            title,
+            body: content,
+            projectSlug,
+            tagIds: tags as string[] | undefined,
+        });
+        return { success: true, data: created };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+    }
 };
 
-export const pvUpdatePromptHandler: ToolHandler = async (args) => {
+export const pvUpdatePromptHandler: ToolHandler = async (args): Promise<ToolResult> => {
     const { id, title, content, tags, folder } = args as {
         id: string;
         title?: string;
@@ -267,40 +294,60 @@ export const pvUpdatePromptHandler: ToolHandler = async (args) => {
         tags?: string[];
         folder?: string;
     };
-    console.log('[pv_update_prompt]', { id, title, content, tags, folder });
 
-    // Placeholder
-    return { id, title, content, tags, folder };
+    try {
+        const updated = await promptService.updatePrompt(id, {
+            title,
+            body: content,
+            tagIds: tags as string[] | undefined,
+        });
+        if (!updated) {
+            return { success: false, error: "Prompt not found" };
+        }
+        return { success: true, data: updated };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+    }
 };
 
-export const pvDeletePromptHandler: ToolHandler = async (args) => {
+export const pvDeletePromptHandler: ToolHandler = async (args): Promise<ToolResult> => {
     const { id } = args as { id: string };
-    console.log('[pv_delete_prompt]', { id });
 
-    // Placeholder
-    return true;
+    try {
+        await promptService.deletePrompt(id);
+        return { success: true, data: true };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+    }
 };
 
-export const pvExecutePromptHandler: ToolHandler = async (args) => {
+export const pvExecutePromptHandler: ToolHandler = async (args): Promise<ToolResult> => {
     const { id, variables } = args as { id: string; variables?: Record<string, string> };
-    console.log('[pv_execute_prompt]', { id, variables });
+    void variables;
 
-    // Placeholder
-    return 'Executed prompt content';
+    try {
+        const prompt = await promptService.getPrompt(id);
+        if (!prompt || !prompt.latestVersion) {
+            return { success: false, error: "Prompt not found or has no content" };
+        }
+        // Variable substitution is a future enhancement; for now return raw content.
+        return { success: true, data: prompt.latestVersion.body };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+    }
 };
 
-export const pvListFoldersHandler: ToolHandler = async () => {
-    console.log('[pv_list_folders]');
-
-    // Placeholder
-    return [];
+export const pvListFoldersHandler: ToolHandler = async (): Promise<ToolResult> => {
+    // Folder/category support is not yet integrated with the shared tags/projects system.
+    return { success: true, data: [] };
 };
 
-export const pvListTagsHandler: ToolHandler = async () => {
-    console.log('[pv_list_tags]');
-
-    // Placeholder
-    return [];
+export const pvListTagsHandler: ToolHandler = async (_args, _ctx): Promise<ToolResult> => {
+    // Tag listing via tags-projects would be implemented in a future Tags/Projects task.
+    return { success: true, data: [] };
 };
 
 // =============================================================================

@@ -51,6 +51,28 @@ interface MCPManifest {
   tools: MCPTool[];
 }
 
+function toSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50).replace(/^-+|-+$/g, '');
+}
+
+function normalizeFormat(format: string | undefined): PromptFormat {
+  if (!format || format === 'md') return 'markdown';
+  if (format === 'markdown' || format === 'json' || format === 'yaml') return format;
+  return 'markdown';
+}
+
+function mapPromptToMcp(prompt: Prompt) {
+  return {
+    id: prompt.id,
+    name: prompt.title,
+    content: prompt.latestVersion?.body ?? '',
+    tags: prompt.tags.map((t) => t.label),
+    format: prompt.latestVersion?.format ?? 'markdown',
+    createdAt: prompt.createdAt.toISOString(),
+    updatedAt: prompt.updatedAt.toISOString(),
+  };
+}
+
 class PromptVaultMCPServer {
   private server: Server;
   private promptService: PromptVaultService;
@@ -185,6 +207,7 @@ class PromptVaultMCPServer {
     prompts: Array<{
       id: string;
       name: string;
+      content: string;
       tags: string[];
       format: string;
       createdAt: string;
@@ -194,7 +217,7 @@ class PromptVaultMCPServer {
   }> {
     const { tags, formats, limit = 50, offset = 0 } = args;
 
-    const searchResult = this.promptService.searchPrompts({
+    const searchResult = await this.promptService.searchPrompts({
       text: '',
       tags: tags || [],
       formats: formats || [],
@@ -203,14 +226,7 @@ class PromptVaultMCPServer {
     });
 
     return {
-      prompts: searchResult.prompts.map(p => ({
-        id: p.id,
-        name: p.title,
-        tags: Array.from(p.tags.map(t => t.label)),
-        format: p.latestVersion?.format || 'markdown',
-        createdAt: p.createdAt.toISOString(),
-        updatedAt: p.updatedAt.toISOString(),
-      })),
+      prompts: searchResult.prompts.map((p) => mapPromptToMcp(p)),
       total: searchResult.total,
     };
   }
@@ -234,15 +250,7 @@ class PromptVaultMCPServer {
     }
 
     return {
-      prompt: {
-        id: prompt.id,
-        name: prompt.title,
-        content: prompt.latestVersion?.body ?? '',
-        tags: [...prompt.tags.map(tag => tag.label)],
-        format: prompt.latestVersion?.format ?? 'markdown',
-        createdAt: prompt.createdAt.toISOString(),
-        updatedAt: prompt.updatedAt.toISOString(),
-      },
+      prompt: mapPromptToMcp(prompt),
     };
   }
 
@@ -267,18 +275,26 @@ class PromptVaultMCPServer {
     let prompt: Prompt;
 
     if (id) {
-      // Update existing prompt by adding a new version
-      this.promptService.addVersion(id, content, '1.0.0', format as PromptFormat);
-      prompt = this.promptService.getPrompt(id);
+      const current = await this.promptService.getPrompt(id);
+      if (!current) {
+        throw new Error(`Prompt not found: ${id}`);
+      }
+      this.promptService.addVersion(
+        id,
+        content,
+        current.latestVersion?.semanticVersion ?? '1.0.0',
+        normalizeFormat(format),
+        'Updated via MCP'
+      );
+      prompt = await this.promptService.getPrompt(id);
     } else {
-      // Create new prompt
-      prompt = this.promptService.createPrompt({
+      prompt = await this.promptService.createPrompt({
         id: randomUUID(),
-        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50),
+        slug: toSlug(name),
         title: name,
         description: '',
         body: content,
-        format: format as PromptFormat,
+        format: normalizeFormat(format),
         semanticVersion: '1.0.0',
         tags,
         changelog: 'Created via MCP',
@@ -320,23 +336,21 @@ class PromptVaultMCPServer {
     }
 
     const duplicateData = {
-      name: name || `${sourcePrompt.name} (Copy)`,
-      content: content || sourcePrompt.content,
-      tags: tags || sourcePrompt.tags,
-      format: sourcePrompt.format,
+      id: randomUUID(),
+      slug: toSlug(name || `${sourcePrompt.title}-copy`),
+      title: name || `${sourcePrompt.title} (Copy)`,
+      description: sourcePrompt.description ?? '',
+      body: content || sourcePrompt.latestVersion?.body || '',
+      format: sourcePrompt.latestVersion?.format ?? 'markdown',
+      semanticVersion: sourcePrompt.latestVersion?.semanticVersion ?? '1.0.0',
+      tags: tags || sourcePrompt.tags.map((t) => t.label),
+      changelog: 'Duplicated via MCP',
     };
 
     const prompt = await this.promptService.createPrompt(duplicateData);
 
     return {
-      prompt: {
-        id: prompt.id,
-        name: prompt.name,
-        tags: prompt.tags,
-        format: prompt.format,
-        createdAt: prompt.createdAt.toISOString(),
-        updatedAt: prompt.updatedAt.toISOString(),
-      },
+      prompt: mapPromptToMcp(prompt),
     };
   }
 
@@ -354,22 +368,30 @@ class PromptVaultMCPServer {
       caseSensitive = false,
       maxResults = 20,
       maxMatchesPerPrompt = 10,
+      maxMatchesPerRule = 3,
+      maxTotalMatches = 100,
       tags,
       formats,
     } = args;
 
-    const searchResults = await this.promptService.searchPrompts(query, {
-      caseSensitive,
+    const searchResults = await this.promptService.searchPrompts({
+      text: query,
       tags: tags || [],
       formats: formats || [],
-      limit: maxResults,
+      caseSensitive,
+      page: 0,
+      pageSize: maxResults,
+      maxResults,
+      maxMatchesPerRule,
+      maxTotalMatches,
     });
 
     const results: SearchResult[] = [];
 
-    for (const prompt of searchResults) {
+    for (const prompt of searchResults.prompts) {
+      const contentText = prompt.latestVersion?.body ?? '';
       const matches = this.findMatchesInContent(
-        prompt.content,
+        contentText,
         query,
         caseSensitive,
         maxMatchesPerPrompt
@@ -379,9 +401,9 @@ class PromptVaultMCPServer {
         results.push({
           prompt: {
             id: prompt.id,
-            name: prompt.name,
-            tags: prompt.tags,
-            format: prompt.format,
+            name: prompt.title,
+            tags: prompt.tags.map((t) => t.label),
+            format: prompt.latestVersion?.format ?? 'markdown',
           },
           totalMatches: matches.length,
           matches,
@@ -449,18 +471,24 @@ class PromptVaultMCPServer {
       try {
         const content = await fs.readFile(file.path, 'utf-8');
         const format = this.detectFormat(file.path);
+        const normalizedFormat = format === 'other' ? 'markdown' : format;
         const name = file.name || path.basename(file.path, path.extname(file.path));
 
         const prompt = await this.promptService.createPrompt({
-          name,
-          content,
+          id: randomUUID(),
+          slug: toSlug(name),
+          title: name,
+          description: `Imported from ${file.path}`,
+          body: content,
+          format: normalizedFormat,
+          semanticVersion: '1.0.0',
           tags: file.tags || [],
-          format,
+          changelog: 'Imported via MCP',
         });
 
         results.push({
           id: prompt.id,
-          name: prompt.name,
+          name: prompt.title,
           path: file.path,
           success: true,
         });
@@ -495,9 +523,10 @@ class PromptVaultMCPServer {
         throw new Error(`Prompt not found: ${id}`);
       }
 
-      let content = prompt.content;
-      if (format && format !== prompt.format) {
-        content = this.convertContent(content, prompt.format, format);
+      const currentFormat = prompt.latestVersion?.format ?? 'markdown';
+      let content = prompt.latestVersion?.body ?? '';
+      if (format && format !== currentFormat) {
+        content = this.convertContent(content, currentFormat, format);
       }
 
       await fs.writeFile(exportPath, content, 'utf-8');
@@ -527,12 +556,14 @@ class PromptVaultMCPServer {
         throw new Error(`Prompt not found: ${id}`);
       }
 
-      // Create a temporary file for VS Code to open
+      const latestFormat = prompt.latestVersion?.format ?? 'markdown';
+      const latestBody = prompt.latestVersion?.body ?? '';
+
       const tempDir = path.join(process.cwd(), 'temp');
       await fs.mkdir(tempDir, { recursive: true });
 
-      const tempFile = path.join(tempDir, `${prompt.id}.${this.getExtension(prompt.format)}`);
-      await fs.writeFile(tempFile, prompt.content, 'utf-8');
+      const tempFile = path.join(tempDir, `${prompt.id}.${this.getExtension(latestFormat)}`);
+      await fs.writeFile(tempFile, latestBody, 'utf-8');
 
       // Open in VS Code
       await execAsync(`code "${tempFile}"`);
@@ -567,32 +598,37 @@ class PromptVaultMCPServer {
       throw new Error(`Prompt not found: ${id}`);
     }
 
-    const convertedContent = this.convertContent(prompt.content, prompt.format, to);
+    const currentFormat = prompt.latestVersion?.format ?? 'markdown';
+    const currentBody = prompt.latestVersion?.body ?? '';
+    const convertedContent = this.convertContent(currentBody, currentFormat, to);
 
     let resultPrompt: Prompt;
 
     if (createNew) {
       resultPrompt = await this.promptService.createPrompt({
-        name: `${prompt.name} (${to.toUpperCase()})`,
-        content: convertedContent,
-        tags: prompt.tags,
-        format: to,
+        id: randomUUID(),
+        slug: toSlug(`${prompt.title}-${to}`),
+        title: `${prompt.title} (${to.toUpperCase()})`,
+        description: prompt.description,
+        body: convertedContent,
+        format: normalizeFormat(to),
+        semanticVersion: prompt.latestVersion?.semanticVersion ?? '1.0.0',
+        tags: prompt.tags.map((t) => t.label),
+        changelog: `Converted to ${to}`,
       });
     } else {
-      resultPrompt = await this.promptService.updatePrompt(id, {
-        content: convertedContent,
-        format: to,
-      });
+      this.promptService.addVersion(
+        id,
+        convertedContent,
+        prompt.latestVersion?.semanticVersion ?? '1.0.0',
+        normalizeFormat(to),
+        `Converted to ${to}`
+      );
+      resultPrompt = await this.promptService.getPrompt(id);
     }
 
     return {
-      prompt: {
-        id: resultPrompt.id,
-        name: resultPrompt.name,
-        format: resultPrompt.format,
-        createdAt: resultPrompt.createdAt.toISOString(),
-        updatedAt: resultPrompt.updatedAt.toISOString(),
-      },
+      prompt: mapPromptToMcp(resultPrompt),
       converted: true,
     };
   }
@@ -604,7 +640,7 @@ class PromptVaultMCPServer {
     const { id } = args;
 
     try {
-      await this.promptService.deletePrompt(id);
+      await this.promptService.softDeletePrompt(id);
       return { success: true };
     } catch (error) {
       return {
@@ -624,9 +660,9 @@ class PromptVaultMCPServer {
     const deletedPrompts = await this.promptService.getDeletedPrompts();
 
     return {
-      items: deletedPrompts.map(p => ({
+      items: deletedPrompts.map((p) => ({
         id: p.id,
-        name: p.name,
+        name: p.title,
         deletedAt: p.deletedAt!.toISOString(),
       })),
     };
@@ -648,7 +684,7 @@ class PromptVaultMCPServer {
         success: true,
         prompt: {
           id: prompt.id,
-          name: prompt.name,
+          name: prompt.title,
         },
       };
     } catch (error) {
@@ -683,7 +719,7 @@ class PromptVaultMCPServer {
         success: true,
         prompt: {
           id: prompt.id,
-          name: prompt.name,
+          name: prompt.title,
         },
       };
     } catch (error) {
@@ -712,6 +748,7 @@ class PromptVaultMCPServer {
   private getExtension(format: string): string {
     switch (format) {
       case 'md':
+      case 'markdown':
         return 'md';
       case 'yaml':
         return 'yaml';
@@ -723,10 +760,13 @@ class PromptVaultMCPServer {
   }
 
   private convertContent(content: string, from: string, to: string): string {
+    const normalizedFrom = from === 'markdown' ? 'md' : from;
+    const normalizedTo = to === 'markdown' ? 'md' : to;
+
     // Parse content based on source format
     let data: any;
 
-    switch (from) {
+    switch (normalizedFrom) {
       case 'json':
         data = JSON.parse(content);
         break;
@@ -743,7 +783,7 @@ class PromptVaultMCPServer {
     }
 
     // Convert to target format
-    switch (to) {
+    switch (normalizedTo) {
       case 'json':
         return JSON.stringify(data, null, 2);
       case 'yaml':
@@ -761,7 +801,7 @@ class PromptVaultMCPServer {
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    this.logger.info('Prompt Vault MCP Server started');
+    this.observability.logger.info('Prompt Vault MCP Server started');
   }
 }
 

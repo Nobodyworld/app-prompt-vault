@@ -34,9 +34,9 @@ export function createObservabilityRouter(options: ObservabilityRouterOptions): 
   if (options.service) {
     const service = options.service;
 
-    router.get("/diagnostics", (_request, response) => {
+    router.get("/diagnostics", async (_request, response) => {
       try {
-        const result = service.runDiagnostics();
+        const result = await service.runDiagnostics();
         response.status(200).json({
           timestamp: new Date().toISOString(),
           ...result
@@ -52,9 +52,9 @@ export function createObservabilityRouter(options: ObservabilityRouterOptions): 
       }
     });
 
-    router.get("/stats", (_request, response) => {
+    router.get("/stats", async (_request, response) => {
       try {
-        const result = service.getLibraryStats();
+        const result = await service.getLibraryStats();
         response.status(200).json({
           timestamp: new Date().toISOString(),
           ...result
@@ -70,9 +70,9 @@ export function createObservabilityRouter(options: ObservabilityRouterOptions): 
       }
     });
 
-    router.post("/repair", (_request, response) => {
+    router.post("/repair", async (_request, response) => {
       try {
-        const result = service.repairIntegrity();
+        const result = await service.repairIntegrity();
         response.status(200).json({
           timestamp: new Date().toISOString(),
           ...result

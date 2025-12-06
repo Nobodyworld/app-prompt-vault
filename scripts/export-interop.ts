@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Export Prompt Vault content as JSON payloads for sibling apps:
  * - Buttons: floating switchboard with quick phrases

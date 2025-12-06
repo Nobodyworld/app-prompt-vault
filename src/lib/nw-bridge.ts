@@ -5,7 +5,7 @@
  * with the shared Nobodyworld OS packages.
  */
 
-import { createLogger, type LogLevel } from '@nw/logging';
+import { createLogger } from '@nw/logging';
 import { getEventBus } from '@nw/event-bus';
 import type { Tag as NwTag } from '@nw/tags-projects';
 import type { Tag as PvTag } from '../domain/models.js';
@@ -19,7 +19,7 @@ export const pvLogger = createLogger({
 });
 
 // Get the shared event bus
-export const eventBus = getEventBus();
+export const eventBus: ReturnType<typeof getEventBus> = getEventBus();
 
 /**
  * Convert a Prompt Vault Tag to the shared NW Tag format
@@ -31,8 +31,10 @@ export function pvTagToNwTag(pvTag: PvTag): Omit<NwTag, 'id'> & { id: string } {
     return {
         id: pvTag.id, // Keep as string - apps can use their own ID scheme
         name: pvTag.label,
+        kind: 'label',
         color: '#6366f1', // Default color - PV tags don't have color
-        isProject: false, // PV doesn't have project concept yet
+        description: pvTag.description,
+        isArchived: false,
         createdAt: pvTag.createdAt.toISOString(),
         updatedAt: pvTag.createdAt.toISOString(),
     };
@@ -46,7 +48,7 @@ export function nwTagToPvTag(nwTag: NwTag): PvTag {
         id: String(nwTag.id),
         label: nwTag.name,
         description: undefined,
-        createdAt: new Date(nwTag.createdAt),
+        createdAt: new Date(nwTag.createdAt ?? Date.now()),
     };
 }
 
@@ -60,49 +62,47 @@ export function subscribeToTagEvents(handlers: {
     onTagUpdated?: (tag: NwTag) => void;
     onTagDeleted?: (tagId: number) => void;
 }): () => void {
-    const subscriptions: Array<{ unsubscribe: () => void }> = [];
+    const subscriptions: Array<() => void> = [];
 
     if (handlers.onTagCreated) {
-        subscriptions.push(
-            eventBus.on('tag:created', (data) => {
-                pvLogger.info('External tag created', { tagId: data.tag.id });
-                // Create a complete NwTag with required fields
-                const fullTag: NwTag = {
-                    ...data.tag,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                };
-                handlers.onTagCreated!(fullTag);
-            })
-        );
+        const unsubscribe = eventBus.on('tag:created', (data: { tag: NwTag }) => {
+            const tag = data.tag;
+            pvLogger.info('External tag created', { tagId: tag.id });
+            const fullTag: NwTag = {
+                ...tag,
+                createdAt: (tag as any).createdAt ?? new Date().toISOString(),
+                updatedAt: (tag as any).updatedAt ?? new Date().toISOString(),
+            };
+            handlers.onTagCreated!(fullTag);
+        });
+        subscriptions.push(unsubscribe);
     }
 
     if (handlers.onTagUpdated) {
-        subscriptions.push(
-            eventBus.on('tag:updated', (data) => {
-                pvLogger.info('External tag updated', { tagId: data.tag.id });
-                const fullTag: NwTag = {
-                    ...data.tag,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                };
-                handlers.onTagUpdated!(fullTag);
-            })
-        );
+        const unsubscribe = eventBus.on('tag:updated', (data: { tag: NwTag }) => {
+            const tag = data.tag;
+            pvLogger.info('External tag updated', { tagId: tag.id });
+            const fullTag: NwTag = {
+                ...tag,
+                createdAt: (tag as any).createdAt ?? new Date().toISOString(),
+                updatedAt: (tag as any).updatedAt ?? new Date().toISOString(),
+            };
+            handlers.onTagUpdated!(fullTag);
+        });
+        subscriptions.push(unsubscribe);
     }
 
     if (handlers.onTagDeleted) {
-        subscriptions.push(
-            eventBus.on('tag:deleted', (data) => {
-                pvLogger.info('External tag deleted', { tagId: data.tagId });
-                handlers.onTagDeleted!(data.tagId);
-            })
-        );
+        const unsubscribe = eventBus.on('tag:deleted', (data: { tagId: number }) => {
+            pvLogger.info('External tag deleted', { tagId: data.tagId });
+            handlers.onTagDeleted!(data.tagId);
+        });
+        subscriptions.push(unsubscribe);
     }
 
     // Return cleanup function
     return () => {
-        subscriptions.forEach((sub) => sub.unsubscribe());
+        subscriptions.forEach((unsubscribe) => unsubscribe());
     };
 }
 
@@ -120,8 +120,6 @@ export function emitPromptEvent(
 /**
  * Log levels exposed for app configuration
  */
-export { type LogLevel };
-
 /**
  * Initialize all Prompt Vault integrations with the NW platform
  *
@@ -137,6 +135,30 @@ export async function initializeNwIntegrations(): Promise<void> {
         pvLogger.info('Prompt Vault tools registered with orchestrator');
     } catch (error) {
         pvLogger.warn('Failed to register orchestrator tools', { error });
+    }
+
+    // Register Prompt Vault widgets with the shared pages-widgets registry
+    try {
+        const { registerWidgets } = await import('@nw/pages-widgets');
+        registerWidgets([
+            {
+                id: 'prompt-vault.quick-add',
+                appId: 'prompt-vault',
+                displayName: 'Quick Add Prompt',
+                description: 'Create a new prompt in the current project',
+                icon: 'plus',
+            },
+            {
+                id: 'prompt-vault.recent',
+                appId: 'prompt-vault',
+                displayName: 'Recent Prompts',
+                description: 'Recently created or edited prompts',
+                icon: 'clock',
+            },
+        ]);
+        pvLogger.info('Prompt Vault widgets registered with pages-widgets');
+    } catch (error) {
+        pvLogger.warn('Failed to register Prompt Vault widgets', { error });
     }
 }
 

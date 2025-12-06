@@ -7,6 +7,7 @@ import type { StructuredLogger } from "../observability/logger.js";
 import type { Telemetry } from "../observability/telemetry.js";
 import { createNoopTelemetry } from "../observability/telemetry.js";
 import { DuplicatePromptError, PromptNotFoundError, ValidationError } from "../domain/errors.js";
+import type { Prompt } from "../domain/models.js";
 
 const semanticVersionSchema = z
   .string()
@@ -95,11 +96,37 @@ export function createPromptVaultRouter(
     };
   }
 
+  function mapPromptToResponse(prompt: Prompt): Record<string, unknown> {
+    return {
+      id: prompt.id,
+      slug: prompt.slug,
+      title: prompt.title,
+      description: prompt.description,
+      category: prompt.category,
+      body: prompt.latestVersion?.body,
+      tags: prompt.tags.map((tag) => ({ id: tag.id, label: tag.label })),
+      createdAt: prompt.createdAt,
+      updatedAt: prompt.updatedAt,
+      deletedAt: prompt.deletedAt,
+      latestVersion: prompt.latestVersion
+        ? {
+          id: prompt.latestVersion.id,
+          semanticVersion: prompt.latestVersion.semanticVersion,
+          body: prompt.latestVersion.body,
+          format: prompt.latestVersion.format,
+          changelog: prompt.latestVersion.changelog,
+          createdAt: prompt.latestVersion.createdAt,
+          updatedAt: prompt.latestVersion.updatedAt,
+        }
+        : undefined,
+    };
+  }
+
   router.get(
     "/prompts",
-    asyncHandler("list-prompts", (request, response) => {
+    asyncHandler("list-prompts", async (request, response) => {
       const query = promptSearchSchema.parse(request.query);
-      const result = service.searchPrompts({
+      const result = await service.searchPrompts({
         text: query.text,
         tags: query.tags,
         page: query.page,
@@ -107,7 +134,7 @@ export function createPromptVaultRouter(
       });
 
       response.json({
-        prompts: result.prompts,
+        prompts: result.prompts.map(mapPromptToResponse),
         pagination: {
           page: result.page,
           pageSize: result.pageSize,
@@ -119,27 +146,27 @@ export function createPromptVaultRouter(
 
   router.get(
     "/prompts/:promptId",
-    asyncHandler("get-prompt", (request, response) => {
-      const prompt = service.getPrompt(request.params.promptId);
-      response.json({ prompt });
+    asyncHandler("get-prompt", async (request, response) => {
+      const prompt = await service.getPrompt(request.params.promptId);
+      response.json({ prompt: mapPromptToResponse(prompt) });
     })
   );
 
   router.post(
     "/prompts",
-    asyncHandler("create-prompt", (request, response) => {
+    asyncHandler("create-prompt", async (request, response) => {
       const payload = promptCreateSchema.parse(request.body);
-      const prompt = service.createPrompt({
+      const prompt = await service.createPrompt({
         ...payload,
         id: payload.id ?? randomUUID(),
       });
-      response.status(201).json({ prompt });
+      response.status(201).json({ prompt: mapPromptToResponse(prompt) });
     })
   );
 
   router.put(
     "/prompts/:promptId",
-    asyncHandler("update-prompt", (request, response) => {
+    asyncHandler("update-prompt", async (request, response) => {
       const payload = z.object({
         title: z.string().min(1).max(200).optional(),
         description: z.string().max(2000).optional(),
@@ -147,8 +174,8 @@ export function createPromptVaultRouter(
         tags: z.array(z.string().min(1)).optional(),
       }).parse(request.body);
 
-      const prompt = service.updatePrompt(request.params.promptId, payload);
-      response.json({ prompt });
+      const prompt = await service.updatePrompt(request.params.promptId, payload);
+      response.json({ prompt: mapPromptToResponse(prompt) });
     })
   );
 
@@ -169,33 +196,33 @@ export function createPromptVaultRouter(
 
   router.post(
     "/prompts/:promptId/convert",
-    asyncHandler("convert-prompt", (request, response) => {
+    asyncHandler("convert-prompt", async (request, response) => {
       const { targetFormat } = z.object({
         targetFormat: z.enum(["markdown", "yaml", "json"])
       }).parse(request.body);
 
-      const converted = service.convertPrompt(request.params.promptId, targetFormat);
+      const converted = await service.convertPrompt(request.params.promptId, targetFormat);
       response.json({ data: { content: converted, format: targetFormat } });
     })
   );
 
   router.post(
     "/prompts/:promptId/tags",
-    asyncHandler("tag-prompt", (request, response) => {
+    asyncHandler("tag-prompt", async (request, response) => {
       const payload = tagMutationSchema.parse(request.body);
-      service.tagPrompt(request.params.promptId, payload.tags);
-      const prompt = service.getPrompt(request.params.promptId);
-      response.json({ data: prompt });
+      await service.tagPrompt(request.params.promptId, payload.tags);
+      const prompt = await service.getPrompt(request.params.promptId);
+      response.json({ data: mapPromptToResponse(prompt) });
     })
   );
 
   router.delete(
     "/prompts/:promptId/tags",
-    asyncHandler("untag-prompt", (request, response) => {
+    asyncHandler("untag-prompt", async (request, response) => {
       const payload = tagMutationSchema.parse(request.body);
-      service.untagPrompt(request.params.promptId, payload.tags);
-      const prompt = service.getPrompt(request.params.promptId);
-      response.json({ data: prompt });
+      await service.untagPrompt(request.params.promptId, payload.tags);
+      const prompt = await service.getPrompt(request.params.promptId);
+      response.json({ data: mapPromptToResponse(prompt) });
     })
   );
 
