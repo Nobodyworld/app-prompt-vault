@@ -237,7 +237,8 @@ prompt-vault sync resolve --strategy theirs
 4. Build conflict resolution logic
 5. Create comprehensive test suite
 
-## Related Issues
+## Related Documentation
 
-- [Git Integration Implementation](https://github.com/Nobodyworld/app-prompt-vault/issues/xxx)
-- [Sync Protocol Design](https://github.com/Nobodyworld/app-prompt-vault/issues/yyy)
+- See `workflows.md` for Git workflow patterns
+- See `architecture.md` for overall system design
+- See `../operations/automation.md` for CI/CD integration considerations
