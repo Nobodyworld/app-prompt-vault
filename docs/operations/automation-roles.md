@@ -20,7 +20,7 @@ This registry maps potential agent responsibilities to the scripts and guardrail
 - **Trigger:** Before tagging a release candidate.
 - **Command:** `npm run release:prepare -- <version>`
 - **Outputs:** Bumped `package.json`, updated lockfile metadata, and refreshed CHANGELOG plus docs/releases/notes.md scaffolding.
-- **Notes:** Update TODO placeholders with human-friendly copy prior to publishing.
+- **Notes:** Replace any placeholder text in the generated notes with final, human-friendly copy prior to publishing.
 
 ### Observability Keeper
 - **Trigger:** Deployments, incident rehearsals.

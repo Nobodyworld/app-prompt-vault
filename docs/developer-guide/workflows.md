@@ -58,7 +58,7 @@ Enable metrics and health endpoints for any CLI invocation by exporting `PROMPT_
 1. Run `npm run build` to emit compiled TypeScript.
 2. Run `npm run release:prepare -- <version>` to bump package metadata and generate changelog/release-note stubs.
 3. Package the CLI as part of the Tauri bundle or as a standalone Node executable.
-4. Publish release notes using the generated templates and update TODO placeholders.
+4. Publish release notes using the generated templates and replace any placeholder text with final copy.
 5. Tag the release (e.g., `git tag v0.2.0`) and push.
 
 ## 8. Troubleshooting

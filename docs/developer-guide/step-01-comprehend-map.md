@@ -39,7 +39,7 @@ linked resources, and usage statistics.
 | Data Flow | Undefined | Introduce service layer managing SQLite persistence via repository pattern |
 | Dependencies | None defined | Declare TypeScript toolchain, SQLite driver, CLI helpers, and validation libs |
 | Documentation | Minimal README | Build docs/ directory with architecture, workflows, changelog, and policies |
-| TODOs | Entire application missing | Bootstrap domain model, add validation, create tests, and document next steps |
+| Gaps | Entire application missing | Bootstrap domain model, add validation, create tests, and document next steps |
 
 ## Next Steps
 

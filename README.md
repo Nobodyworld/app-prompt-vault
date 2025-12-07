@@ -5,79 +5,65 @@
 
 > **🎉 Successor to Prompt Rules Manager (PRM)** - This project is the next evolution of PRM with improved architecture, better performance, and enhanced features. See [Migration Guide](#migrating-from-prm) below.
 
-## CI / Codecov token
+# Overview
+Prompt Vault is a cross-platform vault for collecting, versioning, and tagging reusable prompts. Ships CLI, HTTP API, desktop UI, and orchestrator integration with SQLite persistence.
 
-To enable authenticated uploads to Codecov (recommended for private repos or org policy), add a repository secret named `CODECOV_TOKEN` with the token from your Codecov project settings.
+## Purpose
+- Create/store prompts with semantic versioning and history
+- Tag filtering and search (full-text, metadata)
+- CLI/HTTP API/desktop UI surfaces
+- Optional MCP/tooling integration
 
-On GitHub:
+## What This App Does NOT Do
+- Act as a hosted multi-tenant service (local-first)
+- Store secrets unrelated to prompts
 
-1. Go to your repository Settings → Secrets → Actions.
-2. Click "New repository secret" and add the `CODECOV_TOKEN` value.
+## Tech Stack
+- **Framework:** React/Vite (desktop/web), Tauri backend (Rust)
+- **Database:** SQLite with migrations
+- **UI:** `@nw/ui-kit`, `@nw/ui-layout`, `@nw/ui-theme`
+- **Surfaces:** CLI, Express HTTP API, desktop UI, orchestrator tools
 
-The CI workflow will detect the presence of `CODECOV_TOKEN` and upload the generated `coverage/lcov.info` to Codecov. If the token is not provided (e.g., in forks or local runs), uploads are skipped to avoid leaking tokens.
-
-Codecov will post PR comments with coverage diffs when uploads are received. You can further customize behavior via `codecov.yml` in the repo.
-
-Prompt Vault is a cross-platform vault for collecting, versioning, and tagging reusable prompts. The project includes a fully typed domain layer, a CLI for quick interactions, and a React UI that works in both desktop (Tauri) and web browser environments, backed by SQLite (desktop) or a demo API server (web).
-
-## Key Features
-
-- **Cross-Platform** – Works in desktop (Tauri) and web browser environments with automatic feature detection.
-- **Prompt Library** – Create prompts with rich metadata, semantic versioning, and change history.
-- **Tag Filtering** – Attach reusable tags to group prompts by workflow, team, or modality with automatic duplicate detection.
-- **SQLite Persistence** – Store data locally with migrations managed inside the repo for reproducible environments.
-- **HTTP API** – Express server that exposes the domain layer over REST using the same SQLite persistence as the CLI.
-- **Command-Line Interface** – Manage your library directly from the terminal with health-aware operations.
-- **Desktop UI** – React-based interface for easy prompt management.
-- **Test Coverage** – Vitest suite exercises core business flows and guards against regressions.
-- **Observability Hooks** – Prometheus-compatible metrics, structured logging, `/observability/*` health endpoints, per-request tracing spans (`x-trace-id` headers), and a CLI doctor command for quick audits.
-- **Extension Layer** – Plugins react to prompt lifecycle events without touching core service logic.
-- **Advanced Search** – Full-text search with content excerpts, case sensitivity, tag/format filters, and highlighting.
-- **Import/Export** – Seamless migration between Markdown, YAML, and JSON formats with external file support.
-- **Snapshots & Recovery** – Point-in-time backups with restore capabilities and integrity validation.
-- **MCP Integration** – Complete Model Context Protocol support for agent automation.
-
-## Project Layout
-
-```text
-app-prompt-vault/
-├─ src/
-│  ├─ cli/                 # Commander-based CLI utilities
-│  ├─ db/                  # SQLite connection factory and migrations
-│  ├─ domain/              # Models, errors, and validation schemas
-│  ├─ repositories/        # Data access layer over SQLite
-│  └─ services/            # PromptVaultService façade
-├─ desktop/
-│  ├─ src/                 # React UI components and pages
-│  ├─ index.html           # App shell
-│  ├─ vite.config.ts       # Vite configuration
-│  └─ tsconfig.json        # TypeScript config for UI
-├─ src-tauri/              # Tauri Rust backend
-├─ tests/                  # Vitest specs for service workflows
-├─ docs/
-│  ├─ README.md            # Directory index that links to topic-specific folders
-│  ├─ architecture/        # System diagrams and design history (see architecture/README.md)
-│  ├─ guides/              # Task-focused walkthroughs (see guides/README.md)
-│  ├─ operations/          # Runbooks and automation guardrails (see operations/README.md)
-│  ├─ policies/            # Governance and compliance policies (see policies/README.md)
-│  ├─ releases/            # Release notes and upgrade guidance (see releases/README.md)
-│  └─ reports/             # Stewardship updates (see reports/README.md)
-├─ codex_chain.json        # Automation chain definition
-├─ scripts/README.md       # Script catalogue and usage notes
-├─ package.json            # Tooling, dependencies, and scripts
-└─ tsconfig.json           # TypeScript compiler configuration
+## Setup
+```bash
+pnpm install
 ```
 
-Every major directory now includes a focused `README.md` to explain its contents. Start with [`docs/README.md`](docs/README.md)
-or [`src/README.md`](src/README.md) when navigating the codebase, and reference [`scripts/README.md`](scripts/README.md) for
-automation entry points and [`tests/README.md`](tests/README.md) to understand the current Vitest coverage.
-
-## Getting Started
-
--> **Prerequisites:** Node.js 24.x (recommended) or Node >= 18.17, Rust (for Tauri), and (optionally) SQLite libraries for native bindings.
-
+## Run
 ```bash
-# install dependencies
+pnpm dev          # web/desktop dev (see desktop/vite.config.ts for port)
+pnpm tauri:dev    # desktop shell
+pnpm api          # if HTTP API script exists (check package.json)
+```
+Prereqs: Node 24.x recommended (bindings), Rust for Tauri.
+
+## Tests
+- Unit/Integration: `pnpm test`
+- E2E (if enabled): `pnpm test:e2e` (start dev server)
+- Lint/Typecheck: `pnpm lint`, `pnpm typecheck`
+
+## Dev Workflow
+- Build: `pnpm build`
+- Coverage: Vitest suite; Codecov supported (see CI token note below)
+- CLI/HTTP: see `src/cli` and Express server docs; keep migrations in sync
+
+## APIs & Surfaces
+- **CLI:** commander-based utilities under `src/cli`
+- **HTTP API:** REST over SQLite (Express) with observability endpoints
+- **Desktop UI:** React app under `desktop/`
+- **Orchestrator/MCP:** Tooling hooks for automation
+
+## CI / Codecov token
+Add `CODECOV_TOKEN` (repo secret) for authenticated uploads; CI auto-detects. Without it, uploads are skipped.
+
+## Troubleshooting
+- Native bindings: use Node 24.x; `pnpm rebuild better-sqlite3` if bindings fail.
+- DB migrations: run `pnpm test` to verify; check `src/db/migrations`.
+- Port conflicts: adjust Vite dev port via config or CLI.
+
+## References
+- Docs index: `docs/README.md`
+- Architecture/guides/ops: see `docs/architecture`, `docs/guides`, `docs/operations`, `docs/policies`, `docs/releases`, `docs/reports`
 npm install
 
 # run unit tests

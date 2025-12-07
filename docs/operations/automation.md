@@ -7,7 +7,7 @@ This repository is automation-friendly: it ships structured telemetry, determini
 1. **Never write secrets** to the repository. Use environment variables or injected files when running workflows.
 2. **Prefer provided scripts** (`npm run validate`, `npm run observability`, `npm run release:prepare`) over ad-hoc commands to ensure consistent tooling.
 3. **Respect coverage gates.** The CI workflow enforces linting, type checks, tests, security audit, and coverage thresholds—agents must run `npm run quality:gate` locally before opening PRs.
-4. **Tag new TODOs** with `TODO(P#, <estimate>):` so prioritisation stays machine-readable.
+4. **Track new work** with `P#` identifiers (e.g., `P1`, `P2`) and include rough estimates so prioritisation stays machine-readable.
 
 ## Recommended Environment Variables
 

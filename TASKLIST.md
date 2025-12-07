@@ -1,6 +1,7 @@
 # Prompt Vault — Task List (Delegated)
 
-All Prompt Vault tasks are managed in `../../TASKLISTS/TASKS-AGENTS.md` / `TASKS-USER.md` (canonical).  
-Refer to the Tasklists folder for current status.
+All Prompt Vault tasks are tracked centrally in `../../TASKLISTS/TASKS-AGENTS.md` / `TASKS-USER.md` (canonical).
+Completed items are logged in `../../TASKLISTS/COMPLETE.md`.
+This stub avoids drift; see the Tasklists folder for current status.
 
-Last synced: November 29, 2025
+Last synced: December 6, 2025

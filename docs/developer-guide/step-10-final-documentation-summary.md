@@ -7,7 +7,7 @@
 - Authored extensive documentation covering architecture, workflows, dependencies, and policies.
 - Recorded changes in `CHANGELOG.md` and ensured licensing statements reflect the Proprietary status.
 
-## Remaining TODOs
+## Remaining Work
 
 - Build the React + Tauri UI that consumes the `PromptVaultService` APIs.
 - Automate migrations and integrate CI pipelines for linting, testing, and release packaging.
