@@ -2,6 +2,7 @@ import type { Database as BetterSqlite3Database } from "better-sqlite3";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { generateIntegrityChecksum, checkDataIntegrity } from "@nw/core-db";
 import type {
   Prompt,
   PromptId,
@@ -30,6 +31,7 @@ interface PromptRow {
   readonly title: string | null;
   readonly description: string | null;
   readonly category: string | null;
+  readonly integrity_checksum: string | null;
   readonly created_at: string;
   readonly updated_at: string;
   readonly deleted_at: string | null;
@@ -38,6 +40,7 @@ interface PromptRow {
   readonly body: string | null;
   readonly format: string | null;
   readonly changelog: string | null;
+  readonly version_integrity_checksum: string | null;
   readonly version_created_at: string | null;
   readonly version_updated_at: string | null;
 }
@@ -125,8 +128,8 @@ export class PromptRepository {
     return this.telemetry.withSpan("repository.getPromptById", { promptId }, () => {
       const row = this.database
         .prepare(
-          `SELECT p.id, p.slug, p.title, p.description, p.category, p.created_at, p.updated_at, p.deleted_at,
-                  pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog,
+          `SELECT p.id, p.slug, p.title, p.description, p.category, p.integrity_checksum, p.created_at, p.updated_at, p.deleted_at,
+                  pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog, pv.integrity_checksum AS version_integrity_checksum,
                   pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
            FROM prompts p
            LEFT JOIN prompt_versions pv ON pv.id = (
@@ -142,6 +145,40 @@ export class PromptRepository {
       if (!row) {
         this.logger.warn("repository_prompt_missing", { promptId });
         throw new PromptNotFoundError(promptId);
+      }
+
+      // Verify prompt integrity
+      if (row.integrity_checksum) {
+        const promptData = JSON.stringify({
+          id: row.id,
+          slug: row.slug,
+          title: row.title,
+          description: row.description,
+          category: row.category,
+        });
+        const integrityCheck = checkDataIntegrity(promptData, row.integrity_checksum);
+        if (!integrityCheck.isValid) {
+          this.logger.error("Prompt integrity check failed", {
+            promptId,
+            expected: integrityCheck.expectedChecksum,
+            actual: integrityCheck.actualChecksum
+          });
+          throw new Error(`Data integrity check failed for prompt '${promptId}'`);
+        }
+      }
+
+      // Verify version integrity if present
+      if (row.version_integrity_checksum && row.body) {
+        const integrityCheck = checkDataIntegrity(row.body, row.version_integrity_checksum);
+        if (!integrityCheck.isValid) {
+          this.logger.error("Prompt version integrity check failed", {
+            promptId,
+            versionId: row.version_id,
+            expected: integrityCheck.expectedChecksum,
+            actual: integrityCheck.actualChecksum
+          });
+          throw new Error(`Data integrity check failed for prompt version '${row.version_id}'`);
+        }
       }
 
       const tags = this.getTagsForPrompt(promptId);
@@ -494,6 +531,30 @@ export class PromptRepository {
         updates.push("updated_at = @updatedAt");
         params.updatedAt = new Date().toISOString();
 
+        // Get current prompt data to recalculate integrity checksum
+        const currentPrompt = this.database
+          .prepare("SELECT id, slug, title, description, category FROM prompts WHERE id = @promptId")
+          .get({ promptId }) as { id: string; slug: string; title?: string; description?: string; category?: string };
+
+        // Apply updates to get new data
+        const updatedPrompt = {
+          ...currentPrompt,
+          ...data
+        };
+
+        // Recalculate integrity checksum
+        const checksumData = JSON.stringify({
+          id: updatedPrompt.id,
+          slug: updatedPrompt.slug,
+          title: updatedPrompt.title,
+          description: updatedPrompt.description,
+          category: updatedPrompt.category,
+        });
+        const integrityChecksum = generateIntegrityChecksum(checksumData);
+
+        updates.push("integrity_checksum = @integrityChecksum");
+        params.integrityChecksum = integrityChecksum;
+
         this.database
           .prepare(`UPDATE prompts SET ${updates.join(", ")} WHERE id = @promptId`)
           .run(params);
@@ -692,9 +753,19 @@ export class PromptRepository {
   // Migrations are handled by shared @nw/core-db; local migration runner removed.
 
   private insertPromptRecord(prompt: Prompt): void {
+    // Generate integrity checksum for prompt metadata
+    const checksumData = JSON.stringify({
+      id: prompt.id,
+      slug: prompt.slug,
+      title: prompt.title,
+      description: prompt.description,
+      category: prompt.category,
+    });
+    const integrityChecksum = generateIntegrityChecksum(checksumData);
+
     const statement = this.database.prepare(
-      `INSERT INTO prompts (id, slug, title, description, category, created_at, updated_at)
-       VALUES (@id, @slug, @title, @description, @category, @createdAt, @updatedAt)`
+      `INSERT INTO prompts (id, slug, title, description, category, integrity_checksum, created_at, updated_at)
+       VALUES (@id, @slug, @title, @description, @category, @integrityChecksum, @createdAt, @updatedAt)`
     );
 
     statement.run({
@@ -703,15 +774,19 @@ export class PromptRepository {
       title: prompt.title,
       description: prompt.description ?? null,
       category: prompt.category ?? null,
+      integrityChecksum,
       createdAt: prompt.createdAt.toISOString(),
       updatedAt: prompt.updatedAt.toISOString(),
     });
   }
 
   private insertVersionRecord(version: PromptVersion): void {
+    // Generate integrity checksum for version content
+    const integrityChecksum = generateIntegrityChecksum(version.body);
+
     const statement = this.database.prepare(
-      `INSERT INTO prompt_versions (id, prompt_id, semantic_version, body, format, changelog, created_at, updated_at)
-       VALUES (@id, @promptId, @semanticVersion, @body, @format, @changelog, @createdAt, @updatedAt)`
+      `INSERT INTO prompt_versions (id, prompt_id, semantic_version, body, format, changelog, integrity_checksum, created_at, updated_at)
+       VALUES (@id, @promptId, @semanticVersion, @body, @format, @changelog, @integrityChecksum, @createdAt, @updatedAt)`
     );
 
     statement.run({
@@ -721,6 +796,7 @@ export class PromptRepository {
       body: version.body,
       format: version.format,
       changelog: version.changelog ?? null,
+      integrityChecksum,
       createdAt: version.createdAt.toISOString(),
       updatedAt: version.updatedAt.toISOString(),
     });

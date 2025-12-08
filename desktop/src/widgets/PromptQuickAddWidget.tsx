@@ -5,6 +5,8 @@
  */
 
 import React, { useState } from "react";
+import { createPrompt } from "../services/promptApi";
+import type { CreatePromptInput } from "../types/prompt";
 
 interface PromptQuickAddWidgetProps {
   onPromptCreated?: (promptId: string) => void;
@@ -16,23 +18,46 @@ export function PromptQuickAddWidget({
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !content.trim()) return;
 
     setIsSubmitting(true);
+    setError(null);
+    setSuccess(false);
     try {
-      // TODO: Integrate with PromptVault service
-      // For now, just log and reset
-      console.log("Creating prompt:", { title, content });
+      // Generate slug from title
+      const slug = title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .substring(0, 50);
 
-      // Simulate creation
-      const promptId = crypto.randomUUID();
-      onPromptCreated?.(promptId);
+      const input: CreatePromptInput = {
+        slug,
+        title: title.trim(),
+        description: undefined,
+        category: undefined,
+        body: content.trim(),
+        semanticVersion: "1.0.0",
+        tags: [],
+      };
+
+      const prompt = await createPrompt(input);
+      onPromptCreated?.(prompt.id);
 
       setTitle("");
       setContent("");
+      setSuccess(true);
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err) {
+      console.error("Failed to create prompt:", err);
+      setError("Failed to create prompt. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -44,6 +69,8 @@ export function PromptQuickAddWidget({
         <h3>Quick Add Prompt</h3>
       </div>
       <form onSubmit={handleSubmit} className="pv-quick-add-form">
+        {error && <div className="pv-error">{error}</div>}
+        {success && <div className="pv-success">Prompt created successfully!</div>}
         <input
           type="text"
           placeholder="Prompt title..."

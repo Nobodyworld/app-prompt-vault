@@ -5,12 +5,8 @@
  */
 
 import React, { useState, useEffect } from "react";
-
-interface Prompt {
-  id: string;
-  title: string;
-  updatedAt: Date;
-}
+import { listPrompts } from "../services/promptApi";
+import type { PromptSummary } from "../types/prompt";
 
 interface RecentPromptsWidgetProps {
   onPromptSelected?: (promptId: string) => void;
@@ -21,22 +17,24 @@ export function RecentPromptsWidget({
   onPromptSelected,
   limit = 5,
 }: RecentPromptsWidgetProps): React.JSX.Element {
-  const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [prompts, setPrompts] = useState<PromptSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // TODO: Integrate with PromptVault service
-    // For now, show placeholder data
     const fetchPrompts = async () => {
       setIsLoading(true);
+      setError(null);
       try {
-        // Simulated data
-        const mockPrompts: Prompt[] = [
-          { id: "1", title: "Code Review Checklist", updatedAt: new Date() },
-          { id: "2", title: "Meeting Summary Template", updatedAt: new Date(Date.now() - 3600000) },
-          { id: "3", title: "Bug Report Format", updatedAt: new Date(Date.now() - 7200000) },
-        ];
-        setPrompts(mockPrompts.slice(0, limit));
+        const result = await listPrompts();
+        // Sort by updatedAt descending and take the limit
+        const sorted = [...result].sort((a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+        setPrompts(sorted.slice(0, limit));
+      } catch (err) {
+        console.error("Failed to load recent prompts:", err);
+        setError("Failed to load prompts");
       } finally {
         setIsLoading(false);
       }
@@ -44,7 +42,8 @@ export function RecentPromptsWidget({
     fetchPrompts();
   }, [limit]);
 
-  const formatTime = (date: Date): string => {
+  const formatTime = (dateString: string): string => {
+    const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -63,6 +62,8 @@ export function RecentPromptsWidget({
       <div className="pv-widget-content">
         {isLoading ? (
           <div className="pv-loading">Loading...</div>
+        ) : error ? (
+          <div className="pv-error">{error}</div>
         ) : prompts.length === 0 ? (
           <div className="pv-empty">No prompts yet</div>
         ) : (

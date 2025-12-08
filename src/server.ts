@@ -15,6 +15,9 @@ import {
 } from "./observability/index.js";
 import { createObservabilityRouter } from "./web/createObservabilityRouter.js";
 import { ConfigurationError, loadServerConfig, type LoadConfigResult } from "./config/serverConfig.js";
+import { AuthManager, createAuthMiddleware } from "./web/auth.js";
+import { InMemoryAuditLogger, createAuditMiddleware, createAutoAuditMiddleware } from "./web/audit.js";
+import { createRateLimitMiddleware } from "./web/rate-limit.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -92,8 +95,65 @@ if (config.allowedOrigins && config.allowedOrigins.length > 0) {
 app.use((request, response, next) => {
   response.setHeader("X-Content-Type-Options", "nosniff");
   response.setHeader("Referrer-Policy", "no-referrer");
+  response.setHeader("X-Frame-Options", "DENY");
+  if (request.protocol === "https" || request.headers["x-forwarded-proto"] === "https") {
+    response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
   next();
 });
+
+// Extract API keys from environment
+function extractApiKeys(env: NodeJS.ProcessEnv): Record<string, string> {
+  const keys: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith("API_KEY_") && value) {
+      const keyName = key.replace("API_KEY_", "").toLowerCase();
+      keys[keyName] = value;
+    }
+  }
+  return keys;
+}
+
+// Initialize security features
+const authManager = new AuthManager(
+  {
+    jwtSecret: process.env.JWT_SECRET,
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || "24h",
+    requireAuthByDefault: process.env.REQUIRE_AUTH === "true",
+    localhostOnly: process.env.LOCALHOST_ONLY === "true",
+    apiKeys: extractApiKeys(process.env),
+  },
+  logger.child({ component: "auth" })
+);
+
+const auditLogger = new InMemoryAuditLogger({
+  maxEvents: parseInt(process.env.AUDIT_MAX_EVENTS || "10000", 10),
+  logger: logger.child({ component: "audit" }),
+});
+
+// Apply security middleware
+app.use(
+  createAuthMiddleware({
+    authManager,
+    requireAuth: process.env.REQUIRE_AUTH === "true",
+    localhostOnly: process.env.LOCALHOST_ONLY === "true",
+    logger: logger.child({ component: "auth-middleware" }),
+  })
+);
+
+app.use(createAuditMiddleware({ auditLogger, logger: logger.child({ component: "audit-middleware" }) }));
+app.use(createAutoAuditMiddleware());
+
+// Apply rate limiting
+if (process.env.RATE_LIMIT_ENABLED !== "false") {
+  app.use(
+    createRateLimitMiddleware({
+      maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "100", 10),
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10),
+      logger: logger.child({ component: "rate-limit" }),
+    })
+  );
+}
 
 app.use((request, response, next) => {
   const incomingRequestId = request.header("x-request-id");
