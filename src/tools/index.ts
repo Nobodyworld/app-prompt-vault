@@ -237,8 +237,7 @@ export const pvSearchPromptsHandler: ToolHandler = async (args): Promise<ToolRes
     try {
         const prompts = await promptService.listPrompts({
             query,
-            // tags are expressed as tag IDs in the shared system; folder is ignored for now
-            tagIds: tags as string[] | undefined,
+            tags: tags as string[] | undefined,
         });
         const limited = prompts.slice(0, limit);
         return { success: true, data: limited };
@@ -277,7 +276,7 @@ export const pvCreatePromptHandler: ToolHandler = async (args, ctx): Promise<Too
             title,
             body: content,
             projectSlug,
-            tagIds: tags as string[] | undefined,
+            tags: tags as string[] | undefined,
         });
         return { success: true, data: created };
     } catch (error) {
@@ -299,7 +298,7 @@ export const pvUpdatePromptHandler: ToolHandler = async (args): Promise<ToolResu
         const updated = await promptService.updatePrompt(id, {
             title,
             body: content,
-            tagIds: tags as string[] | undefined,
+            tags: tags as string[] | undefined,
         });
         if (!updated) {
             return { success: false, error: "Prompt not found" };

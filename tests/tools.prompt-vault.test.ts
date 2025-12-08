@@ -39,22 +39,22 @@ vi.mock("../src/lib/promptService.js", async () => {
     getPrompt: vi.fn(async (id: string) =>
       id === "p1"
         ? {
-            id: "p1",
-            slug: "p1",
-            title: "Prompt 1",
+          id: "p1",
+          slug: "p1",
+          title: "Prompt 1",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tags: [],
+          latestVersion: {
+            id: "v1",
+            promptId: "p1",
+            semanticVersion: "1.0.0",
+            body: "Body",
+            format: "markdown",
             createdAt: new Date(),
             updatedAt: new Date(),
-            tags: [],
-            latestVersion: {
-              id: "v1",
-              promptId: "p1",
-              semanticVersion: "1.0.0",
-              body: "Body",
-              format: "markdown",
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            },
-          }
+          },
+        }
         : null
     ),
     createPrompt: vi.fn(async () => ({
@@ -105,7 +105,7 @@ describe("Prompt Vault tools", () => {
     expect(result.success).toBe(true);
     expect((promptService.listPrompts as any)).toHaveBeenCalledWith({
       query: "hello",
-      tagIds: undefined,
+      tags: undefined,
     });
   });
 
@@ -125,7 +125,7 @@ describe("Prompt Vault tools", () => {
       title: "T",
       body: "C",
       projectSlug: "ctx-project",
-      tagIds: undefined,
+      tags: undefined,
     });
   });
 });

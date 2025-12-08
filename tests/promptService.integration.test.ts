@@ -65,7 +65,7 @@ describe("promptService facade", () => {
   it("lists prompts with optional text filter", async () => {
     const all = await promptService.listPrompts();
     expect(all).toHaveLength(1);
-    expect(serviceStub.listAllPrompts).toHaveBeenCalled();
+    expect(serviceStub.searchPrompts).toHaveBeenCalled();
 
     const filtered = await promptService.listPrompts({ query: "hello" });
     expect(filtered).toHaveLength(1);
@@ -79,28 +79,30 @@ describe("promptService facade", () => {
       title: "New Prompt",
       body: "Body content",
       projectSlug: "demo-project",
-      tagIds: ["t1", "t2"],
+      tags: ["t1", "t2"],
     });
 
-    expect(serviceStub.createPrompt).toHaveBeenCalled();
+    expect(serviceStub.createPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      tags: ["t1", "t2"]
+    }));
     expect(created.id).toEqual(mockPrompt.id);
 
     expect(tagsProjects.getProjectTagBySlug).toHaveBeenCalledWith("demo-project");
     expect(tagsProjects.createProjectTag).toHaveBeenCalled();
     expect(tagsProjects.tagPrompt).toHaveBeenCalledWith(mockPrompt.id, "project-demo-project");
-
-    expect(tagsProjects.tagPrompt).toHaveBeenCalledWith(mockPrompt.id, "t1");
-    expect(tagsProjects.tagPrompt).toHaveBeenCalledWith(mockPrompt.id, "t2");
   });
 
   it("updates prompt metadata and content when provided", async () => {
     await promptService.updatePrompt("prompt-1", {
       title: "Updated Title",
       body: "Updated body",
-      tagIds: ["t1"],
+      tags: ["t1"],
     });
 
-    expect(serviceStub.updatePrompt).toHaveBeenCalledWith("prompt-1", { title: "Updated Title" });
+    expect(serviceStub.updatePrompt).toHaveBeenCalledWith("prompt-1", {
+      title: "Updated Title",
+      tags: ["t1"],
+    });
     expect(serviceStub.addVersion).toHaveBeenCalled();
   });
 

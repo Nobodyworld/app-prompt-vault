@@ -16,7 +16,7 @@ import {
 
 export interface PromptFilters {
   projectSlug?: string;
-  tagIds?: string[];
+  tags?: string[];
   query?: string;
 }
 
@@ -24,7 +24,7 @@ export interface PromptInput {
   title: string;
   body: string;
   projectSlug?: string;
-  tagIds?: string[];
+  tags?: string[];
 }
 
 let serviceInstance: PromptVaultService | null = null;
@@ -76,70 +76,27 @@ async function ensureProjectTagId(projectSlug: string): Promise<string> {
   return created.id;
 }
 
-async function syncPromptTags(promptId: string, tagIds: string[] | undefined): Promise<void> {
-  if (!tagIds) {
-    return;
-  }
-
-  const existingTags = await listTagsForEntity({ entityType: "prompts", entityId: promptId });
-  const existingIds = new Set(existingTags.map((tag) => tag.id));
-  const desiredIds = new Set(tagIds);
-
-  const toAdd = [...desiredIds].filter((id) => !existingIds.has(id));
-  const toRemove = [...existingIds].filter((id) => !desiredIds.has(id));
-
-  for (const tagId of toAdd) {
-    await tagPrompt(promptId, tagId);
-  }
-
-  for (const tagId of toRemove) {
-    await untagPrompt(promptId, tagId);
-  }
-}
-
 export async function listPrompts(filters: PromptFilters = {}): Promise<Prompt[]> {
   const service = getService();
 
-  let filteredIds: Set<string> | null = null;
+  // Use the service's search capability which handles text and tags
+  const searchResult = await service.searchPrompts({
+    text: filters.query,
+    tags: filters.tags,
+    page: 0,
+    pageSize: 100, // Reasonable default limit
+  });
 
+  let prompts = [...searchResult.prompts];
+
+  // Apply project filter if needed
   if (filters.projectSlug) {
-    const ids = await listEntitiesWithProject({
+    const projectIds = await listEntitiesWithProject({
       entityType: "prompts",
       projectSlug: filters.projectSlug,
     });
-    filteredIds = new Set(ids);
-  }
-
-  if (filters.tagIds && filters.tagIds.length > 0) {
-    const ids = await listEntitiesByTags({
-      entityType: "prompts",
-      tagIds: filters.tagIds,
-      match: "any",
-    });
-    const tagSet = new Set(ids);
-    filteredIds = filteredIds
-      ? new Set([...filteredIds].filter((id) => tagSet.has(id)))
-      : tagSet;
-  }
-
-  const text = filters.query?.trim();
-  let prompts: Prompt[];
-
-  if (text) {
-    const result = await service.searchPrompts({
-      text,
-      page: 0,
-      pageSize: 50,
-    } as any);
-    prompts = [...result.prompts];
-  } else if (filteredIds) {
-    prompts = await Promise.all([...filteredIds].map((id) => service.getPrompt(id)));
-  } else {
-    prompts = await service.listAllPrompts() as Prompt[];
-  }
-
-  if (filteredIds) {
-    prompts = prompts.filter((prompt) => filteredIds!.has(prompt.id));
+    const projectIdsSet = new Set(projectIds);
+    prompts = prompts.filter((p) => projectIdsSet.has(p.id));
   }
 
   return prompts;
@@ -169,17 +126,13 @@ export async function createPrompt(input: PromptInput): Promise<Prompt> {
     body: input.body,
     format: "markdown",
     semanticVersion: "1.0.0",
-    tags: [],
+    tags: input.tags ?? [],
     changelog: "Created via orchestrator",
   } as any);
 
   if (input.projectSlug) {
     const projectTagId = await ensureProjectTagId(input.projectSlug);
     await tagPrompt(created.id, projectTagId);
-  }
-
-  if (input.tagIds && input.tagIds.length > 0) {
-    await syncPromptTags(created.id, input.tagIds);
   }
 
   return created;
@@ -189,9 +142,13 @@ export async function updatePrompt(id: string, patch: Partial<PromptInput>): Pro
   const service = getService();
 
   try {
-    if (patch.title || patch.body) {
-      if (patch.title) {
-        await service.updatePrompt(id, { title: patch.title });
+    if (patch.title || patch.body || patch.tags) {
+      const updateData: any = {};
+      if (patch.title) updateData.title = patch.title;
+      if (patch.tags) updateData.tags = patch.tags;
+
+      if (Object.keys(updateData).length > 0) {
+        await service.updatePrompt(id, updateData);
       }
 
       if (patch.body) {
@@ -206,10 +163,6 @@ export async function updatePrompt(id: string, patch: Partial<PromptInput>): Pro
     if (patch.projectSlug) {
       const projectTagId = await ensureProjectTagId(patch.projectSlug);
       await tagPrompt(id, projectTagId);
-    }
-
-    if (patch.tagIds) {
-      await syncPromptTags(id, patch.tagIds);
     }
 
     return await service.getPrompt(id);
