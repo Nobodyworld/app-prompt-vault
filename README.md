@@ -6,110 +6,139 @@
 > **🎉 Successor to Prompt Rules Manager (PRM)** - This project is the next evolution of PRM with improved architecture, better performance, and enhanced features. See [Migration Guide](#migrating-from-prm) below.
 
 # Overview
+
 Prompt Vault is a cross-platform vault for collecting, versioning, and tagging reusable prompts. Ships CLI, HTTP API, desktop UI, and orchestrator integration with SQLite persistence.
 
 ## Purpose
+
 - Create/store prompts with semantic versioning and history
 - Tag filtering and search (full-text, metadata)
 - CLI/HTTP API/desktop UI surfaces
 - Optional MCP/tooling integration
 
 ## What This App Does NOT Do
+
 - Act as a hosted multi-tenant service (local-first)
 - Store secrets unrelated to prompts
 
 ## Tech Stack
+
 - **Framework:** React/Vite (desktop/web), Tauri backend (Rust)
 - **Database:** SQLite with migrations
 - **UI:** `@nw/ui-kit`, `@nw/ui-layout`, `@nw/ui-theme`
 - **Surfaces:** CLI, Express HTTP API, desktop UI, orchestrator tools
 
 ## Setup
+
 ```bash
 pnpm install
 ```
 
 ## Run
+
 ```bash
 pnpm dev          # web/desktop dev (see desktop/vite.config.ts for port)
 pnpm tauri:dev    # desktop shell
 pnpm api          # if HTTP API script exists (check package.json)
 ```
+
 Prereqs: Node 24.x recommended (bindings), Rust for Tauri.
 
 ## Tests
+
 - Unit/Integration: `pnpm test`
 - E2E (if enabled): `pnpm test:e2e` (start dev server)
 - Lint/Typecheck: `pnpm lint`, `pnpm typecheck`
 
 ## Dev Workflow
+
 - Build: `pnpm build`
 - Coverage: Vitest suite; Codecov supported (see CI token note below)
 - CLI/HTTP: see `src/cli` and Express server docs; keep migrations in sync
 
 ## APIs & Surfaces
+
 - **CLI:** commander-based utilities under `src/cli`
 - **HTTP API:** REST over SQLite (Express) with observability endpoints
 - **Desktop UI:** React app under `desktop/`
 - **Orchestrator/MCP:** Tooling hooks for automation
 
 ## CI / Codecov token
+
 Add `CODECOV_TOKEN` (repo secret) for authenticated uploads; CI auto-detects. Without it, uploads are skipped.
 
 ## Troubleshooting
+
 - Native bindings: use Node 24.x; `pnpm rebuild better-sqlite3` if bindings fail.
 - DB migrations: run `pnpm test` to verify; check `src/db/migrations`.
 - Port conflicts: adjust Vite dev port via config or CLI.
 
 ## References
+
 - Docs index: `docs/README.md`
 - Architecture/guides/ops: see `docs/architecture`, `docs/guides`, `docs/operations`, `docs/policies`, `docs/releases`, `docs/reports`
 npm install
 
 # run unit tests
+
 npm test
 
 # run unit tests with V8 coverage output
+
 npm run test:coverage
 
 # summarize collected coverage data
+
 npm run coverage:summary
 
 # capture repository metrics (complexity, dependency graph, latency sample)
+
 npm run metrics:snapshot
 
 # scaffold a plugin skeleton under src/extensions/plugins/
+
 npm run extension:scaffold analytics
 
 # lint the project
+
 npm run lint
 
 # build TypeScript output to dist/
+
 npm run build
 
 # run security scan with graceful offline handling
+
 npm run security:scan
 
 # run the full quality gate (lint → build → tests + coverage thresholds → security scan)
+
 npm run quality:gate
 
 # run desktop app in development
+
 npm run desktop:dev
 
 # build desktop app for production
+
 npm run desktop:build
 
 # run web app in development (with demo data)
+
 npm run web:dev
 
 # build and serve web app for production
+
 npm run web:build
 
 # run a standalone observability server (metrics + health endpoints)
+
 npm run observability
 
 # bootstrap a SQLite database with migrations applied
+
 npm run db:bootstrap ./prompt-vault.db
+
 ```
 
 ## Docker Deployment
@@ -296,10 +325,13 @@ npm run dev -- untag --id <prompt-id> --tags marketing
 # List prompts matching a tag
 npm run dev -- list --tags marketing
 
+# Search prompts with excerpts
+npm run dev -- search --text "outline" --tags marketing --page-size 5
+
 # Add a new version
 npm run dev -- version --id <prompt-id> --body "Improved prompt" --version 1.1.0
 
-# Run health checks and integrity inspection
+# Run doctor (integrity + migrations)
 npm run dev -- doctor
 ```
 

@@ -208,4 +208,13 @@ describe("HTTP router", () => {
       expect(response.headers.get("x-request-id")).toBe(payload.requestId);
     });
   });
+
+  it("rejects invalid prompt identifiers", async () => {
+    await withServer(async ({ baseUrl }) => {
+      const response = await fetch(`${baseUrl}/api/prompts/not-a-uuid`);
+      expect(response.status).toBe(400);
+      const payload = await response.json();
+      expect(payload.error).toBe("Request validation failed");
+    });
+  });
 });

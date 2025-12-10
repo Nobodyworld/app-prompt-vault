@@ -200,11 +200,11 @@ See `.env.example` for full configuration options.
 | `API_KEY_<NAME>`                | —       | API keys for service accounts                    |
 | `AUDIT_LOGGING_ENABLED`         | `true`  | Enable audit logging                             |
 | `AUDIT_MAX_EVENTS`              | `10000` | Max events in memory                             |
-| `RATE_LIMIT_ENABLED`            | `true`  | Enable rate limiting                             |
-| `RATE_LIMIT_MAX_REQUESTS`       | `100`   | Max requests per window                          |
-| `RATE_LIMIT_WINDOW_MS`          | `60000` | Rate limit window (ms)                           |
-| `RATE_LIMIT_STRICT_MAX_REQUESTS`| `10`    | Strict limit for sensitive endpoints             |
-| `RATE_LIMIT_STRICT_WINDOW_MS`   | `60000` | Strict limit window (ms)                         |
+| `RATE_LIMIT_ENABLED`            | `true`  | Toggle global rate limiting middleware           |
+| `RATE_LIMIT_MAX_REQUESTS`       | `100`   | Requests per window for API routes               |
+| `RATE_LIMIT_WINDOW_MS`          | `60000` | Rate limit window for API routes (ms)            |
+| `RATE_LIMIT_AUTH_MAX_REQUESTS`  | `10`    | Requests per window for `/auth/token` issuance   |
+| `RATE_LIMIT_AUTH_WINDOW_MS`     | `60000` | Rate limit window for `/auth/token` (ms)         |
 
 ## Security Best Practices
 
@@ -239,7 +239,7 @@ See `docs/SECURITY.md` for:
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                     Prompt Vault Server                     │
 │                                                             │

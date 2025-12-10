@@ -22,7 +22,7 @@ export function RecentPromptsWidget({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchPrompts = async () => {
+    const fetchPrompts = async (): Promise<void> => {
       setIsLoading(true);
       setError(null);
       try {

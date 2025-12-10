@@ -120,7 +120,7 @@ export class InMemoryAuditLogger implements AuditLogger {
  * ```
  */
 export function createAuditMiddleware(options: { auditLogger: AuditLogger; logger?: StructuredLogger }) {
-    const { auditLogger, logger } = options;
+    const { auditLogger } = options;
 
     return (request: Request, response: Response, next: NextFunction) => {
         // Skip non-sensitive operations (GET requests to read-only endpoints)
@@ -138,7 +138,7 @@ export function createAuditMiddleware(options: { auditLogger: AuditLogger; logge
         const originalEnd = response.end;
 
         // Wrap response.end to log after response is sent
-        response.end = function (this: Response, ...args: any[]): Response {
+        response.end = function (this: Response, ...args: Parameters<Response["end"]>): Response {
             // Restore original end
             response.end = originalEnd;
 

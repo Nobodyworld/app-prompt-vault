@@ -1,18 +1,31 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { AuthManager } from "../src/web/auth.js";
+
+// Mock @nw/secrets
+vi.mock("@nw/secrets", () => ({
+  getSecret: vi.fn(),
+  storeSecret: vi.fn(),
+}));
 
 describe("AuthManager", () => {
   let authManager: AuthManager;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Mock the secrets functions
+    const { getSecret, storeSecret } = await import("@nw/secrets");
+    vi.mocked(getSecret).mockResolvedValue(null); // No existing secret
+    vi.mocked(storeSecret).mockResolvedValue(undefined);
+
     authManager = new AuthManager({
-      jwtSecret: "test-secret-key-min-32-characters",
       jwtExpiresIn: "1h",
       apiKeys: {
         admin: "admin-key-123",
         readonly: "readonly-key-456",
       },
     });
+
+    // Initialize the auth manager
+    await authManager.initialize();
   });
 
   describe("JWT token generation and verification", () => {
@@ -66,18 +79,23 @@ describe("AuthManager", () => {
     it(
       "should reject expired token",
       async () => {
+        // Mock for this specific test
+        const { getSecret, storeSecret } = await import("@nw/secrets");
+        vi.mocked(getSecret).mockResolvedValueOnce("test-secret-key-for-expiry-test");
+
         const shortLivedManager = new AuthManager({
-          jwtSecret: "test-secret",
           jwtExpiresIn: "1s",
         });
+
+        await shortLivedManager.initialize();
 
         const token = shortLivedManager.generateToken({
           userId: "user-123",
           username: "alice",
         });
 
-        // Wait for token to expire
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // Wait long enough to ensure exp (1s) has passed
+        await new Promise((resolve) => setTimeout(resolve, 2100));
 
         const payload = shortLivedManager.verifyToken(token);
         expect(payload).toBeNull();

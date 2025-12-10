@@ -1,14 +1,12 @@
-import type { NextFunction, Request, Response } from "express";
+import type { NextFunction, Request, Response, Router } from "express";
+import { Router as createRouter } from "express";
 import { createHmac, randomBytes } from "node:crypto";
+import { z } from "zod";
+import { getSecret, storeSecret } from "@nw/secrets";
 import type { StructuredLogger } from "../observability/logger.js";
+import { createEndpointRateLimiter } from "./rate-limit.js";
 
 export interface AuthConfig {
-  /**
-   * JWT secret key. Should be set via environment variable in production.
-   * If not provided, a random key will be generated (not suitable for multi-instance deployments).
-   */
-  jwtSecret?: string;
-
   /**
    * JWT expiration time (e.g., "1h", "7d", "30d").
    * Default: "24h"
@@ -54,22 +52,37 @@ export interface AuthPayload {
  * Authentication manager for JWT-based auth and API key validation.
  */
 export class AuthManager {
-  private readonly jwtSecret: string;
+  private jwtSecret!: string;
   private readonly jwtExpiresIn: string;
   private readonly apiKeys: Map<string, string>;
+  private readonly tokenTtlSeconds: number;
   private readonly logger?: StructuredLogger;
 
   public constructor(config: AuthConfig, logger?: StructuredLogger) {
-    // Generate random secret if not provided (NOT suitable for production multi-instance)
-    this.jwtSecret = config.jwtSecret || randomBytes(64).toString("hex");
     this.jwtExpiresIn = config.jwtExpiresIn || "24h";
     this.apiKeys = new Map(Object.entries(config.apiKeys || {}));
     this.logger = logger;
+    this.tokenTtlSeconds = this.parseExpiresIn(this.jwtExpiresIn);
+  }
 
-    if (!config.jwtSecret) {
-      this.logger?.warn("auth_no_secret", {
-        message: "JWT secret not configured. Generated a random secret. This will not work across multiple instances.",
-      });
+  /**
+   * Initialize the JWT secret from @nw/secrets or generate a random one.
+   * Should be called after construction and before using JWT functionality.
+   */
+  public async initialize(): Promise<void> {
+    const secretRef = "prompt-vault:jwt-secret";
+
+    // Try to get existing secret
+    const existingSecret = await getSecret(secretRef);
+    if (existingSecret) {
+      this.jwtSecret = existingSecret;
+      this.logger?.info("auth_secret_loaded", { secretRef });
+    } else {
+      // Generate and store new secret
+      const newSecret = randomBytes(64).toString("hex");
+      await storeSecret(secretRef, newSecret);
+      this.jwtSecret = newSecret;
+      this.logger?.info("auth_secret_generated", { secretRef });
     }
   }
 
@@ -78,7 +91,7 @@ export class AuthManager {
    */
   public generateToken(payload: Omit<AuthPayload, "iat" | "exp">): string {
     const iat = Math.floor(Date.now() / 1000);
-    const exp = iat + this.parseExpiresIn(this.jwtExpiresIn);
+    const exp = iat + this.tokenTtlSeconds;
 
     const fullPayload: AuthPayload = {
       ...payload,
@@ -130,6 +143,10 @@ export class AuthManager {
       });
       return null;
     }
+  }
+
+  public getTokenTtlSeconds(): number {
+    return this.tokenTtlSeconds;
   }
 
   private parseExpiresIn(expiresIn: string): number {
@@ -188,13 +205,96 @@ export class AuthManager {
   }
 }
 
+const tokenRequestSchema = z.object({
+  apiKey: z.string().min(1).optional(),
+  userId: z.string().min(1).optional(),
+  username: z.string().min(1).optional(),
+  roles: z.array(z.string().min(1)).max(10).optional(),
+});
+
+export function createAuthRouter(options: {
+  authManager: AuthManager;
+  logger?: StructuredLogger;
+  rateLimit?: {
+    maxRequests?: number;
+    windowMs?: number;
+  };
+}): Router {
+  const router = createRouter();
+  const { authManager, logger } = options;
+  const rateLimit = {
+    maxRequests: options.rateLimit?.maxRequests ?? 10,
+    windowMs: options.rateLimit?.windowMs ?? 60_000,
+  };
+
+  router.use(
+    createEndpointRateLimiter({
+      maxRequests: rateLimit.maxRequests,
+      windowMs: rateLimit.windowMs,
+      logger,
+    })
+  );
+
+  router.post("/token", (request, response) => {
+    const parsed = tokenRequestSchema.safeParse(request.body ?? {});
+
+    if (!parsed.success) {
+      response.status(400).json({
+        error: "Request validation failed",
+        details: parsed.error.issues.map((issue) => issue.message),
+      });
+      return;
+    }
+
+    const apiKeyFromHeader = request.header("x-api-key");
+    const apiKey = parsed.data.apiKey ?? apiKeyFromHeader;
+
+    if (!apiKey) {
+      response.status(401).json({
+        error: "Unauthorized",
+        message: "API key is required to obtain a token",
+      });
+      return;
+    }
+
+    const keyName = authManager.validateApiKey(apiKey);
+
+    if (!keyName) {
+      response.status(401).json({
+        error: "Unauthorized",
+        message: "Invalid API key",
+      });
+      return;
+    }
+
+    const token = authManager.generateToken({
+      userId: parsed.data.userId ?? keyName,
+      username: parsed.data.username ?? keyName,
+      roles: parsed.data.roles ?? ["api"],
+    });
+
+    logger?.info("auth_token_issued", {
+      userId: parsed.data.userId ?? keyName,
+      requestId: response.locals.requestId,
+    });
+
+    response.status(201).json({
+      token,
+      tokenType: "Bearer",
+      expiresInSeconds: authManager.getTokenTtlSeconds(),
+    });
+  });
+
+  return router;
+}
+
 /**
  * Express middleware for JWT authentication.
- * 
+ *
  * Supports multiple authentication methods:
  * 1. Bearer token in Authorization header
  * 2. API key in X-API-Key header
- * 
+ *
  * Usage:
  * ```typescript
  * const authManager = new AuthManager({ jwtSecret: process.env.JWT_SECRET });
@@ -305,7 +405,7 @@ export function createAuthMiddleware(options: {
 
 /**
  * Middleware to mark specific routes as requiring authentication.
- * 
+ *
  * Usage:
  * ```typescript
  * router.post("/prompts", requireAuth(), handler);

@@ -72,6 +72,23 @@ describe("promptService facade", () => {
     expect(serviceStub.searchPrompts).toHaveBeenCalled();
   });
 
+  it("filters prompts by project slug via projectTagId", async () => {
+    const tagsProjects = (await import("@nw/tags-projects")) as TagsProjectsModule;
+    (tagsProjects.getProjectTagBySlug as unknown as vi.Mock).mockResolvedValue({
+      id: "project-123",
+      slug: "demo-project",
+      label: "Demo",
+      color: "#fff",
+    });
+
+    await promptService.listPrompts({ projectSlug: "demo-project" });
+
+    expect(tagsProjects.getProjectTagBySlug).toHaveBeenCalledWith("demo-project");
+    expect(serviceStub.searchPrompts).toHaveBeenCalledWith(expect.objectContaining({
+      projectTagId: "project-123",
+    }));
+  });
+
   it("creates prompts and wires project/tag IDs via tags-projects", async () => {
     const tagsProjects = (await import("@nw/tags-projects")) as TagsProjectsModule;
 

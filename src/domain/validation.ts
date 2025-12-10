@@ -117,4 +117,5 @@ export const searchQuerySchema = z.object({
   maxResults: z.number().int().min(1).max(100).default(20),
   maxMatchesPerRule: z.number().int().min(1).max(10).default(3),
   maxTotalMatches: z.number().int().min(1).max(1000).default(100),
+  projectTagId: z.string().uuid().optional(),
 });

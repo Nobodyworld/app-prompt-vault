@@ -46,6 +46,7 @@ const promptSearchSchema = z.object({
     }),
   page: z.coerce.number().int().min(0).default(0),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  projectTagId: z.string().uuid().optional(),
 });
 
 const versionCreateSchema = z.object({
@@ -57,6 +58,10 @@ const versionCreateSchema = z.object({
 
 const tagMutationSchema = z.object({
   tags: z.array(z.string().min(1)).nonempty("At least one tag must be provided"),
+});
+
+const promptIdParamSchema = z.object({
+  promptId: z.string().uuid("Prompt ID must be a valid UUID"),
 });
 
 interface RouterOptions {
@@ -131,6 +136,7 @@ export function createPromptVaultRouter(
         tags: query.tags,
         page: query.page,
         pageSize: query.pageSize,
+        projectTagId: query.projectTagId,
       });
 
       response.json({
@@ -147,7 +153,8 @@ export function createPromptVaultRouter(
   router.get(
     "/prompts/:promptId",
     asyncHandler("get-prompt", async (request, response) => {
-      const prompt = await service.getPrompt(request.params.promptId);
+      const { promptId } = promptIdParamSchema.parse(request.params);
+      const prompt = await service.getPrompt(promptId);
       response.json({ prompt: mapPromptToResponse(prompt) });
     })
   );
@@ -174,7 +181,8 @@ export function createPromptVaultRouter(
         tags: z.array(z.string().min(1)).optional(),
       }).parse(request.body);
 
-      const prompt = await service.updatePrompt(request.params.promptId, payload);
+      const { promptId } = promptIdParamSchema.parse(request.params);
+      const prompt = await service.updatePrompt(promptId, payload);
       response.json({ prompt: mapPromptToResponse(prompt) });
     })
   );
@@ -183,8 +191,9 @@ export function createPromptVaultRouter(
     "/prompts/:promptId/versions",
     asyncHandler("add-version", (request, response) => {
       const payload = versionCreateSchema.parse(request.body);
+      const { promptId } = promptIdParamSchema.parse(request.params);
       const version = service.addVersion(
-        request.params.promptId,
+        promptId,
         payload.body,
         payload.semanticVersion,
         payload.format,
@@ -201,7 +210,8 @@ export function createPromptVaultRouter(
         targetFormat: z.enum(["markdown", "yaml", "json"])
       }).parse(request.body);
 
-      const converted = await service.convertPrompt(request.params.promptId, targetFormat);
+      const { promptId } = promptIdParamSchema.parse(request.params);
+      const converted = await service.convertPrompt(promptId, targetFormat);
       response.json({ data: { content: converted, format: targetFormat } });
     })
   );
@@ -210,8 +220,9 @@ export function createPromptVaultRouter(
     "/prompts/:promptId/tags",
     asyncHandler("tag-prompt", async (request, response) => {
       const payload = tagMutationSchema.parse(request.body);
-      await service.tagPrompt(request.params.promptId, payload.tags);
-      const prompt = await service.getPrompt(request.params.promptId);
+      const { promptId } = promptIdParamSchema.parse(request.params);
+      await service.tagPrompt(promptId, payload.tags);
+      const prompt = await service.getPrompt(promptId);
       response.json({ data: mapPromptToResponse(prompt) });
     })
   );
@@ -220,8 +231,9 @@ export function createPromptVaultRouter(
     "/prompts/:promptId/tags",
     asyncHandler("untag-prompt", async (request, response) => {
       const payload = tagMutationSchema.parse(request.body);
-      await service.untagPrompt(request.params.promptId, payload.tags);
-      const prompt = await service.getPrompt(request.params.promptId);
+      const { promptId } = promptIdParamSchema.parse(request.params);
+      await service.untagPrompt(promptId, payload.tags);
+      const prompt = await service.getPrompt(promptId);
       response.json({ data: mapPromptToResponse(prompt) });
     })
   );

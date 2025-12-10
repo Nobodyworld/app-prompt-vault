@@ -15,12 +15,14 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import yaml from 'yaml';
+import { createLogger } from '@nw/logging';
 
 const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const defaultDbPath = resolve(__dirname, '..', '..', 'prompt-vault.db');
+const bootstrapLogger = createLogger({ context: { app: 'prompt-vault', module: 'mcp-server' } });
 
 interface SearchMatch {
   line: number;
@@ -61,7 +63,15 @@ function normalizeFormat(format: string | undefined): PromptFormat {
   return 'markdown';
 }
 
-function mapPromptToMcp(prompt: Prompt) {
+function mapPromptToMcp(prompt: Prompt): {
+  id: string;
+  name: string;
+  content: string;
+  tags: string[];
+  format: PromptFormat;
+  createdAt: string;
+  updatedAt: string;
+} {
   return {
     id: prompt.id,
     name: prompt.title,
@@ -203,7 +213,7 @@ class PromptVaultMCPServer {
     });
   }
 
-  private async handleListPrompts(args: Record<string, any>): Promise<{
+  private async handleListPrompts(args: Record<string, unknown>): Promise<{
     prompts: Array<{
       id: string;
       name: string;
@@ -764,7 +774,7 @@ class PromptVaultMCPServer {
     const normalizedTo = to === 'markdown' ? 'md' : to;
 
     // Parse content based on source format
-    let data: any;
+    let data: unknown;
 
     switch (normalizedFrom) {
       case 'json':
@@ -789,8 +799,13 @@ class PromptVaultMCPServer {
       case 'yaml':
         return yaml.stringify(data);
       case 'md':
-        if (typeof data === 'object' && data.content) {
-          return data.content;
+        if (
+          typeof data === 'object' &&
+          data !== null &&
+          'content' in data &&
+          typeof (data as { content: unknown }).content === 'string'
+        ) {
+          return (data as { content: string }).content;
         }
         return content;
       default:
@@ -809,7 +824,7 @@ class PromptVaultMCPServer {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const server = new PromptVaultMCPServer();
   server.start().catch((error) => {
-    console.error('Failed to start MCP server:', error);
+    bootstrapLogger.error('Failed to start MCP server', { error });
     process.exit(1);
   });
 }

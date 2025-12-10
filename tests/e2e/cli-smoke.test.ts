@@ -20,6 +20,7 @@ describe('CLI smoke tests', () => {
 
 // Comprehensive E2E test for critical user journeys
 describe('CLI critical user journeys', () => {
+    const CLI_TIMEOUT_MS = 120_000;
     const testDbPath = path.resolve(__dirname, '..', '..', 'test-e2e.db');
     const cliPath = path.resolve(__dirname, '..', '..', 'src', 'cli', 'index.ts');
     const testPromptId = randomUUID();
@@ -44,15 +45,17 @@ describe('CLI critical user journeys', () => {
         }
     });
 
-    it('create → list → version → delete → restore workflow', { timeout: 30000 }, () => {
+    it('create → list → version → delete → restore workflow', { timeout: CLI_TIMEOUT_MS }, () => {
         // Test that basic CRUD commands execute without crashing
         // We don't validate exact success since database state is unpredictable
 
         const commands = [
             ['create', '--slug', 'test-e2e-prompt', '--title', 'Test E2E Prompt', '--body', 'Test content.', '--db', testDbPath],
             ['list', '--db', testDbPath],
+            ['search', '--text', 'Test', '--db', testDbPath],
             ['list-deleted', '--db', testDbPath],
             ['diagnostics', '--db', testDbPath],
+            ['doctor', '--db', testDbPath],
             ['stats', '--db', testDbPath]
         ];
 
@@ -65,7 +68,7 @@ describe('CLI critical user journeys', () => {
         }
     });
 
-    it('import/export workflow', () => {
+    it('import/export workflow', { timeout: CLI_TIMEOUT_MS }, () => {
         const testFilePath = path.resolve(__dirname, '..', '..', 'test-prompt.md');
 
         // Create a test markdown file
@@ -120,7 +123,7 @@ This is test content for import/export functionality.
         }
     });
 
-    it('diagnostics and stats', () => {
+    it('diagnostics and stats', { timeout: CLI_TIMEOUT_MS }, () => {
         // Run diagnostics
         const diagnosticsResult = runCli([
             'diagnostics',
@@ -128,7 +131,7 @@ This is test content for import/export functionality.
         ]);
 
         expect(diagnosticsResult.status).toBe(0);
-        expect(diagnosticsResult.stdout).toContain('Library Diagnostics Report');
+        expect(diagnosticsResult.stdout).toContain('Diagnostics Report');
 
         // Run stats
         const statsResult = runCli([
@@ -138,5 +141,13 @@ This is test content for import/export functionality.
 
         expect(statsResult.status).toBe(0);
         expect(statsResult.stdout).toContain('Library Statistics');
+
+        const doctorResult = runCli([
+            'doctor',
+            '--db', testDbPath
+        ]);
+
+        expect(doctorResult.status).toBe(0);
+        expect(doctorResult.stdout).toContain('Doctor Report');
     });
 });

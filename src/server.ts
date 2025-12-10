@@ -8,6 +8,7 @@ import express, { type ErrorRequestHandler, type NextFunction, type Request, typ
 import { PromptVaultService } from "./services/PromptVaultService.js";
 import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from "./extensions/index.js";
 import { createPromptVaultRouter } from "./web/createPromptVaultRouter.js";
+import { createLogger, getRecentLogs } from "@nw/logging";
 import {
   bootstrapObservabilityFromEnv,
   createHttpMetricsMiddleware,
@@ -15,9 +16,11 @@ import {
 } from "./observability/index.js";
 import { createObservabilityRouter } from "./web/createObservabilityRouter.js";
 import { ConfigurationError, loadServerConfig, type LoadConfigResult } from "./config/serverConfig.js";
-import { AuthManager, createAuthMiddleware } from "./web/auth.js";
+import { AuthManager, createAuthMiddleware, createAuthRouter } from "./web/auth.js";
 import { InMemoryAuditLogger, createAuditMiddleware, createAutoAuditMiddleware } from "./web/audit.js";
 import { createRateLimitMiddleware } from "./web/rate-limit.js";
+
+const bootstrapLogger = createLogger({ context: { app: "prompt-vault", module: "server" } });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,7 +38,7 @@ try {
   });
 } catch (error) {
   if (error instanceof ConfigurationError) {
-    console.error("Failed to load server configuration:", error.issues.join("; "));
+    bootstrapLogger.error("Failed to load server configuration", { issues: error.issues.join("; ") });
     process.exit(1);
   }
   throw error;
@@ -56,6 +59,14 @@ if (loadedConfig.warnings.length > 0) {
   }
 }
 
+const requireAuth = process.env.REQUIRE_AUTH === "true";
+const localhostOnly = process.env.LOCALHOST_ONLY === "true";
+const rateLimitEnabled = process.env.RATE_LIMIT_ENABLED !== "false";
+const rateLimitMaxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "100", 10);
+const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10);
+const authRateLimitMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS || "20", 10);
+const authRateLimitWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS || "60000", 10);
+
 logger.info("configuration_loaded", {
   port: config.port,
   databasePath: config.databasePath,
@@ -63,6 +74,13 @@ logger.info("configuration_loaded", {
   metricsEnabled: config.metrics.enabled,
   metricsPort: config.metrics.port,
   staticDirectory: config.staticDirectory,
+  requireAuth,
+  localhostOnly,
+  rateLimitEnabled,
+  rateLimitMaxRequests,
+  rateLimitWindowMs,
+  authRateLimitMaxRequests,
+  authRateLimitWindowMs,
 });
 
 observability.indicator.setLiveness({ status: "ok" });
@@ -117,43 +135,21 @@ function extractApiKeys(env: NodeJS.ProcessEnv): Record<string, string> {
 // Initialize security features
 const authManager = new AuthManager(
   {
-    jwtSecret: process.env.JWT_SECRET,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "24h",
-    requireAuthByDefault: process.env.REQUIRE_AUTH === "true",
-    localhostOnly: process.env.LOCALHOST_ONLY === "true",
+    requireAuthByDefault: requireAuth,
+    localhostOnly,
     apiKeys: extractApiKeys(process.env),
   },
   logger.child({ component: "auth" })
 );
 
+// Initialize auth manager (loads/stores JWT secret)
+await authManager.initialize();
+
 const auditLogger = new InMemoryAuditLogger({
   maxEvents: parseInt(process.env.AUDIT_MAX_EVENTS || "10000", 10),
   logger: logger.child({ component: "audit" }),
 });
-
-// Apply security middleware
-app.use(
-  createAuthMiddleware({
-    authManager,
-    requireAuth: process.env.REQUIRE_AUTH === "true",
-    localhostOnly: process.env.LOCALHOST_ONLY === "true",
-    logger: logger.child({ component: "auth-middleware" }),
-  })
-);
-
-app.use(createAuditMiddleware({ auditLogger, logger: logger.child({ component: "audit-middleware" }) }));
-app.use(createAutoAuditMiddleware());
-
-// Apply rate limiting
-if (process.env.RATE_LIMIT_ENABLED !== "false") {
-  app.use(
-    createRateLimitMiddleware({
-      maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "100", 10),
-      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10),
-      logger: logger.child({ component: "rate-limit" }),
-    })
-  );
-}
 
 app.use((request, response, next) => {
   const incomingRequestId = request.header("x-request-id");
@@ -203,12 +199,49 @@ app.use((error: unknown, request: Request, response: Response, next: NextFunctio
   next(error);
 });
 
-app.use(
-  "/api",
+const apiRouter = express.Router();
+
+apiRouter.use(
+  createAuthMiddleware({
+    authManager,
+    requireAuth,
+    localhostOnly,
+    logger: logger.child({ component: "auth-middleware" }),
+  })
+);
+
+apiRouter.use(createAuditMiddleware({ auditLogger, logger: logger.child({ component: "audit-middleware" }) }));
+apiRouter.use(createAutoAuditMiddleware());
+
+if (rateLimitEnabled) {
+  apiRouter.use(
+    createRateLimitMiddleware({
+      maxRequests: rateLimitMaxRequests,
+      windowMs: rateLimitWindowMs,
+      logger: logger.child({ component: "rate-limit" }),
+    })
+  );
+}
+
+apiRouter.use(
   createPromptVaultRouter(service, logger.child({ component: "router" }), {
     telemetry: observability.telemetry,
   })
 );
+
+app.use(
+  "/auth",
+  createAuthRouter({
+    authManager,
+    logger: logger.child({ component: "auth-router" }),
+    rateLimit: {
+      maxRequests: authRateLimitMaxRequests,
+      windowMs: authRateLimitWindowMs,
+    },
+  })
+);
+
+app.use("/api", apiRouter);
 
 app.use(
   "/observability",
@@ -219,6 +252,37 @@ app.use(
     service,
   })
 );
+
+// Minimal log aggregation feed (in-memory, best-effort)
+const logsRouter = express.Router();
+
+logsRouter.use(
+  createAuthMiddleware({
+    authManager,
+    // Always require auth for log access, even if the API is otherwise open.
+    requireAuth: true,
+    localhostOnly,
+    logger: logger.child({ component: "logs-auth" }),
+  })
+);
+
+if (rateLimitEnabled) {
+  logsRouter.use(
+    createRateLimitMiddleware({
+      maxRequests: rateLimitMaxRequests,
+      windowMs: rateLimitWindowMs,
+      logger: logger.child({ component: "logs-rate-limit" }),
+    })
+  );
+}
+
+logsRouter.get("/", (request, response) => {
+  const limit = Number.parseInt(String(request.query.limit ?? "100"), 10);
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
+  response.json({ logs: getRecentLogs(safeLimit) });
+});
+
+app.use("/logs", logsRouter);
 
 const staticDirectory = config.staticDirectory;
 if (staticDirectory && existsSync(staticDirectory)) {

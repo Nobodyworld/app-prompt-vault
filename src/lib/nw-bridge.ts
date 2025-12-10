@@ -68,10 +68,13 @@ export function subscribeToTagEvents(handlers: {
         const unsubscribe = eventBus.on('tag:created', (data: { tag: NwTag }) => {
             const tag = data.tag;
             pvLogger.info('External tag created', { tagId: tag.id });
+            const fallbackTimestamp = new Date().toISOString();
+            const createdAt = 'createdAt' in tag && tag.createdAt ? tag.createdAt : fallbackTimestamp;
+            const updatedAt = 'updatedAt' in tag && tag.updatedAt ? tag.updatedAt : fallbackTimestamp;
             const fullTag: NwTag = {
                 ...tag,
-                createdAt: (tag as any).createdAt ?? new Date().toISOString(),
-                updatedAt: (tag as any).updatedAt ?? new Date().toISOString(),
+                createdAt,
+                updatedAt,
             };
             handlers.onTagCreated!(fullTag);
         });
@@ -82,10 +85,13 @@ export function subscribeToTagEvents(handlers: {
         const unsubscribe = eventBus.on('tag:updated', (data: { tag: NwTag }) => {
             const tag = data.tag;
             pvLogger.info('External tag updated', { tagId: tag.id });
+            const fallbackTimestamp = new Date().toISOString();
+            const createdAt = 'createdAt' in tag && tag.createdAt ? tag.createdAt : fallbackTimestamp;
+            const updatedAt = 'updatedAt' in tag && tag.updatedAt ? tag.updatedAt : fallbackTimestamp;
             const fullTag: NwTag = {
                 ...tag,
-                createdAt: (tag as any).createdAt ?? new Date().toISOString(),
-                updatedAt: (tag as any).updatedAt ?? new Date().toISOString(),
+                createdAt,
+                updatedAt,
             };
             handlers.onTagUpdated!(fullTag);
         });
@@ -142,18 +148,25 @@ export async function initializeNwIntegrations(): Promise<void> {
         const { registerWidgets } = await import('@nw/pages-widgets');
         registerWidgets([
             {
-                id: 'prompt-vault.quick-add',
+                id: 'pv:quick-add',
                 appId: 'prompt-vault',
                 displayName: 'Quick Add Prompt',
                 description: 'Create a new prompt in the current project',
                 icon: 'plus',
             },
             {
-                id: 'prompt-vault.recent',
+                id: 'pv:recent',
                 appId: 'prompt-vault',
                 displayName: 'Recent Prompts',
                 description: 'Recently created or edited prompts',
                 icon: 'clock',
+            },
+            {
+                id: 'pv:stats',
+                appId: 'prompt-vault',
+                displayName: 'Prompt Stats',
+                description: 'Overview of prompt totals and activity',
+                icon: 'bar-chart',
             },
         ]);
         pvLogger.info('Prompt Vault widgets registered with pages-widgets');

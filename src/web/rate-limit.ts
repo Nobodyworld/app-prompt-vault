@@ -1,6 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import type { StructuredLogger } from "../observability/logger.js";
 
+type RateLimitMiddleware = (request: Request, response: Response, next: NextFunction) => void;
+
 interface RateLimitStore {
     get(key: string): RateLimitEntry | undefined;
     set(key: string, entry: RateLimitEntry): void;
@@ -92,9 +94,9 @@ export interface RateLimitConfig {
 
 /**
  * Express middleware for rate limiting using sliding window algorithm.
- * 
+ *
  * Limits requests per IP address (or custom key) within a time window.
- * 
+ *
  * Usage:
  * ```typescript
  * app.use("/api", createRateLimitMiddleware({
@@ -102,7 +104,7 @@ export interface RateLimitConfig {
  *   windowMs: 60_000, // 1 minute
  *   logger
  * }));
- * 
+ *
  * // Different limits for specific routes
  * router.post("/prompts", createRateLimitMiddleware({
  *   maxRequests: 10,
@@ -112,7 +114,7 @@ export interface RateLimitConfig {
  */
 export function createRateLimitMiddleware(
     config: RateLimitConfig & { logger?: StructuredLogger } = {}
-) {
+): RateLimitMiddleware {
     const {
         maxRequests = 100,
         windowMs = 60_000,
@@ -198,39 +200,39 @@ export function createRateLimitMiddleware(
 
 /**
  * Create endpoint-specific rate limits with different thresholds.
- * 
+ *
  * Usage:
  * ```typescript
  * const strictLimiter = createEndpointRateLimiter({
  *   maxRequests: 10,
  *   windowMs: 60_000
  * });
- * 
+ *
  * router.post("/sensitive-operation", strictLimiter, handler);
  * ```
  */
 export function createEndpointRateLimiter(
     config: RateLimitConfig & { logger?: StructuredLogger }
-) {
+): RateLimitMiddleware {
     return createRateLimitMiddleware(config);
 }
 
 /**
  * Create user-based rate limiter (requires authentication).
- * 
+ *
  * Usage:
  * ```typescript
  * const userLimiter = createUserRateLimiter({
  *   maxRequests: 1000,
  *   windowMs: 3600_000 // 1 hour
  * });
- * 
+ *
  * app.use("/api", authMiddleware, userLimiter);
  * ```
  */
 export function createUserRateLimiter(
     config: Omit<RateLimitConfig, "keyGenerator"> & { logger?: StructuredLogger }
-) {
+): RateLimitMiddleware {
     return createRateLimitMiddleware({
         ...config,
         keyGenerator: (req: Request & { locals?: { userId?: string } }) =>

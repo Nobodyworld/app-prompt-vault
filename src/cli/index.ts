@@ -259,6 +259,54 @@ function parseLimit(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseNumberOption(value: string | undefined, fallback: number): number {
+  const parsed = value ? Number.parseInt(value, 10) : NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+type DiagnosticsReport = Awaited<ReturnType<PromptVaultService["runDiagnostics"]>>;
+
+function printDiagnosticsReport(report: DiagnosticsReport, heading: string): void {
+  console.log(chalk.bold(`\n${heading}\n`));
+
+  console.log(chalk.blue("Summary:"));
+  console.log(`  Total Prompts: ${report.summary.totalPrompts}`);
+  console.log(`  Total Versions: ${report.summary.totalVersions}`);
+  console.log(`  Total Tags: ${report.summary.totalTags}`);
+  console.log(`  Deleted Prompts: ${report.summary.deletedPrompts}`);
+  console.log(`  Orphaned Tags: ${report.summary.orphanedTags}`);
+  console.log(`  Invalid Content: ${report.summary.invalidContent}`);
+
+  console.log(chalk.blue("\nMigrations:"));
+  console.log(`  Current Version: ${report.migration.currentVersion}`);
+  console.log(`  Latest Version: ${report.migration.latestVersion}`);
+  if (report.migration.pendingVersions.length > 0) {
+    console.log(chalk.red(`  Pending: ${report.migration.pendingVersions.join(", ")}`));
+  } else {
+    console.log(chalk.green("  Pending: none"));
+  }
+
+  console.log(chalk.blue("\nIntegrity:"));
+  console.log(`  Status: ${report.integrity.status === "ok" ? chalk.green("ok") : chalk.red("error")}`);
+  if (report.integrity.details) {
+    console.log(`  Details: ${report.integrity.details}`);
+  }
+
+  if (report.issues.length > 0) {
+    console.log(chalk.yellow("\n⚠️  Issues Found:"));
+    for (const issue of report.issues) {
+      const icon = issue.type === "error" ? chalk.red("❌") : chalk.yellow("⚠️");
+      const promptInfo = issue.promptId ? ` (Prompt: ${issue.promptId})` : "";
+      console.log(`  ${icon} ${issue.message}${promptInfo}`);
+      if (issue.details) {
+        console.log(`    Details: ${typeof issue.details === "string" ? issue.details : JSON.stringify(issue.details)}`);
+      }
+    }
+  } else {
+    console.log(chalk.green("\n✅ No issues found!"));
+  }
+}
+
 program
   .command("export-buttons")
   .description("Export prompts as a Buttons switchboard payload (JSON to stdout)")
@@ -390,6 +438,81 @@ program
         }
         if (prompt.tags.length > 0) {
           console.log(chalk.magenta(`  tags: ${prompt.tags.map((tag) => tag.label).join(", ")}`));
+        }
+      }
+    });
+  });
+
+program
+  .command("search")
+  .description("Search prompts and view match excerpts")
+  .option("--text <text>", "Search text across title, description, and body")
+  .option("--tags <tags>", "Comma separated tag filters")
+  .option("--formats <formats>", "Comma separated format filters")
+  .option("--page <page>", "Page number", "0")
+  .option("--page-size <size>", "Page size", "20")
+  .option("--case-sensitive", "Enable case-sensitive search")
+  .option("--max-results <number>", "Maximum prompts to return", "20")
+  .option("--max-matches <number>", "Maximum matches per prompt", "3")
+  .option("--max-total-matches <number>", "Maximum total matches across prompts", "100")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, async (service) => {
+      const tags = parseTags(options.tags);
+      const formats = options.formats
+        ? (options.formats as string)
+          .split(",")
+          .map((format) => format.trim())
+          .filter(Boolean) as ("markdown" | "yaml" | "json")[]
+        : undefined;
+
+      const result = await service.advancedSearchPrompts({
+        text: options.text,
+        tags,
+        formats,
+        page: parseNumberOption(options.page, 0),
+        pageSize: parseNumberOption(options.pageSize, 20),
+        caseSensitive: Boolean(options.caseSensitive),
+        maxResults: parseLimit(options.maxResults, 20),
+        maxMatchesPerRule: parseLimit(options.maxMatches, 3),
+        maxTotalMatches: parseLimit(options.maxTotalMatches, 100),
+      });
+
+      if (result.matches.length === 0) {
+        console.log(chalk.yellow("No prompts found."));
+        return;
+      }
+
+      const highlightExcerpt = (excerpt: string, position: number, length: number): string => {
+        if (position < 0 || length <= 0 || position >= excerpt.length) {
+          return excerpt;
+        }
+
+        return `${excerpt.slice(0, position)}${chalk.yellow(excerpt.slice(position, position + length))}${excerpt.slice(position + length)}`;
+      };
+
+      console.log(chalk.bold(`Found ${result.matches.length} prompt(s) (page ${result.page + 1})`));
+      console.log(chalk.gray(`Total matches: ${result.totalMatches}`));
+
+      for (const match of result.matches) {
+        const prompt = match.prompt;
+        console.log(chalk.cyan(`\n- ${prompt.title ?? prompt.slug} (${prompt.slug})`));
+        console.log(chalk.gray(`  ID: ${prompt.id}`));
+        if (prompt.latestVersion) {
+          console.log(
+            chalk.gray(
+              `  latest v${prompt.latestVersion.semanticVersion} (${prompt.latestVersion.format}) updated ${prompt.latestVersion.updatedAt.toISOString()}`
+            )
+          );
+        }
+
+        if (prompt.tags.length > 0) {
+          console.log(chalk.magenta(`  tags: ${prompt.tags.map((tag) => tag.label).join(", ")}`));
+        }
+
+        for (const snippet of match.matches) {
+          const highlighted = highlightExcerpt(snippet.excerpt, snippet.position, snippet.length);
+          console.log(`    • ${highlighted}`);
         }
       }
     });
@@ -781,30 +904,22 @@ program
   .option('--db <path>', 'Path to SQLite database', defaultDbPath)
   .action(async (options) => {
     await useService(options.db, async (service) => {
-      const result = await service.runDiagnostics();
+      const report = await service.runDiagnostics();
+      printDiagnosticsReport(report, "📊 Library Diagnostics Report");
+    });
+  });
 
-      console.log(chalk.bold('\n📊 Library Diagnostics Report\n'));
+program
+  .command("doctor")
+  .description("Run doctor checks including migrations and integrity")
+  .option("--db <path>", "Path to SQLite database", defaultDbPath)
+  .action(async (options) => {
+    await useService(options.db, async (service) => {
+      const report = await service.runDiagnostics();
+      printDiagnosticsReport(report, "🩺 Prompt Vault Doctor Report");
 
-      console.log(chalk.blue('Summary:'));
-      console.log(`  Total Prompts: ${result.summary.totalPrompts}`);
-      console.log(`  Total Versions: ${result.summary.totalVersions}`);
-      console.log(`  Total Tags: ${result.summary.totalTags}`);
-      console.log(`  Deleted Prompts: ${result.summary.deletedPrompts}`);
-      console.log(`  Orphaned Tags: ${result.summary.orphanedTags}`);
-      console.log(`  Invalid Content: ${result.summary.invalidContent}`);
-
-      if (result.issues.length > 0) {
-        console.log(chalk.yellow('\n⚠️  Issues Found:'));
-        for (const issue of result.issues) {
-          const icon = issue.type === 'error' ? chalk.red('❌') : chalk.yellow('⚠️');
-          const promptInfo = issue.promptId ? ` (Prompt: ${issue.promptId})` : '';
-          console.log(`  ${icon} ${issue.message}${promptInfo}`);
-          if (issue.details) {
-            console.log(`    Details: ${issue.details}`);
-          }
-        }
-      } else {
-        console.log(chalk.green('\n✅ No issues found!'));
+      if (report.issues.some((issue) => issue.type === "error")) {
+        process.exitCode = 1;
       }
     });
   });

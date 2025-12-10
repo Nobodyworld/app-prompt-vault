@@ -7,12 +7,13 @@ import { PromptVaultService } from "../services/PromptVaultService.js";
 import {
   createProjectTag,
   getProjectTagBySlug,
-  listEntitiesByTags,
-  listEntitiesWithProject,
   listTagsForEntity,
   tagPrompt,
   untagPrompt,
 } from "@nw/tags-projects";
+
+type CreatePromptParams = Parameters<PromptVaultService["createPrompt"]>[0];
+type UpdatePromptParams = Parameters<PromptVaultService["updatePrompt"]>[1];
 
 export interface PromptFilters {
   projectSlug?: string;
@@ -79,27 +80,25 @@ async function ensureProjectTagId(projectSlug: string): Promise<string> {
 export async function listPrompts(filters: PromptFilters = {}): Promise<Prompt[]> {
   const service = getService();
 
+  let projectTagId: string | undefined;
+  if (filters.projectSlug) {
+    const projectTag = await getProjectTagBySlug(filters.projectSlug);
+    if (!projectTag) {
+      return [];
+    }
+    projectTagId = projectTag.id;
+  }
+
   // Use the service's search capability which handles text and tags
   const searchResult = await service.searchPrompts({
     text: filters.query,
     tags: filters.tags,
     page: 0,
     pageSize: 100, // Reasonable default limit
+    projectTagId,
   });
 
-  let prompts = [...searchResult.prompts];
-
-  // Apply project filter if needed
-  if (filters.projectSlug) {
-    const projectIds = await listEntitiesWithProject({
-      entityType: "prompts",
-      projectSlug: filters.projectSlug,
-    });
-    const projectIdsSet = new Set(projectIds);
-    prompts = prompts.filter((p) => projectIdsSet.has(p.id));
-  }
-
-  return prompts;
+  return [...searchResult.prompts];
 }
 
 export async function getPrompt(id: string): Promise<Prompt | null> {
@@ -128,7 +127,7 @@ export async function createPrompt(input: PromptInput): Promise<Prompt> {
     semanticVersion: "1.0.0",
     tags: input.tags ?? [],
     changelog: "Created via orchestrator",
-  } as any);
+  } as CreatePromptParams);
 
   if (input.projectSlug) {
     const projectTagId = await ensureProjectTagId(input.projectSlug);
@@ -143,7 +142,7 @@ export async function updatePrompt(id: string, patch: Partial<PromptInput>): Pro
 
   try {
     if (patch.title || patch.body || patch.tags) {
-      const updateData: any = {};
+      const updateData: Partial<UpdatePromptParams> = {};
       if (patch.title) updateData.title = patch.title;
       if (patch.tags) updateData.tags = patch.tags;
 

@@ -5,7 +5,7 @@
  */
 
 import { registerTool } from '@nw/orchestrator-sdk';
-import type { ToolDefinition, ToolHandler, ToolResult, ToolContext } from '@nw/orchestrator-sdk';
+import type { ToolDefinition, ToolHandler, ToolResult } from '@nw/orchestrator-sdk';
 import * as promptService from "../lib/promptService.js";
 
 // =============================================================================
@@ -227,13 +227,13 @@ export const pvListTagsDefinition: ToolDefinition = {
 // =============================================================================
 
 export const pvSearchPromptsHandler: ToolHandler = async (args): Promise<ToolResult> => {
-    const { query, tags, folder, limit = 20 } = args as {
+    const { query, tags, limit = 20 } = args as {
         query?: string;
         tags?: string[];
-        folder?: string;
         limit?: number;
     };
 
+    // folder is currently ignored; preserved in definition for future filtering
     try {
         const prompts = await promptService.listPrompts({
             query,
@@ -286,12 +286,11 @@ export const pvCreatePromptHandler: ToolHandler = async (args, ctx): Promise<Too
 };
 
 export const pvUpdatePromptHandler: ToolHandler = async (args): Promise<ToolResult> => {
-    const { id, title, content, tags, folder } = args as {
+    const { id, title, content, tags } = args as {
         id: string;
         title?: string;
         content?: string;
         tags?: string[];
-        folder?: string;
     };
 
     try {
@@ -344,7 +343,7 @@ export const pvListFoldersHandler: ToolHandler = async (): Promise<ToolResult> =
     return { success: true, data: [] };
 };
 
-export const pvListTagsHandler: ToolHandler = async (_args, _ctx): Promise<ToolResult> => {
+export const pvListTagsHandler: ToolHandler = async (): Promise<ToolResult> => {
     // Tag listing via tags-projects would be implemented in a future Tags/Projects task.
     return { success: true, data: [] };
 };

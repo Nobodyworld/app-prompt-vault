@@ -149,12 +149,12 @@ export class PromptRepository {
 
       // Verify prompt integrity
       if (row.integrity_checksum) {
-        const promptData = JSON.stringify({
+        const promptData = this.buildPromptChecksumPayload({
           id: row.id,
           slug: row.slug,
-          title: row.title,
-          description: row.description,
-          category: row.category,
+          title: row.title ?? null,
+          description: row.description ?? null,
+          category: row.category ?? null,
         });
         const integrityCheck = checkDataIntegrity(promptData, row.integrity_checksum);
         if (!integrityCheck.isValid) {
@@ -543,14 +543,15 @@ export class PromptRepository {
         };
 
         // Recalculate integrity checksum
-        const checksumData = JSON.stringify({
-          id: updatedPrompt.id,
-          slug: updatedPrompt.slug,
-          title: updatedPrompt.title,
-          description: updatedPrompt.description,
-          category: updatedPrompt.category,
-        });
-        const integrityChecksum = generateIntegrityChecksum(checksumData);
+        const integrityChecksum = generateIntegrityChecksum(
+          this.buildPromptChecksumPayload({
+            id: updatedPrompt.id,
+            slug: updatedPrompt.slug,
+            title: updatedPrompt.title ?? null,
+            description: updatedPrompt.description ?? null,
+            category: updatedPrompt.category ?? null,
+          })
+        );
 
         updates.push("integrity_checksum = @integrityChecksum");
         params.integrityChecksum = integrityChecksum;
@@ -754,14 +755,15 @@ export class PromptRepository {
 
   private insertPromptRecord(prompt: Prompt): void {
     // Generate integrity checksum for prompt metadata
-    const checksumData = JSON.stringify({
-      id: prompt.id,
-      slug: prompt.slug,
-      title: prompt.title,
-      description: prompt.description,
-      category: prompt.category,
-    });
-    const integrityChecksum = generateIntegrityChecksum(checksumData);
+    const integrityChecksum = generateIntegrityChecksum(
+      this.buildPromptChecksumPayload({
+        id: prompt.id,
+        slug: prompt.slug,
+        title: prompt.title ?? null,
+        description: prompt.description ?? null,
+        category: prompt.category ?? null,
+      })
+    );
 
     const statement = this.database.prepare(
       `INSERT INTO prompts (id, slug, title, description, category, integrity_checksum, created_at, updated_at)
@@ -878,12 +880,66 @@ export class PromptRepository {
       .run({ promptId, updatedAt: isoDate });
   }
 
+  private buildPromptChecksumPayload(prompt: {
+    id: string;
+    slug: string;
+    title: string | null;
+    description: string | null;
+    category: string | null;
+  }): string {
+    return JSON.stringify({
+      id: prompt.id,
+      slug: prompt.slug,
+      title: prompt.title,
+      description: prompt.description,
+      category: prompt.category,
+    });
+  }
+
   public touchPrompt(promptId: PromptId, updatedAt: Date = new Date()): void {
     this.updatePromptTimestamps(promptId, updatedAt.toISOString());
   }
 
   public getDatabase(): BetterSqlite3Database {
     return this.database;
+  }
+
+  public getMigrationState(): {
+    migrationsDir: string;
+    userVersion: number;
+    inferredVersion: number;
+    currentVersion: number;
+    latestVersion: number;
+    pendingVersions: readonly number[];
+    appliedVersions: readonly number[];
+  } {
+    const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "db", "migrations");
+    const userVersion = this.database.pragma("user_version", { simple: true }) as number;
+    const inferredVersion = this.inferSchemaVersion();
+    const currentVersion = Math.max(userVersion, inferredVersion);
+
+    const migrations = readdirSync(migrationsDir)
+      .map((file) => {
+        const match = file.match(/^(\d+)_.*\.sql$/);
+        if (!match) return null;
+        return { version: Number.parseInt(match[1], 10), path: join(migrationsDir, file) };
+      })
+      .filter((entry): entry is { version: number; path: string } => Boolean(entry))
+      .sort((a, b) => a.version - b.version);
+
+    const latestVersion = migrations.at(-1)?.version ?? 0;
+    const pendingVersions = [...new Set(migrations.filter((migration) => migration.version > currentVersion).map((migration) => migration.version))];
+    const appliedVersions = [...new Set(migrations.filter((migration) => migration.version <= currentVersion).map((migration) => migration.version))];
+
+    return {
+      migrationsDir,
+      userVersion,
+      inferredVersion,
+      currentVersion,
+      latestVersion,
+      pendingVersions,
+      appliedVersions,
+    };
   }
 
   /**
@@ -937,6 +993,13 @@ export class PromptRepository {
 
   private getTagLabelColumn(): "label" | "name" {
     return this.hasColumn("tags", "label") ? "label" : "name";
+  }
+
+  public hasTable(table: string): boolean {
+    const row = this.database
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = @table LIMIT 1")
+      .get({ table }) as { name?: string } | undefined;
+    return Boolean(row?.name);
   }
 
   private applyMigrations(): void {

@@ -58,7 +58,7 @@ export class PromptVaultService {
   private coreDbReady: Promise<void> | null = null;
 
   public constructor(database: BetterSqlite3Database, options: PromptVaultServiceOptions = {}) {
-    const dbPath = (database as any).name as string | undefined;
+    const dbPath = (database as { name?: string }).name;
     if (dbPath) {
       process.env.NW_CORE_DB_ALLOW_OVERRIDE = "1";
       const coreDbPath = dbPath === ":memory:" ? path.join(process.cwd(), `nw-core-${randomUUID()}.db`) : `${dbPath}.core.db`;
@@ -415,20 +415,46 @@ export class PromptVaultService {
   public async searchPrompts(queryInput: z.input<typeof searchQuerySchema>): Promise<PromptSearchResult> {
     return this.telemetry.withSpan("service.searchPrompts", {
       hasText: Boolean(queryInput.text),
-      hasFormats: Boolean(queryInput.formats)
+      hasFormats: Boolean(queryInput.formats),
+      hasProjectTag: Boolean(queryInput.projectTagId)
     }, async () => {
       const query = searchQuerySchema.parse(queryInput);
       this.logger.debug("prompt_search", {
         hasText: Boolean(query.text),
         tags: query.tags?.length ?? 0,
         formats: query.formats?.length ?? 0,
+        projectTagId: query.projectTagId,
       });
 
       const tagIds = query.tags ? await this.lookupTagIds(query.tags, { createIfMissing: false }) : undefined;
-      let tagFilteredIds: Set<string> | null = null;
+      const filterSets: Array<Set<string>> = [];
+
       if (tagIds && tagIds.length > 0) {
         const ids = await listSharedEntitiesByTags({ entityType: "prompts", tagIds, match: "all" });
-        tagFilteredIds = new Set(ids);
+        filterSets.push(new Set(ids));
+      }
+
+      if (query.projectTagId) {
+        const projectMatches = await listSharedEntitiesByTags({
+          entityType: "prompts",
+          tagIds: [query.projectTagId],
+          match: "all",
+        });
+        filterSets.push(new Set(projectMatches));
+      }
+
+      const allowedIds = filterSets.reduce<Set<string> | null>((acc, current) => {
+        if (!acc) return current;
+        return new Set([...acc].filter((id) => current.has(id)));
+      }, null);
+
+      if (allowedIds && allowedIds.size === 0) {
+        return {
+          prompts: [],
+          page: query.page,
+          pageSize: query.pageSize,
+          total: 0,
+        };
       }
 
       const base = this.repository.searchPrompts({
@@ -439,15 +465,15 @@ export class PromptVaultService {
       });
 
       const promptsWithTags = await Promise.all(base.prompts.map((prompt) => this.enrichPromptWithTags(prompt)));
-      const filteredPrompts = tagFilteredIds
-        ? promptsWithTags.filter((prompt) => tagFilteredIds!.has(prompt.id))
+      const filteredPrompts = allowedIds
+        ? promptsWithTags.filter((prompt) => allowedIds.has(prompt.id))
         : promptsWithTags;
 
       return {
         prompts: filteredPrompts,
         page: query.page,
         pageSize: query.pageSize,
-        total: tagFilteredIds ? filteredPrompts.length : base.total,
+        total: allowedIds ? filteredPrompts.length : base.total,
       };
     });
   }
@@ -498,13 +524,39 @@ export class PromptVaultService {
       maxResults: queryInput.maxResults,
       maxMatchesPerRule: queryInput.maxMatchesPerRule,
       maxTotalMatches: queryInput.maxTotalMatches,
+      hasProjectTag: Boolean(queryInput.projectTagId),
     }, async () => {
       const query = searchQuerySchema.parse(queryInput);
       const tagIds = query.tags ? await this.lookupTagIds(query.tags, { createIfMissing: false }) : undefined;
-      let tagFilteredIds: Set<string> | null = null;
+      const filterSets: Array<Set<string>> = [];
+
       if (tagIds && tagIds.length > 0) {
         const ids = await listSharedEntitiesByTags({ entityType: "prompts", tagIds, match: "all" });
-        tagFilteredIds = new Set(ids);
+        filterSets.push(new Set(ids));
+      }
+
+      if (query.projectTagId) {
+        const projectMatches = await listSharedEntitiesByTags({
+          entityType: "prompts",
+          tagIds: [query.projectTagId],
+          match: "all",
+        });
+        filterSets.push(new Set(projectMatches));
+      }
+
+      const allowedIds = filterSets.reduce<Set<string> | null>((acc, current) => {
+        if (!acc) return current;
+        return new Set([...acc].filter((id) => current.has(id)));
+      }, null);
+
+      if (allowedIds && allowedIds.size === 0) {
+        return {
+          matches: [],
+          page: query.page,
+          pageSize: query.pageSize,
+          total: 0,
+          totalMatches: 0,
+        };
       }
 
       this.logger.debug("advanced_prompt_search", {
@@ -515,6 +567,7 @@ export class PromptVaultService {
         maxResults: query.maxResults,
         maxMatchesPerRule: query.maxMatchesPerRule,
         maxTotalMatches: query.maxTotalMatches,
+        projectTagId: query.projectTagId,
       });
 
       const base = this.repository.advancedSearchPrompts({
@@ -535,14 +588,14 @@ export class PromptVaultService {
         }))
       );
 
-      const filteredMatches = tagFilteredIds
-        ? matchesWithTags.filter((match) => tagFilteredIds!.has(match.prompt.id))
+      const filteredMatches = allowedIds
+        ? matchesWithTags.filter((match) => allowedIds.has(match.prompt.id))
         : matchesWithTags;
 
       return {
         ...base,
         matches: filteredMatches,
-        total: tagFilteredIds ? filteredMatches.length : base.total,
+        total: allowedIds ? filteredMatches.length : base.total,
       };
     });
   }
@@ -1023,6 +1076,15 @@ export class PromptVaultService {
       orphanedTags: number;
       invalidContent: number;
     };
+    migration: {
+      currentVersion: number;
+      latestVersion: number;
+      pendingVersions: readonly number[];
+    };
+    integrity: {
+      status: "ok" | "error";
+      details?: unknown;
+    };
     issues: Array<{
       type: 'error' | 'warning';
       message: string;
@@ -1037,6 +1099,24 @@ export class PromptVaultService {
         promptId?: string;
         details?: unknown;
       }> = [];
+
+      let migrationState: { currentVersion: number; latestVersion: number; pendingVersions: readonly number[] };
+      try {
+        const state = this.repository.getMigrationState();
+        migrationState = {
+          currentVersion: state.currentVersion,
+          latestVersion: state.latestVersion,
+          pendingVersions: state.pendingVersions,
+        };
+      } catch (error) {
+        migrationState = { currentVersion: 0, latestVersion: 0, pendingVersions: [] };
+        issues.push({
+          type: "error",
+          message: "Failed to read migration state",
+          details: error instanceof Error ? error.message : error,
+        });
+      }
+      const integrity: { status: "ok" | "error"; details?: unknown } = { status: "ok" };
 
       // Get basic statistics
       const allPrompts = await Promise.all(this.repository.getAllPrompts().map((prompt) => this.enrichPromptWithTags(prompt)));
@@ -1079,14 +1159,50 @@ export class PromptVaultService {
 
       orphanedTags = allTags.filter((tag) => !linkedTagIds.has(tag.id)).length;
 
+      const requiredTables = ["prompts", "prompt_versions", "tags", "prompt_tags"];
+      const missingTables = requiredTables.filter((table) => !this.repository.hasTable(table));
+
+      if (missingTables.length > 0) {
+        issues.push({
+          type: 'error',
+          message: `Missing required tables: ${missingTables.join(', ')}`,
+          details: { missingTables },
+        });
+      }
+
       // Check database integrity
       try {
-        this.repository.getDatabase().exec('PRAGMA integrity_check');
+        const result = this.repository.getDatabase().prepare('PRAGMA integrity_check').get() as { integrity_check?: string } | undefined;
+        if (!result || typeof result.integrity_check !== 'string') {
+          integrity.status = 'error';
+          issues.push({
+            type: 'error',
+            message: 'Database integrity check returned no result',
+            details: result,
+          });
+        } else if (result.integrity_check.toLowerCase() !== 'ok') {
+          integrity.status = 'error';
+          integrity.details = result.integrity_check;
+          issues.push({
+            type: 'error',
+            message: 'Database integrity check failed',
+            details: result.integrity_check,
+          });
+        }
       } catch (error) {
+        integrity.status = 'error';
         issues.push({
           type: 'error',
           message: 'Database integrity check failed',
           details: error instanceof Error ? error.message : error,
+        });
+      }
+
+      if (migrationState.pendingVersions.length > 0) {
+        issues.push({
+          type: 'error',
+          message: 'Pending migrations detected',
+          details: { pendingVersions: migrationState.pendingVersions },
         });
       }
 
@@ -1099,6 +1215,12 @@ export class PromptVaultService {
           orphanedTags,
           invalidContent,
         },
+        migration: {
+          currentVersion: migrationState.currentVersion,
+          latestVersion: migrationState.latestVersion,
+          pendingVersions: migrationState.pendingVersions,
+        },
+        integrity,
         issues,
       };
     });
