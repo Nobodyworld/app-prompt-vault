@@ -62,6 +62,7 @@ Prereqs: Node 24.x recommended (bindings), Rust for Tauri.
 - **HTTP API:** REST over SQLite (Express) with observability endpoints
 - **Desktop UI:** React app under `desktop/`
 - **Orchestrator/MCP:** Tooling hooks for automation
+- **Planner AiDo import/export:** `pv_export_planner_bucket` builds a bucket draft from Vault prompts; `pv_import_prompts` bulk-imports prompt payloads (mirrors `export-planner` CLI).
 
 ## CI / Codecov token
 

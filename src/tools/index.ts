@@ -7,6 +7,7 @@
 import { registerTool } from '@nw/orchestrator-sdk';
 import type { ToolDefinition, ToolHandler, ToolResult } from '@nw/orchestrator-sdk';
 import * as promptService from "../lib/promptService.js";
+import type { PromptImportItem } from "../lib/promptService.js";
 
 // =============================================================================
 // Tool Definitions
@@ -222,6 +223,64 @@ export const pvListTagsDefinition: ToolDefinition = {
     source: 'prompt-vault',
 };
 
+export const pvExportPlannerBucketDefinition: ToolDefinition = {
+    name: 'pv_export_planner_bucket',
+    description: 'Export prompts as a Planner AiDo bucket draft for import.',
+    parameters: [
+        {
+            name: 'limit',
+            type: 'number',
+            description: 'Maximum tasks to include (default: 10)',
+            required: false,
+            default: 10,
+        },
+        {
+            name: 'query',
+            type: 'string',
+            description: 'Optional text search',
+            required: false,
+        },
+        {
+            name: 'tags',
+            type: 'array',
+            description: 'Filter by tag labels',
+            required: false,
+        },
+        {
+            name: 'projectSlug',
+            type: 'string',
+            description: 'Filter by project slug (maps to shared tag)',
+            required: false,
+        },
+    ],
+    returns: {
+        type: 'object',
+        description: 'Planner bucket draft payload with tasks derived from prompts',
+    },
+    category: 'interop',
+    source: 'prompt-vault',
+};
+
+export const pvImportPromptsDefinition: ToolDefinition = {
+    name: 'pv_import_prompts',
+    description: 'Bulk import prompts into Prompt Vault (e.g., from Planner AiDo exports).',
+    parameters: [
+        {
+            name: 'items',
+            type: 'array',
+            description: 'Array of prompt objects with title, content, optional tags and projectSlug',
+            required: true,
+        },
+    ],
+    returns: {
+        type: 'object',
+        description: 'Summary of created prompts and any failures',
+    },
+    requiresConfirmation: true,
+    category: 'interop',
+    source: 'prompt-vault',
+};
+
 // =============================================================================
 // Tool Handlers (placeholders - connect to actual prompt-vault logic)
 // =============================================================================
@@ -348,6 +407,47 @@ export const pvListTagsHandler: ToolHandler = async (): Promise<ToolResult> => {
     return { success: true, data: [] };
 };
 
+export const pvExportPlannerBucketHandler: ToolHandler = async (args): Promise<ToolResult> => {
+    const { limit = 10, query, tags, projectSlug } = args as {
+        limit?: number;
+        query?: string;
+        tags?: string[];
+        projectSlug?: string;
+    };
+
+    try {
+        const draft = await promptService.exportPlannerDraft({ query, tags, projectSlug }, limit);
+        if (!draft) {
+            return { success: false, error: "No prompts available to export" };
+        }
+        return { success: true, data: draft };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+    }
+};
+
+export const pvImportPromptsHandler: ToolHandler = async (args): Promise<ToolResult> => {
+    const { items } = args as { items?: PromptImportItem[] };
+    if (!Array.isArray(items) || items.length === 0) {
+        return { success: false, error: "items array is required" };
+    }
+
+    try {
+        const result = await promptService.importPrompts(items);
+        return {
+            success: true,
+            data: {
+                created: result.created.map((prompt) => ({ id: prompt.id, slug: prompt.slug, title: prompt.title })),
+                failed: result.failed,
+            },
+        };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+    }
+};
+
 // =============================================================================
 // Registration
 // =============================================================================
@@ -364,6 +464,8 @@ export function registerPromptVaultTools(): void {
     registerTool(pvExecutePromptDefinition, pvExecutePromptHandler);
     registerTool(pvListFoldersDefinition, pvListFoldersHandler);
     registerTool(pvListTagsDefinition, pvListTagsHandler);
+    registerTool(pvExportPlannerBucketDefinition, pvExportPlannerBucketHandler);
+    registerTool(pvImportPromptsDefinition, pvImportPromptsHandler);
 }
 
 /**
@@ -378,4 +480,6 @@ export const promptVaultToolDefinitions = [
     pvExecutePromptDefinition,
     pvListFoldersDefinition,
     pvListTagsDefinition,
+    pvExportPlannerBucketDefinition,
+    pvImportPromptsDefinition,
 ];

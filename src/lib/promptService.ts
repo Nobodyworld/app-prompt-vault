@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { Prompt } from "../domain/models.js";
+import { buildPlannerBucketDraft, type PlannerBucketDraft } from "../domain/interop.js";
 import { PromptVaultService } from "../services/PromptVaultService.js";
 import {
   createProjectTag,
@@ -27,6 +28,8 @@ export interface PromptInput {
   projectSlug?: string;
   tags?: string[];
 }
+
+export interface PromptImportItem extends PromptInput {}
 
 let serviceInstance: PromptVaultService | null = null;
 
@@ -194,3 +197,42 @@ export async function deletePrompt(id: string): Promise<void> {
   }
 }
 
+/**
+ * Build a Planner bucket draft payload from Prompt Vault content.
+ */
+export async function exportPlannerDraft(
+  filters: PromptFilters = {},
+  limit = 10
+): Promise<PlannerBucketDraft | null> {
+  const prompts = await listPrompts(filters);
+  return buildPlannerBucketDraft(prompts, limit);
+}
+
+/**
+ * Bulk-import prompts into Prompt Vault.
+ * Returns both created prompts and any failures for telemetry/reporting.
+ */
+export async function importPrompts(items: readonly PromptImportItem[]): Promise<{
+  created: Prompt[];
+  failed: Array<{ title: string; reason: string }>;
+}> {
+  const created: Prompt[] = [];
+  const failed: Array<{ title: string; reason: string }> = [];
+
+  for (const item of items) {
+    try {
+      const prompt = await createPrompt({
+        title: item.title,
+        body: item.body,
+        tags: item.tags,
+        projectSlug: item.projectSlug,
+      });
+      created.push(prompt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failed.push({ title: item.title, reason: message });
+    }
+  }
+
+  return { created, failed };
+}
