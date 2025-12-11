@@ -1,6 +1,4 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { Prompt } from "../src/domain/models.js";
-import * as promptService from "../src/lib/promptService.js";
 
 vi.mock("@nw/tags-projects", () => {
   return {
@@ -18,6 +16,9 @@ vi.mock("@nw/tags-projects", () => {
     untagPrompt: vi.fn(async () => true),
   };
 });
+
+import type { Prompt } from "../src/domain/models.js";
+import * as promptService from "../src/lib/promptService.js";
 
 type TagsProjectsModule = typeof import("@nw/tags-projects");
 
@@ -58,7 +59,8 @@ describe("promptService facade", () => {
   } as any;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Reset mocks so per-test overrides do not leak (e.g., getProjectTagBySlug returning a cached value)
+    vi.resetAllMocks();
     promptService.setPromptVaultServiceForTests(serviceStub as any);
   });
 

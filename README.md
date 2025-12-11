@@ -403,6 +403,13 @@ Coverage thresholds (lines/statements ≥ 85%, functions ≥ 80%, branches ≥ 7
 - [`docs/reports/stewards-report.md`](docs/reports/stewards-report.md) – stewardship metrics, simplifications, and forward roadmap.
 - [`docs/policies/security.md`](docs/policies/security.md) – security policy, disclosure process, and hardening checklist.
 
+### Nobodyworld OS integration docs
+
+- `../../docs/APPS/APP_PROMPT_VAULT.md` – Nobodyworld app-level spec and UX expectations.
+- `../../TASKLISTS/REVIEWS/prompt-vault.md` – gap analysis against the platform architecture.
+- `../../TASKLISTS/REVIEWS/prompt-vault-remediation-backlog.md` – mapped remediation tasks and follow-ups.
+- `../../docs/HUB_ORCH/ORCHESTRATOR_TOOLS_API.md` – `pv_*` tool surface exposed to the Hub orchestrator.
+
 ## Roadmap
 
 ✅ **Completed Features (vs PRM)**:

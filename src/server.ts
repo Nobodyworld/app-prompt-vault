@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import cors from "cors";
 import express, { type ErrorRequestHandler, type NextFunction, type Request, type Response } from "express";
+import { z } from "zod";
 import { PromptVaultService } from "./services/PromptVaultService.js";
 import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from "./extensions/index.js";
 import { createPromptVaultRouter } from "./web/createPromptVaultRouter.js";
-import { createLogger, getRecentLogs } from "@nw/logging";
+import { createLogger, getRecentLogs, type LogLevel } from "@nw/logging";
 import {
   bootstrapObservabilityFromEnv,
   createHttpMetricsMiddleware,
@@ -20,7 +21,41 @@ import { AuthManager, createAuthMiddleware, createAuthRouter } from "./web/auth.
 import { InMemoryAuditLogger, createAuditMiddleware, createAutoAuditMiddleware } from "./web/audit.js";
 import { createRateLimitMiddleware } from "./web/rate-limit.js";
 
-const bootstrapLogger = createLogger({ context: { app: "prompt-vault", module: "server" } });
+const envLogLevel = parseLogLevel(process.env.LOG_LEVEL || process.env.PROMPT_VAULT_LOG_LEVEL);
+const bootstrapLogger = createLogger({
+  context: { app: "prompt-vault", module: "server" },
+  level: envLogLevel ?? "info",
+});
+
+function parseLogLevel(value: string | undefined): LogLevel | undefined {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase();
+  if (normalized === "debug" || normalized === "info" || normalized === "warn" || normalized === "error") {
+    return normalized;
+  }
+  return undefined;
+}
+
+function parseLevelFilter(raw: unknown): { levels?: LogLevel | LogLevel[]; error?: string } {
+  if (raw === undefined) return {};
+  const parts = String(raw)
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) return {};
+
+  const mapped: LogLevel[] = [];
+  for (const part of parts) {
+    const level = parseLogLevel(part);
+    if (!level) {
+      return { error: `Invalid log level '${part}'` };
+    }
+    mapped.push(level);
+  }
+
+  return { levels: mapped.length === 1 ? mapped[0] : mapped };
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -136,6 +171,7 @@ function extractApiKeys(env: NodeJS.ProcessEnv): Record<string, string> {
 const authManager = new AuthManager(
   {
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "24h",
+    jwtSecret: process.env.JWT_SECRET,
     requireAuthByDefault: requireAuth,
     localhostOnly,
     apiKeys: extractApiKeys(process.env),
@@ -277,9 +313,25 @@ if (rateLimitEnabled) {
 }
 
 logsRouter.get("/", (request, response) => {
-  const limit = Number.parseInt(String(request.query.limit ?? "100"), 10);
-  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
-  response.json({ logs: getRecentLogs(safeLimit) });
+  const parsed = z
+    .object({
+      limit: z.coerce.number().int().min(1).max(500).default(100),
+      level: z.union([z.string(), z.array(z.string())]).optional(),
+    })
+    .safeParse(request.query);
+
+  if (!parsed.success) {
+    response.status(400).json({ error: "Request validation failed", details: parsed.error.issues.map((i) => i.message) });
+    return;
+  }
+
+  const { levels, error: levelError } = parseLevelFilter(parsed.data.level);
+  if (levelError) {
+    response.status(400).json({ error: levelError });
+    return;
+  }
+
+  response.json({ logs: getRecentLogs(parsed.data.limit, levels) });
 });
 
 app.use("/logs", logsRouter);

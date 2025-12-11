@@ -14,6 +14,12 @@ export interface AuthConfig {
   jwtExpiresIn?: string;
 
   /**
+   * Optional JWT secret. When provided, it is used instead of reading from @nw/secrets.
+   * Useful for environments that inject secrets via env vars or orchestration tools.
+   */
+  jwtSecret?: string;
+
+  /**
    * Whether to require authentication for all routes.
    * If false, only routes marked with requireAuth will need authentication.
    * Default: false
@@ -57,12 +63,14 @@ export class AuthManager {
   private readonly apiKeys: Map<string, string>;
   private readonly tokenTtlSeconds: number;
   private readonly logger?: StructuredLogger;
+  private readonly providedSecret?: string;
 
   public constructor(config: AuthConfig, logger?: StructuredLogger) {
     this.jwtExpiresIn = config.jwtExpiresIn || "24h";
     this.apiKeys = new Map(Object.entries(config.apiKeys || {}));
     this.logger = logger;
     this.tokenTtlSeconds = this.parseExpiresIn(this.jwtExpiresIn);
+    this.providedSecret = config.jwtSecret?.trim();
   }
 
   /**
@@ -71,6 +79,12 @@ export class AuthManager {
    */
   public async initialize(): Promise<void> {
     const secretRef = "prompt-vault:jwt-secret";
+
+    if (this.providedSecret) {
+      this.jwtSecret = this.providedSecret;
+      this.logger?.info("auth_secret_provided", { secretRef });
+      return;
+    }
 
     // Try to get existing secret
     const existingSecret = await getSecret(secretRef);

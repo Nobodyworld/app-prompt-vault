@@ -125,4 +125,18 @@ describe("AuthManager", () => {
       expect(readonlyKey).toBe("readonly");
     });
   });
+
+  it("uses provided jwtSecret without fetching or storing", async () => {
+    const { getSecret, storeSecret } = await import("@nw/secrets");
+    vi.mocked(getSecret).mockClear();
+    vi.mocked(storeSecret).mockClear();
+
+    const manager = new AuthManager({ jwtSecret: "static-secret", jwtExpiresIn: "1h" });
+    await manager.initialize();
+
+    const token = manager.generateToken({ userId: "user-123", username: "alice" });
+    expect(manager.verifyToken(token)?.userId).toBe("user-123");
+    expect(vi.mocked(getSecret)).not.toHaveBeenCalled();
+    expect(vi.mocked(storeSecret)).not.toHaveBeenCalled();
+  });
 });

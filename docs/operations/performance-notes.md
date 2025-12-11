@@ -4,7 +4,7 @@ The Stage 3 pass introduced lightweight profiling hooks via telemetry spans. Use
 
 ## Baseline Metrics
 
-- `metrics:snapshot` batch create (50 prompts): **18.67 ms** on Node 22 / Linux with in-memory SQLite.
+- `metrics:snapshot` batch create (50 prompts): **18.67 ms** on Node 24 LTS / Linux with in-memory SQLite.
 - `metrics:snapshot` search (pageSize=50): **1.68 ms** including validation and repository overhead.
 - Repository- and HTTP-level spans remain visible via `PROMPT_VAULT_METRICS=true`; inspect `prompt_vault_http_request_duration_seconds` to monitor latency regressions.
 

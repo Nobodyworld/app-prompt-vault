@@ -6,7 +6,7 @@
  */
 
 import { createLogger } from '@nw/logging';
-import { getEventBus } from '@nw/event-bus';
+import { getEventBus, type PlatformEventMap } from '@nw/event-bus';
 import type { Tag as NwTag } from '@nw/tags-projects';
 import type { Tag as PvTag } from '../domain/models.js';
 
@@ -65,7 +65,7 @@ export function subscribeToTagEvents(handlers: {
     const subscriptions: Array<() => void> = [];
 
     if (handlers.onTagCreated) {
-        const unsubscribe = eventBus.on('tag:created', (data: { tag: NwTag }) => {
+        const unsubscribe = eventBus.on('tag:created', (data: PlatformEventMap['tag:created']) => {
             const tag = data.tag;
             pvLogger.info('External tag created', { tagId: tag.id });
             const fallbackTimestamp = new Date().toISOString();
@@ -75,14 +75,14 @@ export function subscribeToTagEvents(handlers: {
                 ...tag,
                 createdAt,
                 updatedAt,
-            };
+            } as NwTag;
             handlers.onTagCreated!(fullTag);
         });
         subscriptions.push(unsubscribe);
     }
 
     if (handlers.onTagUpdated) {
-        const unsubscribe = eventBus.on('tag:updated', (data: { tag: NwTag }) => {
+        const unsubscribe = eventBus.on('tag:updated', (data: PlatformEventMap['tag:updated']) => {
             const tag = data.tag;
             pvLogger.info('External tag updated', { tagId: tag.id });
             const fallbackTimestamp = new Date().toISOString();
@@ -92,16 +92,17 @@ export function subscribeToTagEvents(handlers: {
                 ...tag,
                 createdAt,
                 updatedAt,
-            };
+            } as NwTag;
             handlers.onTagUpdated!(fullTag);
         });
         subscriptions.push(unsubscribe);
     }
 
     if (handlers.onTagDeleted) {
-        const unsubscribe = eventBus.on('tag:deleted', (data: { tagId: number }) => {
-            pvLogger.info('External tag deleted', { tagId: data.tagId });
-            handlers.onTagDeleted!(data.tagId);
+        const unsubscribe = eventBus.on('tag:deleted', (data: PlatformEventMap['tag:deleted']) => {
+            const tagId = data.tagId;
+            pvLogger.info('External tag deleted', { tagId });
+            handlers.onTagDeleted!(tagId);
         });
         subscriptions.push(unsubscribe);
     }
