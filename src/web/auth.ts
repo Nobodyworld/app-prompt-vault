@@ -383,6 +383,30 @@ export function createAuthMiddleware(options: {
       }
     }
 
+    // Enforce API key for unsafe/write HTTP methods even when requireAuth is false.
+    const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+    if (unsafeMethods.has(request.method.toUpperCase())) {
+      // If the request was not authenticated via API key, reject.
+      const apiKeyHeaderPresent = !!apiKeyHeader;
+      const apiKeyValid = apiKeyHeaderPresent && authManager.validateApiKey(apiKeyHeader || "") !== null;
+      if (!apiKeyValid) {
+        logger?.warn("unsafe_method_requires_api_key", {
+          method: request.method,
+          path: request.path,
+          requestId: response.locals.requestId,
+        });
+
+        response.status(401).json({
+          error: "Unauthorized",
+          message: "Unsafe HTTP methods require a valid API key in the X-API-Key header",
+        });
+        return;
+      }
+      // mark authenticated by api-key
+      authenticated = true;
+      authMethod = "api-key";
+    }
+
     // Check if authentication is required
     const routeRequiresAuth = requireAuth || response.locals.requireAuth;
 

@@ -16,6 +16,7 @@ import {
   createHttpTracingMiddleware,
 } from "./observability/index.js";
 import { createObservabilityRouter } from "./web/createObservabilityRouter.js";
+import { registerPromptVaultTools } from "./tools/index.js";
 import { ConfigurationError, loadServerConfig, type LoadConfigResult } from "./config/serverConfig.js";
 import { AuthManager, createAuthMiddleware, createAuthRouter } from "./web/auth.js";
 import { InMemoryAuditLogger, createAuditMiddleware, createAutoAuditMiddleware } from "./web/audit.js";
@@ -365,6 +366,12 @@ app.use(errorHandler);
 const server = app.listen(config.port, () => {
   logger.info("server_started", { port: config.port, dbPath: config.databasePath });
   observability.indicator.setReadiness({ status: "ok" });
+  // Register Prompt Vault orchestrator tools so other apps can discover them
+  try {
+    registerPromptVaultTools();
+  } catch (err) {
+    logger.warn("register_prompt_vault_tools_failed", { error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 let shuttingDown = false;
