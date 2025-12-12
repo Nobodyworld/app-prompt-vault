@@ -60,7 +60,7 @@ export function nwTagToPvTag(nwTag: NwTag): PvTag {
 export function subscribeToTagEvents(handlers: {
     onTagCreated?: (tag: NwTag) => void;
     onTagUpdated?: (tag: NwTag) => void;
-    onTagDeleted?: (tagId: number) => void;
+    onTagDeleted?: (tagId: string | number) => void;
 }): () => void {
     const subscriptions: Array<() => void> = [];
 

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { Prompt } from "../domain/models.js";
 import { buildPlannerBucketDraft, type PlannerBucketDraft } from "../domain/interop.js";
+import { renderTemplate, templateVariablesSchema, type TemplateVariables } from "../domain/templating.js";
 import { PromptVaultService } from "../services/PromptVaultService.js";
 import {
   createProjectTag,
@@ -195,6 +196,18 @@ export async function deletePrompt(id: string): Promise<void> {
       // Ignore failures; callers treat delete as best-effort.
     }
   }
+}
+
+/**
+ * Execute a prompt template with variable substitution.
+ * Returns rendered text plus missing-variable info for UX/tools.
+ */
+export function executePromptTemplate(
+  template: string,
+  variables: Record<string, unknown> = {}
+): ReturnType<typeof renderTemplate> {
+  const parsed = templateVariablesSchema.parse(variables) as TemplateVariables;
+  return renderTemplate(template, parsed);
 }
 
 /**

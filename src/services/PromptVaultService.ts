@@ -931,26 +931,6 @@ export class PromptVaultService {
       .substring(0, 50);
   }
 
-  private prepareTags(labels: readonly string[], existingLabels: ReadonlySet<string> = new Set()): Tag[] {
-    const seen = new Set<string>(Array.from(existingLabels, (label) => label.toLowerCase()));
-
-    return this.normalizeLabels(labels)
-      .filter((label) => {
-        const normalized = label.toLowerCase();
-        if (seen.has(normalized)) {
-          return false;
-        }
-        seen.add(normalized);
-        return true;
-      })
-      .map((label) => ({
-        id: randomUUID(),
-        label,
-        description: undefined,
-        createdAt: new Date(),
-      }));
-  }
-
   private normalizeLabels(labels: readonly string[]): string[] {
     return labels
       .map((label) => label.trim())

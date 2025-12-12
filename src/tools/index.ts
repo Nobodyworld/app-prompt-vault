@@ -381,16 +381,25 @@ export const pvDeletePromptHandler: ToolHandler = async (args): Promise<ToolResu
 };
 
 export const pvExecutePromptHandler: ToolHandler = async (args): Promise<ToolResult> => {
-    const { id, variables } = args as { id: string; variables?: Record<string, string> };
-    void variables;
+    const { id, variables } = args as { id: string; variables?: Record<string, unknown> };
 
     try {
         const prompt = await promptService.getPrompt(id);
         if (!prompt || !prompt.latestVersion) {
             return { success: false, error: "Prompt not found or has no content" };
         }
-        // Variable substitution is a future enhancement; for now return raw content.
-        return { success: true, data: prompt.latestVersion.body };
+        const { rendered, missingVariables } = promptService.executePromptTemplate(
+            prompt.latestVersion.body,
+            variables ?? {}
+        );
+        if (missingVariables.length > 0) {
+            return {
+                success: false,
+                error: `Missing template variables: ${missingVariables.join(", ")}`,
+                data: rendered,
+            };
+        }
+        return { success: true, data: rendered };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return { success: false, error: message };
