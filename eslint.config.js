@@ -42,6 +42,13 @@ export default ts.config(
     },
   },
   {
+    // Adapter modules are the approved location for direct @nw/* imports.
+    files: ["src/lib/platform-*.ts"],
+    rules: {
+      "no-restricted-imports": "off",
+    },
+  },
+  {
     files: ["desktop/src/**/*.ts", "desktop/src/**/*.tsx"],
     languageOptions: {
       parserOptions: {
@@ -74,6 +81,13 @@ export default ts.config(
           ],
         },
       ],
+    },
+  },
+  {
+    // Desktop adapter modules are the approved location for direct @nw/* imports.
+    files: ["desktop/src/lib/platform-*.ts"],
+    rules: {
+      "no-restricted-imports": "off",
     },
   },
   {

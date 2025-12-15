@@ -8,10 +8,10 @@
 import React, { createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import {
-  ThemeProvider as NwThemeProvider,
-  useTheme as useNwTheme,
+  NwThemeProvider,
+  useNwTheme,
   type ThemeMode,
-} from "@nw/ui-theme";
+} from "../lib/platform-ui";
 
 type Theme = "dark" | "light";
 

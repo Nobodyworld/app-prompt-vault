@@ -15,6 +15,7 @@ import { convertPromptContent, validatePromptContent, detectPromptFormat } from 
 import { SnapshotManager } from "../domain/snapshot.js";
 import { buildButtonsSwitchboardPayload, buildPlannerBucketDraft, type ButtonsSwitchboardPayload, type PlannerBucketDraft } from "../domain/interop.js";
 import fs from "fs";
+import os from "node:os";
 import path from "path";
 import yaml from "yaml";
 import { emitPromptEvent } from "../lib/nw-bridge.js";
@@ -70,7 +71,7 @@ export class PromptVaultService {
     const dbPath = (database as { name?: string }).name;
     if (dbPath) {
       process.env.NW_CORE_DB_ALLOW_OVERRIDE = "1";
-      const coreDbPath = dbPath === ":memory:" ? path.join(process.cwd(), `nw-core-${randomUUID()}.db`) : `${dbPath}.core.db`;
+      const coreDbPath = dbPath === ":memory:" ? path.join(os.tmpdir(), `nw-core-${randomUUID()}.db`) : `${dbPath}.core.db`;
       process.env.NW_CORE_DB_PATH = coreDbPath;
     }
 

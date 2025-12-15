@@ -10,9 +10,9 @@ import {
   createProjectTag,
   getProjectTagBySlug,
   getTagById,
-  listTagsForEntity,
-  untagPrompt,
-} from "@nw/tags-projects";
+  listSharedTagsForEntity as listTagsForEntity,
+  untagSharedPrompt as untagPrompt,
+} from "./platform-core.js";
 
 type CreatePromptParams = Parameters<PromptVaultService["createPrompt"]>[0];
 type UpdatePromptParams = Parameters<PromptVaultService["updatePrompt"]>[1];

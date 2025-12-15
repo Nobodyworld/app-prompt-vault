@@ -2,7 +2,7 @@ import type { Database as BetterSqlite3Database } from "better-sqlite3";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateIntegrityChecksum, checkDataIntegrity } from "@nw/core-db";
+import { generateIntegrityChecksum, checkDataIntegrity } from "../lib/platform-core.js";
 import type {
   Prompt,
   PromptId,

@@ -2,12 +2,13 @@ import type { NextFunction, Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { createHmac, randomBytes } from "node:crypto";
 import { z } from "zod";
-import { getSecret, storeSecret } from "@nw/secrets";
 import {
+  getSecret,
+  storeSecret,
   verifyCoreDbApiKey,
   verifyCoreDbSessionToken,
   type CoreDbAuthContext,
-} from "@nw/core-db";
+} from "../lib/platform-core.js";
 import type { StructuredLogger } from "../observability/logger.js";
 import { createEndpointRateLimiter } from "./rate-limit.js";
 

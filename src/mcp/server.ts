@@ -15,7 +15,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import yaml from 'yaml';
-import { createLogger } from '@nw/logging';
+import { createLogger } from '../lib/platform-core.js';
 
 const execAsync = promisify(exec);
 

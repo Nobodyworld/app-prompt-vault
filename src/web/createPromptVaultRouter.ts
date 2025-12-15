@@ -8,6 +8,7 @@ import type { Telemetry } from "../observability/telemetry.js";
 import { createNoopTelemetry } from "../observability/telemetry.js";
 import { DuplicatePromptError, PromptNotFoundError, ValidationError } from "../domain/errors.js";
 import type { Prompt } from "../domain/models.js";
+import { executePromptTemplate } from "../lib/promptService.js";
 
 const semanticVersionSchema = z
   .string()
@@ -81,6 +82,10 @@ const versionCreateSchema = z.object({
 
 const tagMutationSchema = z.object({
   tags: z.array(z.string().min(1)).nonempty("At least one tag must be provided"),
+});
+
+const promptExecuteSchema = z.object({
+  variables: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
 
 const promptIdParamSchema = z.object({
@@ -303,6 +308,29 @@ export function createPromptVaultRouter(
       const { promptId } = promptIdParamSchema.parse(request.params);
       const converted = await service.convertPrompt(promptId, targetFormat);
       response.json({ data: { content: converted, format: targetFormat } });
+    })
+  );
+
+  router.post(
+    "/prompts/:promptId/execute",
+    asyncHandler("execute-prompt", async (request, response) => {
+      const payload = promptExecuteSchema.parse(request.body);
+      const { promptId } = promptIdParamSchema.parse(request.params);
+
+      const prompt = await service.getPrompt(promptId);
+      if (!prompt.latestVersion?.body) {
+        throw new PromptNotFoundError(`Prompt ${promptId} has no content to execute`);
+      }
+
+      const result = executePromptTemplate(prompt.latestVersion.body, payload.variables ?? {});
+      response.json({
+        success: true,
+        data: {
+          rendered: result.rendered,
+          requiredVariables: result.requiredVariables,
+          missingVariables: result.missingVariables,
+        },
+      });
     })
   );
 
