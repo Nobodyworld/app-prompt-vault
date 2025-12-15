@@ -1,23 +1,32 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { listPrompts } from "../services/promptApi";
+import { exportPromptBundle, importPromptBundle, listPrompts, searchPrompts } from "../services/promptApi";
 import type { PromptSummary } from "../types/prompt";
 import { PromptList } from "../components/PromptList";
+import { useToast } from "../components/Toast";
 import { copyTextToClipboard } from "../lib/clipboard";
 import { buildButtonsSwitchboardPayload, buildPlannerBucketDraft } from "../lib/interop";
-import { useToast } from "../components/Toast";
+import { useI18n } from "../i18n";
 
 type LocationState = { refresh?: boolean } | null;
 
 export function PromptListPage(): React.JSX.Element {
+  const { t } = useI18n();
   const [prompts, setPrompts] = useState<PromptSummary[]>([]);
+  const [displayPrompts, setDisplayPrompts] = useState<PromptSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [projectTagIdFilter, setProjectTagIdFilter] = useState("");
+  const [bundleText, setBundleText] = useState("");
+  const [isBundleBusy, setIsBundleBusy] = useState(false);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasShownSearchFallbackToastRef = useRef(false);
   const navigate = useNavigate();
   const { state } = useLocation() as { state: LocationState };
   const { addToast } = useToast();
@@ -42,11 +51,12 @@ export function PromptListPage(): React.JSX.Element {
         const data = await listPrompts();
         if (mounted) {
           setPrompts(data);
+          setDisplayPrompts(data);
           setError(null);
         }
       } catch (err: unknown) {
         if (mounted) {
-          setError(err instanceof Error ? err.message : "Failed to load prompts");
+          setError(err instanceof Error ? err.message : t("library.failedLoad"));
         }
       } finally {
         if (mounted) {
@@ -60,88 +70,196 @@ export function PromptListPage(): React.JSX.Element {
     return () => {
       mounted = false;
     };
-  }, [reloadToken]);
+  }, [reloadToken, t]);
 
-  const filteredPrompts = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return prompts;
+  useEffect(() => {
+    let cancelled = false;
+
+    const activeText = searchQuery.trim();
+    const activeTag = tagFilter.trim();
+    const activeCategory = categoryFilter.trim();
+    const activeProjectTagId = projectTagIdFilter.trim();
+    const hasServerFilters = Boolean(activeText || activeTag || activeCategory || activeProjectTagId);
+
+    if (!hasServerFilters) {
+      setDisplayPrompts(prompts);
+      return () => {
+        cancelled = true;
+      };
     }
 
-    const query = searchQuery.toLowerCase().trim();
-    return prompts.filter((prompt) => {
-      const titleMatch = prompt.title?.toLowerCase().includes(query);
-      const categoryMatch = prompt.category?.toLowerCase().includes(query);
-      const tagMatch = prompt.tags.some((tag) => tag.toLowerCase().includes(query));
-      const bodyMatch = prompt.latestVersion?.body?.toLowerCase().includes(query);
-      return titleMatch || categoryMatch || tagMatch || bodyMatch;
-    });
-  }, [prompts, searchQuery]);
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const serverResults = await searchPrompts({
+            text: activeText || undefined,
+            tag: activeTag || undefined,
+            category: activeCategory || undefined,
+            projectTagId: activeProjectTagId || undefined,
+            page: 0,
+            pageSize: 200,
+          });
+          if (!cancelled) {
+            setDisplayPrompts(serverResults);
+          }
+        } catch {
+          if (!cancelled && !hasShownSearchFallbackToastRef.current) {
+            hasShownSearchFallbackToastRef.current = true;
+            addToast(t("library.toast.searchFallback"), "warning");
+          }
 
-  const buttonsPayload = useMemo(
-    () => buildButtonsSwitchboardPayload(filteredPrompts),
-    [filteredPrompts]
-  );
-  const plannerDraft = useMemo(
-    () => buildPlannerBucketDraft(filteredPrompts),
-    [filteredPrompts]
-  );
+          const query = activeText.toLowerCase();
+          const normalizedTag = activeTag.toLowerCase();
+          const normalizedCategory = activeCategory.toLowerCase();
+          const requiresProjectScope = Boolean(activeProjectTagId);
 
-  const handleCopy = useCallback(async (prompt: PromptSummary): Promise<void> => {
-    if (!prompt.latestVersion?.body) {
-      addToast("Prompt body is unavailable. Try opening the editor to refresh this entry.", "error");
-      return;
-    }
+          const filtered = prompts.filter((prompt) => {
+            if (requiresProjectScope) {
+              return false;
+            }
 
-    try {
-      await copyTextToClipboard(prompt.latestVersion.body);
-      setCopyError(null);
-      setCopiedPromptId(prompt.id);
-      addToast("Prompt copied to clipboard!", "success", 2000);
-      if (clearTimerRef.current) {
-        clearTimeout(clearTimerRef.current);
+            if (normalizedTag) {
+              if (!prompt.tags.some((tag) => tag.toLowerCase() === normalizedTag)) return false;
+            }
+
+            if (normalizedCategory) {
+              if ((prompt.category ?? "").toLowerCase() !== normalizedCategory) return false;
+            }
+
+            if (!query) return true;
+            const titleMatch = prompt.title?.toLowerCase().includes(query);
+            const categoryMatch = prompt.category?.toLowerCase().includes(query);
+            const tagMatch = prompt.tags.some((tag) => tag.toLowerCase().includes(query));
+            const bodyMatch = prompt.latestVersion?.body?.toLowerCase().includes(query);
+            return titleMatch || categoryMatch || tagMatch || bodyMatch;
+          });
+
+          if (!cancelled) {
+            setDisplayPrompts(filtered);
+          }
+        }
+      })();
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [addToast, categoryFilter, projectTagIdFilter, prompts, searchQuery, tagFilter, t]);
+
+  const buttonsPayload = useMemo(() => buildButtonsSwitchboardPayload(displayPrompts), [displayPrompts]);
+  const plannerDraft = useMemo(() => buildPlannerBucketDraft(displayPrompts), [displayPrompts]);
+
+  const handleCopy = useCallback(
+    async (prompt: PromptSummary): Promise<void> => {
+      if (!prompt.latestVersion?.body) {
+        addToast(t("library.toast.bodyUnavailable"), "error");
+        return;
       }
-      clearTimerRef.current = setTimeout(() => {
-        setCopiedPromptId(null);
-        clearTimerRef.current = null;
-      }, 2000);
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Unable to copy prompt to the clipboard.";
-      // Provide more helpful error messages for common clipboard issues
-      if (errorMessage === 'CLIPBOARD_PERMISSIONS_BLOCKED') {
-        addToast("Clipboard access blocked. Try using Ctrl+C/Cmd+C to copy manually, or enable clipboard permissions in your browser settings.", "error");
-      } else if (errorMessage === 'FALLBACK_COPY_FAILED') {
-        addToast("Automatic copying failed. The prompt text has been displayed in an alert - please copy it manually.", "warning");
-      } else if (errorMessage === 'MANUAL_COPY_REQUIRED') {
-        addToast("Prompt text displayed in alert popup. Please copy it manually using Ctrl+C/Cmd+C.", "info");
-      } else {
-        addToast(errorMessage, "error");
+
+      try {
+        await copyTextToClipboard(prompt.latestVersion.body);
+        setCopyError(null);
+        setCopiedPromptId(prompt.id);
+        addToast(t("library.toast.copied"), "success", 2000);
+
+        if (clearTimerRef.current) {
+          clearTimeout(clearTimerRef.current);
+        }
+
+        clearTimerRef.current = setTimeout(() => {
+          setCopiedPromptId(null);
+          clearTimerRef.current = null;
+        }, 2000);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : "Unable to copy prompt to the clipboard.";
+        setCopyError(errorMessage);
+
+        if (errorMessage === "CLIPBOARD_PERMISSIONS_BLOCKED") {
+          addToast(t("library.toast.clipboardBlocked"), "error");
+        } else if (errorMessage === "FALLBACK_COPY_FAILED") {
+          addToast(t("library.toast.fallbackCopyFailed"), "warning");
+        } else if (errorMessage === "MANUAL_COPY_REQUIRED") {
+          addToast(t("library.toast.manualCopyRequired"), "info");
+        } else {
+          addToast(errorMessage, "error");
+        }
       }
-    }
-  }, [addToast]);
+    },
+    [addToast, t]
+  );
 
   const handleCopyButtonsPayload = useCallback(async () => {
     if (!buttonsPayload) {
-      addToast("Add prompts with bodies to export a switchboard.", "warning");
+      addToast(t("library.toast.exportButtonsMissing"), "warning");
       return;
     }
     await copyTextToClipboard(JSON.stringify(buttonsPayload, null, 2));
-    addToast("Buttons switchboard JSON copied", "success");
-  }, [addToast, buttonsPayload]);
+    addToast(t("library.toast.buttonsCopied"), "success");
+  }, [addToast, buttonsPayload, t]);
 
   const handleCopyPlannerDraft = useCallback(async () => {
     if (!plannerDraft) {
-      addToast("No prompts available to stage planner tasks.", "warning");
+      addToast(t("library.toast.exportPlannerMissing"), "warning");
       return;
     }
     await copyTextToClipboard(JSON.stringify(plannerDraft, null, 2));
-    addToast("Planner bucket draft copied", "success");
-  }, [addToast, plannerDraft]);
+    addToast(t("library.toast.plannerCopied"), "success");
+  }, [addToast, plannerDraft, t]);
 
   const handleEdit = useCallback(
     (prompt: PromptSummary) => {
       navigate(`/edit/${prompt.id}`, { state: { prompt } });
     },
     [navigate]
+  );
+
+  const handleExportBundle = useCallback(
+    async (format: "json" | "yaml") => {
+      setIsBundleBusy(true);
+      try {
+        const bundle = await exportPromptBundle({
+          format,
+          promptIds: displayPrompts.map((prompt) => prompt.id),
+          includeMetadata: true,
+        });
+        await copyTextToClipboard(bundle);
+        addToast(t("bundle.toast.exportCopied"), "success");
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        addToast(`${t("bundle.toast.exportFailed")}: ${message}`, "error");
+      } finally {
+        setIsBundleBusy(false);
+      }
+    },
+    [addToast, displayPrompts, t]
+  );
+
+  const handleImportBundle = useCallback(
+    async (format: "json" | "yaml") => {
+      if (!bundleText.trim()) {
+        addToast(t("bundle.toast.importMissing"), "warning");
+        return;
+      }
+
+      setIsBundleBusy(true);
+      try {
+        const result = await importPromptBundle({
+          format,
+          content: bundleText,
+          conflictStrategy: "addVersion",
+        });
+        addToast(t("bundle.toast.imported", { count: result.imported }), "success");
+        setBundleText("");
+        requestReload();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        addToast(`${t("bundle.toast.importFailed")}: ${message}`, "error");
+      } finally {
+        setIsBundleBusy(false);
+      }
+    },
+    [addToast, bundleText, requestReload, t]
   );
 
   useEffect(() => {
@@ -154,36 +272,36 @@ export function PromptListPage(): React.JSX.Element {
 
   useEffect(() => {
     const handleFocusSearch = (): void => {
-      const searchInput = document.querySelector('.search-input') as HTMLInputElement;
-      if (searchInput) {
-        searchInput.focus();
-      }
+      const searchInput = document.querySelector(".search-input") as HTMLInputElement | null;
+      searchInput?.focus();
     };
 
     const handleClearSearch = (): void => {
-      setSearchQuery('');
-      const searchInput = document.querySelector('.search-input') as HTMLInputElement;
-      if (searchInput) {
-        searchInput.blur();
-      }
+      setSearchQuery("");
+      const searchInput = document.querySelector(".search-input") as HTMLInputElement | null;
+      searchInput?.blur();
     };
 
-    window.addEventListener('focus-search', handleFocusSearch);
-    window.addEventListener('clear-search', handleClearSearch);
+    window.addEventListener("focus-search", handleFocusSearch);
+    window.addEventListener("clear-search", handleClearSearch);
 
     return () => {
-      window.removeEventListener('focus-search', handleFocusSearch);
-      window.removeEventListener('clear-search', handleClearSearch);
+      window.removeEventListener("focus-search", handleFocusSearch);
+      window.removeEventListener("clear-search", handleClearSearch);
     };
   }, []);
 
   if (isLoading) {
-    return <p className="status">Loading prompts...</p>;
+    return <p className="status">{t("library.loading")}</p>;
   }
 
   if (error) {
     return <p className="error">{error}</p>;
   }
+
+  const hasAnyFilter = Boolean(
+    searchQuery.trim() || tagFilter.trim() || categoryFilter.trim() || projectTagIdFilter.trim()
+  );
 
   return (
     <div className="library-panel">
@@ -191,7 +309,7 @@ export function PromptListPage(): React.JSX.Element {
         <div className="search-container">
           <input
             type="text"
-            placeholder="Search prompts... (Ctrl+K to focus, Esc to clear)"
+            placeholder={t("library.search.placeholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
@@ -201,17 +319,42 @@ export function PromptListPage(): React.JSX.Element {
               type="button"
               onClick={() => setSearchQuery("")}
               className="search-clear"
-              aria-label="Clear search"
+              aria-label={t("library.search.clear")}
             >
               ✕
             </button>
           )}
         </div>
-        {searchQuery && (
+
+        <div className="search-filters">
+          <input
+            type="text"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            placeholder={t("library.search.tagPlaceholder")}
+            className="search-input search-input--small"
+          />
+          <input
+            type="text"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            placeholder={t("library.search.categoryPlaceholder")}
+            className="search-input search-input--small"
+          />
+          <input
+            type="text"
+            value={projectTagIdFilter}
+            onChange={(e) => setProjectTagIdFilter(e.target.value)}
+            placeholder={t("library.search.projectTagIdPlaceholder")}
+            className="search-input search-input--small"
+          />
+        </div>
+
+        {hasAnyFilter && (
           <p className="search-results">
-            {filteredPrompts.length === 0
-              ? "No prompts match your search."
-              : `Found ${filteredPrompts.length} prompt${filteredPrompts.length === 1 ? "" : "s"}`}
+            {displayPrompts.length === 0
+              ? t("library.search.noMatches")
+              : t("library.search.found", { count: displayPrompts.length })}
           </p>
         )}
       </div>
@@ -226,7 +369,7 @@ export function PromptListPage(): React.JSX.Element {
             </p>
           </div>
           <div className="interop-counts">
-            <span className="interop-pill">{filteredPrompts.length} selected</span>
+            <span className="interop-pill">{displayPrompts.length} selected</span>
             <span className="interop-pill interop-pill--soft">
               {buttonsPayload?.switchboard.phrases.length ?? 0} phrases
             </span>
@@ -254,10 +397,64 @@ export function PromptListPage(): React.JSX.Element {
         </div>
       </div>
 
+      <div className="interop-card">
+        <div className="interop-card__header">
+          <div>
+            <p className="interop-eyebrow">{t("bundle.eyebrow")}</p>
+            <h3>{t("bundle.title")}</h3>
+            <p className="interop-muted">{t("bundle.description")}</p>
+          </div>
+        </div>
+
+        <div className="bundle-stack">
+          <textarea
+            className="search-input"
+            rows={6}
+            value={bundleText}
+            onChange={(e) => setBundleText(e.target.value)}
+            placeholder={t("bundle.importPlaceholder")}
+          />
+          <div className="interop-actions">
+            <button
+              type="button"
+              className="interop-btn"
+              onClick={() => void handleExportBundle("json")}
+              disabled={isBundleBusy || displayPrompts.length === 0}
+            >
+              {t("bundle.exportJson")}
+            </button>
+            <button
+              type="button"
+              className="interop-btn secondary"
+              onClick={() => void handleExportBundle("yaml")}
+              disabled={isBundleBusy || displayPrompts.length === 0}
+            >
+              {t("bundle.exportYaml")}
+            </button>
+            <button
+              type="button"
+              className="interop-btn"
+              onClick={() => void handleImportBundle("json")}
+              disabled={isBundleBusy}
+            >
+              {t("bundle.importJson")}
+            </button>
+            <button
+              type="button"
+              className="interop-btn secondary"
+              onClick={() => void handleImportBundle("yaml")}
+              disabled={isBundleBusy}
+            >
+              {t("bundle.importYaml")}
+            </button>
+          </div>
+        </div>
+      </div>
+
       {copyError && <p className="error library-error">{copyError}</p>}
 
       <PromptList
-        prompts={filteredPrompts}
+        prompts={displayPrompts}
         copiedPromptId={copiedPromptId}
         copyError={copyError}
         onCopy={handleCopy}

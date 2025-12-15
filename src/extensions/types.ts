@@ -7,6 +7,13 @@ export interface PromptVaultPluginContext {
   readonly telemetry: Telemetry;
 }
 
+export interface PromptVaultActorContext {
+  /** Typically the Core DB user id or an API-key/JWT subject string. */
+  userId?: string;
+  /** Correlates logs across HTTP middleware / service operations. */
+  requestId?: string;
+}
+
 export interface PromptVaultConnector {
   readonly name: string;
   readonly type: string;
@@ -21,7 +28,9 @@ export interface PromptVaultPlugin {
   readonly description?: string;
   readonly connectors?: readonly PromptVaultConnector[];
   setup?(context: PromptVaultPluginContext): void;
-  onPromptCreated?(payload: { prompt: Prompt; version: PromptVersion }): void;
+  onPromptCreated?(payload: { prompt: Prompt; version: PromptVersion; actor?: PromptVaultActorContext }): void;
+  onPromptUpdated?(payload: { prompt: Prompt; updatedFields: readonly string[]; actor?: PromptVaultActorContext }): void;
+  onPromptDeleted?(payload: { promptId: PromptId; mode: "soft" | "permanent"; actor?: PromptVaultActorContext }): void;
   onVersionAdded?(payload: { promptId: PromptId; version: PromptVersion }): void;
   onPromptTagged?(payload: { promptId: PromptId; tags: readonly Tag[] }): void;
   onPromptUntagged?(payload: { promptId: PromptId; labels: readonly string[] }): void;

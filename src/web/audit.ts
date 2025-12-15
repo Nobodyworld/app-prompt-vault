@@ -138,7 +138,7 @@ export function createAuditMiddleware(options: { auditLogger: AuditLogger; logge
         const originalEnd = response.end;
 
         // Wrap response.end to log after response is sent
-        response.end = function (this: Response, ...args: Parameters<Response["end"]>): Response {
+        response.end = function (this: Response, ...args: any[]): Response {
             // Restore original end
             response.end = originalEnd;
 
@@ -173,7 +173,7 @@ export function createAuditMiddleware(options: { auditLogger: AuditLogger; logge
             }
 
             // Call original end
-            return originalEnd.apply(this, args);
+            return (originalEnd as any).apply(this, args);
         };
 
         next();

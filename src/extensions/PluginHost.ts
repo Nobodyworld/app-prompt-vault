@@ -1,5 +1,5 @@
 import type { Prompt, PromptId, PromptVersion, Tag } from "../domain/models.js";
-import type { PromptVaultConnector, PromptVaultPlugin, PromptVaultPluginContext, PluginMetadata } from "./types.js";
+import type { PromptVaultActorContext, PromptVaultConnector, PromptVaultPlugin, PromptVaultPluginContext, PluginMetadata } from "./types.js";
 import type { StructuredLogger } from "../observability/logger.js";
 import type { Telemetry } from "../observability/telemetry.js";
 
@@ -120,7 +120,9 @@ export class PluginHost {
 }
 
 interface PluginEvents {
-  onPromptCreated: { prompt: Prompt; version: PromptVersion };
+  onPromptCreated: { prompt: Prompt; version: PromptVersion; actor?: PromptVaultActorContext };
+  onPromptUpdated: { prompt: Prompt; updatedFields: readonly string[]; actor?: PromptVaultActorContext };
+  onPromptDeleted: { promptId: PromptId; mode: "soft" | "permanent"; actor?: PromptVaultActorContext };
   onVersionAdded: { promptId: PromptId; version: PromptVersion };
   onPromptTagged: { promptId: PromptId; tags: readonly Tag[] };
   onPromptUntagged: { promptId: PromptId; labels: readonly string[] };

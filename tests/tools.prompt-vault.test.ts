@@ -1,22 +1,23 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
-import {
-  pvListPromptsDefinition,
-  pvGetPromptDefinition,
-  pvCreatePromptDefinition,
-} from "../src/tools/index.js";
-import {
-  pvSearchPromptsHandler,
-  pvGetPromptHandler,
-  pvCreatePromptHandler,
-} from "../src/tools/index.js";
-import * as promptService from "../src/lib/promptService.js";
+import { describe, expect, it, beforeAll, beforeEach, vi } from "vitest";
+
+vi.mock("@nw/orchestrator-sdk", () => ({
+  registerTool: vi.fn(),
+}));
+
+let tools: typeof import("../src/tools/index.js");
+
+beforeAll(async () => {
+  tools = await import("../src/tools/index.js");
+});
+let promptService: {
+  listPrompts: ReturnType<typeof vi.fn>;
+  getPrompt: ReturnType<typeof vi.fn>;
+  createPrompt: ReturnType<typeof vi.fn>;
+  deletePrompt: ReturnType<typeof vi.fn>;
+};
 
 vi.mock("../src/lib/promptService.js", async () => {
-  const actual = await vi.importActual<typeof import("../src/lib/promptService.js")>(
-    "../src/lib/promptService.js"
-  );
-  return {
-    ...actual,
+  promptService = {
     listPrompts: vi.fn(async () => [
       {
         id: "p1",
@@ -74,7 +75,10 @@ vi.mock("../src/lib/promptService.js", async () => {
         updatedAt: new Date(),
       },
     })),
+    deletePrompt: vi.fn(async () => undefined),
   };
+
+  return promptService;
 });
 
 describe("Prompt Vault tools", () => {
@@ -83,22 +87,27 @@ describe("Prompt Vault tools", () => {
   });
 
   it("pv_list_prompts definition is well-formed", () => {
-    expect(pvListPromptsDefinition.name).toBe("pv_search_prompts");
-    expect(pvListPromptsDefinition.description).toContain("Search prompts");
+    expect(tools.pvListPromptsDefinition.name).toBe("pv_search_prompts");
+    expect(tools.pvListPromptsDefinition.description).toContain("Search prompts");
   });
 
   it("pv_get_prompt definition is well-formed", () => {
-    expect(pvGetPromptDefinition.name).toBe("pv_get_prompt");
-    expect(pvGetPromptDefinition.parameters).toBeDefined();
+    expect(tools.pvGetPromptDefinition.name).toBe("pv_get_prompt");
+    expect(tools.pvGetPromptDefinition.parameters).toBeDefined();
   });
 
   it("pv_create_prompt definition requires confirmation", () => {
-    expect(pvCreatePromptDefinition.name).toBe("pv_create_prompt");
-    expect(pvCreatePromptDefinition.requiresConfirmation).toBe(true);
+    expect(tools.pvCreatePromptDefinition.name).toBe("pv_create_prompt");
+    expect(tools.pvCreatePromptDefinition.requiresConfirmation).toBe(true);
+  });
+
+  it("pv_delete_prompt definition requires confirmation", () => {
+    expect(tools.pvDeletePromptDefinition.name).toBe("pv_delete_prompt");
+    expect(tools.pvDeletePromptDefinition.requiresConfirmation).toBe(true);
   });
 
   it("pv_search_prompts calls promptService.listPrompts", async () => {
-    const result = await pvSearchPromptsHandler(
+    const result = await tools.pvSearchPromptsHandler(
       { query: "hello", limit: 10 },
       { projectSlug: null }
     );
@@ -110,13 +119,13 @@ describe("Prompt Vault tools", () => {
   });
 
   it("pv_get_prompt returns the prompt when found", async () => {
-    const result = await pvGetPromptHandler({ id: "p1" }, {});
+    const result = await tools.pvGetPromptHandler({ id: "p1" }, {});
     expect(result.success).toBe(true);
     expect(result.data).toBeTruthy();
   });
 
   it("pv_create_prompt prefers projectSlug from context", async () => {
-    const result = await pvCreatePromptHandler(
+    const result = await tools.pvCreatePromptHandler(
       { title: "T", content: "C" },
       { projectSlug: "ctx-project" }
     );
@@ -127,6 +136,18 @@ describe("Prompt Vault tools", () => {
       projectSlug: "ctx-project",
       tags: undefined,
     });
+  });
+
+  it("pv_delete_prompt returns NOT_FOUND when missing", async () => {
+    const result = await tools.pvDeletePromptHandler({ id: "missing" }, {});
+    expect(result.success).toBe(false);
+    expect(result.code).toBe("NOT_FOUND");
+  });
+
+  it("pv_delete_prompt calls promptService.deletePrompt when found", async () => {
+    const result = await tools.pvDeletePromptHandler({ id: "p1" }, {});
+    expect(result.success).toBe(true);
+    expect((promptService.deletePrompt as any)).toHaveBeenCalledWith("p1");
   });
 });
 

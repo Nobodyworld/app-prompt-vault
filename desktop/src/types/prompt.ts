@@ -11,6 +11,8 @@ export interface PromptSummary {
   title: string;
   description?: string;
   category?: string;
+  isFavorite: boolean;
+  rating?: number | null;
   tags: string[];
   createdAt: string;
   updatedAt: string;
@@ -22,6 +24,8 @@ export interface CreatePromptInput {
   title: string;
   description?: string;
   category?: string;
+  isFavorite?: boolean;
+  rating?: number | null;
   body: string;
   semanticVersion: string;
   changelog?: string;
@@ -40,5 +44,7 @@ export interface UpdatePromptInput {
   title?: string;
   description?: string;
   category?: string;
+  isFavorite?: boolean;
+  rating?: number | null;
   tags?: string[];
 }

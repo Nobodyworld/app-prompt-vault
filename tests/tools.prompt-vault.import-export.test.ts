@@ -65,8 +65,12 @@ describe("Prompt Vault import/export tools", () => {
     );
 
     expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
     expect(importPromptsMock).toHaveBeenCalledTimes(1);
-    expect(result.data.created).toHaveLength(2);
-    expect(result.data.failed).toEqual([]);
+    const data = result.data as { created: unknown[]; failed: unknown[] };
+    expect(data.created).toHaveLength(2);
+    expect(data.failed).toEqual([]);
   });
 });

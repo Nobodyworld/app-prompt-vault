@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import type { PromptSummary } from "../types/prompt";
 import { addPromptVersion, updatePrompt } from "../services/promptApi";
 import { isTauriAvailable } from "../lib/tauri";
+import { useI18n } from "../i18n";
 
 function bumpPatch(version: string): string {
   const [major, minor, patch] = version.split(".");
@@ -23,6 +24,7 @@ interface EditLocationState {
 }
 
 export function EditPromptPage(): React.JSX.Element {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { state } = useLocation() as { state?: EditLocationState };
   const { id } = useParams();
@@ -33,7 +35,7 @@ export function EditPromptPage(): React.JSX.Element {
   if (!prompt || !prompt.id || prompt.id !== id) {
     return (
       <div className="status">
-        Select a prompt from the library to edit. The editor needs the prompt context passed from the list.
+        {t("edit.missingContext")}
       </div>
     );
   }
@@ -51,6 +53,8 @@ export function EditPromptPage(): React.JSX.Element {
   const [isSaving, setIsSaving] = useState(false);
   const [title, setTitle] = useState(safePrompt.title ?? "");
   const [category, setCategory] = useState(safePrompt.category ?? "");
+  const [isFavorite, setIsFavorite] = useState(Boolean(safePrompt.isFavorite));
+  const [rating, setRating] = useState<string>(safePrompt.rating == null ? "" : String(safePrompt.rating));
 
   const promptId = safePrompt.id;
 
@@ -60,12 +64,12 @@ export function EditPromptPage(): React.JSX.Element {
     event.preventDefault();
 
     if (!runtimeAvailable) {
-      setError("Desktop runtime unavailable. Launch Prompt Vault from the desktop app to save changes.");
+      setError(t("edit.runtimeUnavailable"));
       return;
     }
 
     if (!hasBody) {
-      setError("Prompt body cannot be empty.");
+      setError(t("edit.bodyEmpty"));
       return;
     }
 
@@ -73,12 +77,26 @@ export function EditPromptPage(): React.JSX.Element {
     setError(null);
 
     try {
+      const ratingNumber = rating.trim() === "" ? null : Number.parseInt(rating, 10);
+      if (rating.trim() !== "" && (Number.isNaN(ratingNumber) || ratingNumber < 1 || ratingNumber > 5)) {
+        setError(t("create.ratingInvalid"));
+        setIsSaving(false);
+        return;
+      }
+
+      const titleChanged = title.trim() !== (safePrompt?.title ?? "");
+      const categoryChanged = category.trim() !== (safePrompt?.category ?? "");
+      const favoriteChanged = isFavorite !== Boolean(safePrompt.isFavorite);
+      const ratingChanged = (safePrompt.rating ?? null) !== (ratingNumber ?? null);
+
       // Update title and category if changed
-      if (title.trim() !== (safePrompt?.title ?? "") || category.trim() !== (safePrompt?.category ?? "")) {
+      if (titleChanged || categoryChanged || favoriteChanged || ratingChanged) {
         await updatePrompt({
           id: safePrompt.id,
           title: title.trim() || undefined,
           category: category.trim() || undefined,
+          isFavorite,
+          rating: ratingNumber,
         });
       }
 
@@ -91,7 +109,7 @@ export function EditPromptPage(): React.JSX.Element {
 
       navigate("/", { replace: true, state: { refresh: true } });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to save a new prompt version.");
+      setError(err instanceof Error ? err.message : t("edit.failed"));
     } finally {
       setIsSaving(false);
     }
@@ -100,69 +118,88 @@ export function EditPromptPage(): React.JSX.Element {
   return (
     <form className="prompt-form" onSubmit={handleSubmit}>
       <header>
-        <h2>Edit Prompt</h2>
-        <p>Updating this prompt creates a new version. Older versions remain in the history.</p>
+        <h2>{t("edit.title")}</h2>
+        <p>{t("edit.subtitle")}</p>
       </header>
 
       <label>
-        Title
+        {t("edit.label.title")}
         <input
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder="Prompt title"
+          placeholder={t("edit.title.placeholder")}
           required
         />
       </label>
 
       <label>
-        Category (optional)
+        {t("edit.label.category")}
         <input
           value={category}
           onChange={(event) => setCategory(event.target.value)}
-          placeholder="e.g., Writing, Coding, Business"
+          placeholder={t("create.category.placeholder")}
         />
       </label>
 
       <label>
-        Prompt Body
+        <input
+          type="checkbox"
+          checked={isFavorite}
+          onChange={(event) => setIsFavorite(event.target.checked)}
+        />
+        {t("edit.label.favorite")}
+      </label>
+
+      <label>
+        {t("edit.label.rating")}
+        <input
+          inputMode="numeric"
+          value={rating}
+          onChange={(event) => setRating(event.target.value)}
+          placeholder={t("create.rating.placeholder")}
+        />
+      </label>
+
+      <label>
+        {t("edit.label.body")}
         <textarea
           required
           rows={12}
           value={body}
           onChange={(event) => setBody(event.target.value)}
-          placeholder="Update the prompt instructions"
+          placeholder={t("edit.body.placeholder")}
         />
       </label>
 
       <label>
-        Changelog (optional)
+        {t("edit.label.changelog")}
         <textarea
           rows={3}
           value={changelog}
           onChange={(event) => setChangelog(event.target.value)}
-          placeholder="Describe what changed in this version"
+          placeholder={t("edit.changelog.placeholder")}
         />
       </label>
 
       <div className="metadata-preview">
         <div>
-          <span className="metadata-label">ID</span>
+          <span className="metadata-label">{t("edit.meta.id")}</span>
           <span className="metadata-value">{promptId}</span>
         </div>
         {latestVersion && (
           <div>
-            <span className="metadata-label">Current Version</span>
+            <span className="metadata-label">{t("edit.meta.currentVersion")}</span>
             <span className="metadata-value">v{latestVersion.semanticVersion}</span>
           </div>
         )}
       </div>
 
       <label>
-        New Semantic Version
+        {t("edit.label.newVersion")}
         <input
           value={semanticVersion}
           onChange={(event) => setSemanticVersion(event.target.value)}
-          placeholder="e.g., 1.0.1"
+          placeholder={t("edit.newVersion.placeholder")}
           required
         />
       </label>
@@ -171,16 +208,16 @@ export function EditPromptPage(): React.JSX.Element {
 
       <div className="form-actions">
         <button className="secondary" type="button" onClick={() => navigate(-1)}>
-          Cancel
+          {t("actions.cancel")}
         </button>
         <button type="submit" disabled={isSaving || !runtimeAvailable}>
-          {isSaving ? "Saving..." : "Save Version"}
+          {isSaving ? t("actions.saving") : t("actions.save")}
         </button>
       </div>
 
       {!runtimeAvailable && (
         <p className="warning">
-          Desktop runtime unavailable. Launch Prompt Vault from the desktop app to save prompt changes.
+          {t("edit.warning.runtimeUnavailable")}
         </p>
       )}
     </form>

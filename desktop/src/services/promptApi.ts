@@ -2,6 +2,64 @@ import type { AddPromptVersionInput, CreatePromptInput, PromptSummary, PromptVer
 import { isTauriAvailable } from "../lib/tauri";
 import type { PromptVersionSummary as Version, PromptSummary as Summary } from "../types/prompt";
 
+type ApiTag = string | { id?: string; label?: string };
+
+function normalizeTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  const labels = tags
+    .map((tag) => {
+      if (typeof tag === "string") return tag;
+      if (tag && typeof tag === "object" && "label" in tag) {
+        const label = (tag as { label?: unknown }).label;
+        return typeof label === "string" ? label : "";
+      }
+      return "";
+    })
+    .map((label) => label.trim())
+    .filter((label) => label.length > 0);
+  return labels;
+}
+
+function normalizePromptSummary(raw: unknown): PromptSummary {
+  const candidate = raw as Partial<PromptSummary> & { tags?: ApiTag[] };
+  return {
+    id: candidate.id ?? "",
+    slug: candidate.slug ?? "",
+    title: candidate.title ?? "",
+    description: candidate.description,
+    category: candidate.category,
+    isFavorite: Boolean(candidate.isFavorite),
+    rating: candidate.rating ?? null,
+    tags: normalizeTags(candidate.tags),
+    createdAt: candidate.createdAt ?? nowIso(),
+    updatedAt: candidate.updatedAt ?? nowIso(),
+    latestVersion: candidate.latestVersion,
+  };
+}
+
+export interface SearchPromptsInput {
+  text?: string;
+  tag?: string;
+  category?: string;
+  projectTagId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export type PromptBundleFormat = "json" | "yaml";
+
+export interface ExportPromptBundleInput {
+  format: PromptBundleFormat;
+  promptIds?: string[];
+  includeMetadata?: boolean;
+}
+
+export interface ImportPromptBundleInput {
+  format: PromptBundleFormat;
+  content: string;
+  conflictStrategy?: "skip" | "addVersion";
+}
+
 // In-memory fallback store used when the HTTP API is unreachable (web dev without server)
 type InMemoryPrompt = Summary & { versions: Version[] };
 const inMemoryStore: { prompts: InMemoryPrompt[] } = { prompts: [] };
@@ -32,6 +90,22 @@ async function browserApiCall<T>(endpoint: string, options?: RequestInit): Promi
   }
 
   return response.json();
+}
+
+async function browserApiCallText(endpoint: string, options?: RequestInit): Promise<string> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const response = await fetch(url, {
+    headers: {
+      ...options?.headers,
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.text();
 }
 
 // --- Persistence and fallback state management ---
@@ -102,6 +176,8 @@ async function trySyncToServer(): Promise<void> {
             title: localPrompt.title,
             description: localPrompt.description,
             category: localPrompt.category,
+            isFavorite: localPrompt.isFavorite,
+            rating: localPrompt.rating ?? null,
             body: localLatest?.body || '',
             semanticVersion: localLatest?.semanticVersion || '1.0.0',
             tags: localPrompt.tags || [],
@@ -194,6 +270,8 @@ function listPromptsFromMemory(): Summary[] {
     title: p.title,
     description: p.description,
     category: p.category,
+    isFavorite: p.isFavorite,
+    rating: p.rating ?? null,
     tags: p.tags,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -218,6 +296,8 @@ function createPromptInMemory(input: CreatePromptInput): Summary {
     title: input.title,
     description: input.description,
     category: input.category,
+    isFavorite: input.isFavorite ?? false,
+    rating: input.rating ?? null,
     tags: input.tags || [],
     createdAt,
     updatedAt: createdAt,
@@ -234,6 +314,8 @@ function createPromptInMemory(input: CreatePromptInput): Summary {
     title: prompt.title,
     description: prompt.description,
     category: prompt.category,
+    isFavorite: prompt.isFavorite,
+    rating: prompt.rating ?? null,
     tags: prompt.tags,
     createdAt: prompt.createdAt,
     updatedAt: prompt.updatedAt,
@@ -264,6 +346,8 @@ function updatePromptInMemory(input: UpdatePromptInput): Summary {
   if (input.title !== undefined) prompt.title = input.title;
   if (input.description !== undefined) prompt.description = input.description;
   if (input.category !== undefined) prompt.category = input.category;
+  if (input.isFavorite !== undefined) prompt.isFavorite = input.isFavorite;
+  if (input.rating !== undefined) prompt.rating = input.rating;
   if (input.tags !== undefined) prompt.tags = input.tags;
   prompt.updatedAt = nowIso();
   prompt.latestVersion = prompt.versions.length ? prompt.versions[prompt.versions.length - 1] : undefined;
@@ -275,6 +359,8 @@ function updatePromptInMemory(input: UpdatePromptInput): Summary {
     title: prompt.title,
     description: prompt.description,
     category: prompt.category,
+    isFavorite: prompt.isFavorite,
+    rating: prompt.rating ?? null,
     tags: prompt.tags,
     createdAt: prompt.createdAt,
     updatedAt: prompt.updatedAt,
@@ -291,8 +377,8 @@ export async function listPrompts(): Promise<PromptSummary[]> {
   } else {
     // Use HTTP API with graceful fallback to in-memory store
     try {
-      const response = await browserApiCall<{ prompts: PromptSummary[] }>('/prompts');
-      return response.prompts;
+      const response = await browserApiCall<{ prompts: unknown[] }>("/prompts?page=0&pageSize=100");
+      return response.prompts.map((prompt) => normalizePromptSummary(prompt));
     } catch (err: unknown) {
       // network / connection refused -> fall back to in-memory
       console.warn('listPrompts: HTTP API failed, using in-memory fallback', err);
@@ -300,6 +386,96 @@ export async function listPrompts(): Promise<PromptSummary[]> {
       return listPromptsFromMemory();
     }
   }
+}
+
+export async function searchPrompts(input: SearchPromptsInput): Promise<PromptSummary[]> {
+  const page = input.page ?? 0;
+  const pageSize = input.pageSize ?? 100;
+
+  if (isTauriAvailable()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const response = await invoke<{ prompts: PromptSummary[] }>("search_prompts", {
+      payload: {
+        text: input.text ?? "",
+        tag: input.tag ?? "",
+        category: input.category ?? "",
+        projectTagId: input.projectTagId ?? "",
+        page,
+        pageSize,
+      },
+    });
+
+    return response.prompts;
+  }
+
+  try {
+    const params = new URLSearchParams();
+    if (input.text && input.text.trim()) params.set("text", input.text.trim());
+    if (input.tag && input.tag.trim()) params.set("tags", input.tag.trim());
+    if (input.category && input.category.trim()) params.set("category", input.category.trim());
+    if (input.projectTagId && input.projectTagId.trim()) params.set("projectTagId", input.projectTagId.trim());
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+
+    const response = await browserApiCall<{ prompts: unknown[] }>(`/prompts?${params.toString()}`);
+    return response.prompts.map((prompt) => normalizePromptSummary(prompt));
+  } catch (err: unknown) {
+    console.warn("searchPrompts: HTTP API failed, using in-memory fallback", err);
+    notifyFallback(true);
+    // fallback is client-side filtering over memory store
+    const all = listPromptsFromMemory();
+    const normalizedText = input.text?.toLowerCase().trim();
+    return all.filter((prompt) => {
+      if (input.tag && input.tag.trim()) {
+        if (!prompt.tags.some((tag) => tag.toLowerCase() === input.tag?.toLowerCase().trim())) return false;
+      }
+      if (input.category && input.category.trim()) {
+        if ((prompt.category ?? "").toLowerCase() !== input.category.toLowerCase().trim()) return false;
+      }
+      // projectTagId filtering is not supported in the in-memory fallback store
+      if (normalizedText) {
+        const title = prompt.title?.toLowerCase() ?? "";
+        const desc = prompt.description?.toLowerCase() ?? "";
+        const cat = prompt.category?.toLowerCase() ?? "";
+        const tags = prompt.tags.join(" ").toLowerCase();
+        const body = prompt.latestVersion?.body?.toLowerCase() ?? "";
+        return (
+          title.includes(normalizedText) ||
+          desc.includes(normalizedText) ||
+          cat.includes(normalizedText) ||
+          tags.includes(normalizedText) ||
+          body.includes(normalizedText)
+        );
+      }
+      return true;
+    });
+  }
+}
+
+export async function exportPromptBundle(input: ExportPromptBundleInput): Promise<string> {
+  const params = new URLSearchParams();
+  params.set("format", input.format);
+  if (input.promptIds && input.promptIds.length > 0) {
+    params.set("ids", input.promptIds.join(","));
+  }
+  if (typeof input.includeMetadata === "boolean") {
+    params.set("includeMetadata", String(input.includeMetadata));
+  }
+
+  // Prefer HTTP endpoint (works in web-mode; may also work in desktop runtime when server is running)
+  return browserApiCallText(`/bundles/prompts?${params.toString()}`);
+}
+
+export async function importPromptBundle(input: ImportPromptBundleInput): Promise<{ imported: number; skipped: number }> {
+  const response = await browserApiCall<{ imported: number; skipped: number }>("/bundles/prompts/import", {
+    method: "POST",
+    body: JSON.stringify({
+      format: input.format,
+      content: input.content,
+      conflictStrategy: input.conflictStrategy,
+    }),
+  });
+  return response;
 }
 
 export async function createPrompt(input: CreatePromptInput): Promise<PromptSummary> {

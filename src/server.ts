@@ -10,6 +10,7 @@ import { PromptVaultService } from "./services/PromptVaultService.js";
 import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from "./extensions/index.js";
 import { createPromptVaultRouter } from "./web/createPromptVaultRouter.js";
 import { createLogger, getRecentLogs, type LogLevel } from "@nw/logging";
+import { bootstrapCoreDbAuthFromApiKeys } from "@nw/core-db";
 import {
   bootstrapObservabilityFromEnv,
   createHttpMetricsMiddleware,
@@ -150,6 +151,12 @@ app.use((request, response, next) => {
   response.setHeader("X-Content-Type-Options", "nosniff");
   response.setHeader("Referrer-Policy", "no-referrer");
   response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("X-DNS-Prefetch-Control", "off");
+  response.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+  response.setHeader(
+    "Permissions-Policy",
+    "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
+  );
   if (request.protocol === "https" || request.headers["x-forwarded-proto"] === "https") {
     response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
@@ -167,6 +174,12 @@ function extractApiKeys(env: NodeJS.ProcessEnv): Record<string, string> {
   }
   return keys;
 }
+
+// Seed Core DB RBAC with any env-provided API keys so services can enforce scopes/roles.
+await bootstrapCoreDbAuthFromApiKeys(extractApiKeys(process.env), {
+  idPrefix: "prompt-vault",
+  scopes: ["prompt-vault:*"]
+});
 
 // Initialize security features
 const authManager = new AuthManager(
@@ -238,6 +251,16 @@ app.use((error: unknown, request: Request, response: Response, next: NextFunctio
 
 const apiRouter = express.Router();
 
+if (rateLimitEnabled) {
+  apiRouter.use(
+    createRateLimitMiddleware({
+      maxRequests: rateLimitMaxRequests,
+      windowMs: rateLimitWindowMs,
+      logger: logger.child({ component: "rate-limit" }),
+    })
+  );
+}
+
 apiRouter.use(
   createAuthMiddleware({
     authManager,
@@ -249,16 +272,6 @@ apiRouter.use(
 
 apiRouter.use(createAuditMiddleware({ auditLogger, logger: logger.child({ component: "audit-middleware" }) }));
 apiRouter.use(createAutoAuditMiddleware());
-
-if (rateLimitEnabled) {
-  apiRouter.use(
-    createRateLimitMiddleware({
-      maxRequests: rateLimitMaxRequests,
-      windowMs: rateLimitWindowMs,
-      logger: logger.child({ component: "rate-limit" }),
-    })
-  );
-}
 
 apiRouter.use(
   createPromptVaultRouter(service, logger.child({ component: "router" }), {

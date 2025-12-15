@@ -143,6 +143,10 @@ export interface Prompt {
   readonly description?: string;
   /** Category for organizing prompts into folders/groups. */
   readonly category?: string;
+  /** Whether the prompt is marked as a favorite. */
+  readonly isFavorite?: boolean;
+  /** Optional 1..5 rating for quick triage/sorting. */
+  readonly rating?: number | null;
   /** Tags currently linked to the prompt. */
   readonly tags: readonly Tag[];
   /** Timestamp when the prompt was created. */

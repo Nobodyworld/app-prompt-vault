@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Database as BetterSqlite3Database } from "better-sqlite3";
-import type { z, ZodIssue } from "zod";
+import { z, type ZodIssue } from "zod";
 import type { Prompt, PromptId, PromptSearchResult, PromptVersion, Tag, PromptFormat, AdvancedPromptSearchResult } from "../domain/models.js";
 import { ValidationError } from "../domain/errors.js";
 import { promptInputSchema, searchQuerySchema } from "../domain/validation.js";
@@ -17,16 +17,18 @@ import { buildButtonsSwitchboardPayload, buildPlannerBucketDraft, type ButtonsSw
 import fs from "fs";
 import path from "path";
 import yaml from "yaml";
-import { resetCoreDb } from "@nw/core-db";
+import { emitPromptEvent } from "../lib/nw-bridge.js";
 import {
-  createTag as createSharedTag,
-  listTags as listSharedTags,
-  listTagsForEntity as listSharedTagsForEntity,
-  tagPrompt as tagSharedPrompt,
-  untagPrompt as untagSharedPrompt,
-  listEntitiesByTags as listSharedEntitiesByTags,
-} from "@nw/tags-projects";
-import type { Tag as SharedTag } from "@nw/tags-projects";
+  createSharedTag,
+  getTagById,
+  listSharedTags,
+  listSharedTagsForEntity,
+  listSharedEntitiesByTags,
+  resetCoreDb,
+  tagSharedPrompt,
+  untagSharedPrompt,
+} from "../lib/platform-core.js";
+import type { SharedTag } from "../lib/platform-core.js";
 
 export interface PromptVaultServiceOptions {
   readonly telemetry?: Telemetry;
@@ -35,6 +37,13 @@ export interface PromptVaultServiceOptions {
   readonly limits?: {
     readonly maxFileSizeBytes: number;
     readonly maxPromptContentLength: number;
+  };
+}
+
+export interface PromptVaultOperationContext {
+  readonly actor?: {
+    readonly userId?: string;
+    readonly requestId?: string;
   };
 }
 
@@ -130,16 +139,21 @@ export class PromptVaultService {
    * });
    * ```
    */
-  public async createPrompt(input: z.input<typeof promptInputSchema>): Promise<Prompt> {
+  public async createPrompt(input: z.input<typeof promptInputSchema>, context: PromptVaultOperationContext = {}): Promise<Prompt> {
     return this.telemetry.withSpan("service.createPrompt", { slug: input.slug }, async () => {
       const result = promptInputSchema.safeParse(input);
       if (!result.success) {
         throw new ValidationError(result.error.issues.map((error: ZodIssue) => error.message));
       }
 
-      const { id, slug, title, description, category, body, semanticVersion, tags, changelog, format } = result.data;
+      const { id, slug, title, description, category, isFavorite, rating, body, semanticVersion, tags, projectTagId, changelog, format } =
+        result.data;
 
       validatePromptContent(body, format);
+
+      if (projectTagId) {
+        await this.assertProjectTagExists(projectTagId);
+      }
 
       const timestamp = new Date();
       const prompt: Prompt = {
@@ -148,6 +162,8 @@ export class PromptVaultService {
         title,
         description,
         category,
+        isFavorite,
+        rating,
         tags: [],
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -169,9 +185,18 @@ export class PromptVaultService {
       const sharedTags = await this.ensureSharedTags(tags ?? []);
       await this.applyTagsToPrompt(id, sharedTags.map((tag) => tag.id));
 
+      if (projectTagId) {
+        await tagSharedPrompt(id, projectTagId);
+      }
+
       const persisted = await this.enrichPromptWithTags(this.repository.getPromptById(id));
       this.logger.info("prompt_created", { promptId: persisted.id, slug });
-      this.pluginHost.emit("onPromptCreated", { prompt: persisted, version });
+      this.pluginHost.emit("onPromptCreated", { prompt: persisted, version, actor: context.actor });
+      emitPromptEvent("pv:prompt_created", {
+        promptId: persisted.id,
+        actorUserId: context.actor?.userId,
+        requestId: context.actor?.requestId,
+      });
       return persisted;
     });
   }
@@ -220,13 +245,24 @@ export class PromptVaultService {
    */
   public async updatePrompt(
     promptId: PromptId,
-    data: { title?: string; description?: string; category?: string; tags?: readonly string[] }
+    data: {
+      title?: string;
+      description?: string;
+      category?: string;
+      isFavorite?: boolean;
+      rating?: number | null;
+      tags?: readonly string[];
+      projectTagId?: string;
+    },
+    context: PromptVaultOperationContext = {}
   ): Promise<Prompt> {
     return this.telemetry.withSpan("service.updatePrompt", { promptId }, async () => {
-      const metadataUpdates: { title?: string; description?: string; category?: string } = {};
+      const metadataUpdates: { title?: string; description?: string; category?: string; isFavorite?: boolean; rating?: number | null } = {};
       if (data.title !== undefined) metadataUpdates.title = data.title;
       if (data.description !== undefined) metadataUpdates.description = data.description;
       if (data.category !== undefined) metadataUpdates.category = data.category;
+      if (data.isFavorite !== undefined) metadataUpdates.isFavorite = data.isFavorite;
+      if (data.rating !== undefined) metadataUpdates.rating = data.rating;
 
       if (Object.keys(metadataUpdates).length > 0) {
         this.repository.updatePromptMetadata(promptId, metadataUpdates);
@@ -250,8 +286,23 @@ export class PromptVaultService {
         }
       }
 
+      if (data.projectTagId) {
+        await this.assertProjectTagExists(data.projectTagId);
+        await tagSharedPrompt(promptId, data.projectTagId);
+      }
+
       const updatedPrompt = await this.getPrompt(promptId);
-      this.logger.info("prompt_updated", { promptId, fields: Object.keys(data) });
+      const updatedFields = Object.entries(data)
+        .filter(([, value]) => value !== undefined)
+        .map(([key]) => key);
+
+      this.logger.info("prompt_updated", { promptId, fields: updatedFields });
+      this.pluginHost.emit("onPromptUpdated", { prompt: updatedPrompt, updatedFields, actor: context.actor });
+      emitPromptEvent("pv:prompt_updated", {
+        promptId,
+        actorUserId: context.actor?.userId,
+        requestId: context.actor?.requestId,
+      });
       return updatedPrompt;
     });
   }
@@ -317,6 +368,7 @@ export class PromptVaultService {
       this.repository.addVersion(version);
       this.logger.info("prompt_version_added", { promptId, version: semanticVersion });
       this.pluginHost.emit("onVersionAdded", { promptId, version });
+      emitPromptEvent("pv:prompt_updated", { promptId });
       return version;
     });
   }
@@ -423,6 +475,7 @@ export class PromptVaultService {
         hasText: Boolean(query.text),
         tags: query.tags?.length ?? 0,
         formats: query.formats?.length ?? 0,
+        category: query.category,
         projectTagId: query.projectTagId,
       });
 
@@ -462,6 +515,7 @@ export class PromptVaultService {
         formats: query.formats,
         page: query.page,
         pageSize: query.pageSize,
+        category: query.category,
       });
 
       const promptsWithTags = await Promise.all(base.prompts.map((prompt) => this.enrichPromptWithTags(prompt)));
@@ -491,6 +545,205 @@ export class PromptVaultService {
    */
   public exportPlannerBucket(prompts: readonly Prompt[], limit = 10): PlannerBucketDraft | null {
     return buildPlannerBucketDraft(prompts, limit);
+  }
+
+  public async exportPromptBundle(options: {
+    readonly format: "json" | "yaml";
+    readonly promptIds?: readonly PromptId[];
+    readonly includeMetadata?: boolean;
+  }): Promise<{ bundle: Record<string, unknown>; content: string; mimeType: string }> {
+    return this.telemetry.withSpan("service.exportPromptBundle", { format: options.format }, async () => {
+      const prompts = await this.listAllPrompts();
+      const selected = options.promptIds && options.promptIds.length > 0
+        ? prompts.filter((prompt) => options.promptIds?.includes(prompt.id))
+        : prompts;
+
+      await this.ensureCoreDb();
+      const exportedPrompts = await Promise.all(
+        selected.filter((prompt) => prompt.latestVersion).map(async (prompt) => {
+          const sharedTags = await listSharedTagsForEntity({ entityType: "prompts", entityId: prompt.id });
+          const projectTag = sharedTags.find((tag) => tag.kind === "project");
+          const labelTags = sharedTags.filter((tag) => tag.kind !== "project").map((tag) => tag.name);
+
+          return {
+            slug: prompt.slug,
+            title: prompt.title,
+            description: prompt.description ?? undefined,
+            category: prompt.category ?? undefined,
+            body: prompt.latestVersion?.body ?? "",
+            format: prompt.latestVersion?.format ?? "markdown",
+            semanticVersion: prompt.latestVersion?.semanticVersion ?? "1.0.0",
+            tags: labelTags,
+            projectTagId: projectTag?.id ?? undefined,
+          };
+        })
+      );
+
+      const bundle = {
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        prompts: exportedPrompts,
+        ...(options.includeMetadata
+          ? {
+            metadata: {
+              source: "prompt-vault",
+            },
+          }
+          : {}),
+      } as const;
+
+      if (options.format === "yaml") {
+        return {
+          bundle: bundle as unknown as Record<string, unknown>,
+          content: yaml.stringify(bundle),
+          mimeType: "text/yaml",
+        };
+      }
+
+      return {
+        bundle: bundle as unknown as Record<string, unknown>,
+        content: JSON.stringify(bundle, null, 2),
+        mimeType: "application/json",
+      };
+    });
+  }
+
+  public async exportPromptBundleToFile(
+    filePath: string,
+    options: {
+      readonly format: "json" | "yaml";
+      readonly promptIds?: readonly PromptId[];
+      readonly includeMetadata?: boolean;
+    }
+  ): Promise<void> {
+    return this.telemetry.withSpan("service.exportPromptBundleToFile", { filePath, format: options.format }, async () => {
+      const { content } = await this.exportPromptBundle(options);
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(filePath, content, "utf-8");
+      this.logger.info("prompt_bundle_exported", { filePath, format: options.format });
+    });
+  }
+
+  public async importPromptBundle(input: {
+    readonly format: "json" | "yaml";
+    readonly content: string;
+    readonly conflictStrategy?: "skip" | "addVersion";
+    readonly projectTagId?: string;
+  }): Promise<{ created: number; updated: number; skipped: number }> {
+    return this.telemetry.withSpan(
+      "service.importPromptBundle",
+      { format: input.format, conflictStrategy: input.conflictStrategy ?? "addVersion" },
+      async () => {
+        const bundleSchema = z.object({
+          schemaVersion: z.number().int().optional(),
+          exportedAt: z.string().optional(),
+          prompts: z.array(
+            z.object({
+              slug: z.string().min(3),
+              title: z.string().min(1),
+              description: z.string().optional(),
+              category: z.string().optional(),
+              body: z.string().min(1),
+              format: z.enum(["markdown", "yaml", "json"]).default("markdown"),
+              semanticVersion: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/).default("1.0.0"),
+              tags: z.array(z.string()).default([]),
+              projectTagId: z.string().uuid().optional(),
+            })
+          ),
+          metadata: z.record(z.string(), z.unknown()).optional(),
+        });
+
+        let parsed: unknown;
+        try {
+          parsed = input.format === "yaml" ? yaml.parse(input.content) : JSON.parse(input.content);
+        } catch (error: unknown) {
+          throw new ValidationError([
+            `Unable to parse ${input.format.toUpperCase()} prompt bundle: ${error instanceof Error ? error.message : String(error)}`,
+          ]);
+        }
+
+        const bundle = bundleSchema.parse(parsed);
+        const conflictStrategy = input.conflictStrategy ?? "addVersion";
+        const projectTagId = input.projectTagId?.trim() ? input.projectTagId.trim() : undefined;
+        if (projectTagId) {
+          await this.assertProjectTagExists(projectTagId);
+        }
+
+        let created = 0;
+        let updated = 0;
+        let skipped = 0;
+
+        for (const prompt of bundle.prompts) {
+          const resolvedProjectTagId = prompt.projectTagId ?? projectTagId;
+          const existingId = this.repository.getPromptIdBySlug(prompt.slug);
+          if (!existingId) {
+            await this.createPrompt({
+              id: randomUUID(),
+              slug: prompt.slug,
+              title: prompt.title,
+              description: prompt.description,
+              category: prompt.category,
+              body: prompt.body,
+              format: prompt.format,
+              semanticVersion: prompt.semanticVersion,
+              tags: prompt.tags,
+              projectTagId: resolvedProjectTagId,
+              changelog: "Imported from bundle",
+            });
+            created += 1;
+            continue;
+          }
+
+          if (conflictStrategy === "skip") {
+            skipped += 1;
+            continue;
+          }
+
+          await this.updatePrompt(existingId, {
+            title: prompt.title,
+            description: prompt.description,
+            category: prompt.category,
+            tags: prompt.tags,
+            projectTagId: resolvedProjectTagId,
+          });
+
+          this.addVersion(existingId, prompt.body, prompt.semanticVersion, prompt.format, "Imported from bundle");
+          updated += 1;
+        }
+
+        return { created, updated, skipped };
+      }
+    );
+  }
+
+  public async importPromptBundleFromFile(
+    filePath: string,
+    options: {
+      readonly format?: "json" | "yaml";
+      readonly conflictStrategy?: "skip" | "addVersion";
+    } = {}
+  ): Promise<{ created: number; updated: number; skipped: number }> {
+    return this.telemetry.withSpan("service.importPromptBundleFromFile", { filePath }, async () => {
+      const stats = fs.statSync(filePath);
+      if (stats.size > this.limits.maxFileSizeBytes) {
+        throw new ValidationError([
+          `File size ${stats.size} bytes exceeds maximum allowed size of ${this.limits.maxFileSizeBytes} bytes`,
+        ]);
+      }
+
+      const content = fs.readFileSync(filePath, "utf-8");
+      const ext = path.extname(filePath).toLowerCase();
+      const format = options.format ?? (ext === ".yaml" || ext === ".yml" ? "yaml" : "json");
+
+      return this.importPromptBundle({
+        format,
+        content,
+        conflictStrategy: options.conflictStrategy,
+      });
+    });
   }
 
   /**
@@ -567,6 +820,7 @@ export class PromptVaultService {
         maxResults: query.maxResults,
         maxMatchesPerRule: query.maxMatchesPerRule,
         maxTotalMatches: query.maxTotalMatches,
+        category: query.category,
         projectTagId: query.projectTagId,
       });
 
@@ -579,6 +833,7 @@ export class PromptVaultService {
         maxResults: query.maxResults,
         maxMatchesPerRule: query.maxMatchesPerRule,
         maxTotalMatches: query.maxTotalMatches,
+        category: query.category,
       });
 
       const matchesWithTags = await Promise.all(
@@ -642,6 +897,7 @@ export class PromptVaultService {
         this.repository.touchPrompt(promptId, new Date());
         this.logger.info("prompt_tagged", { promptId, count: missing.length });
         this.pluginHost.emit("onPromptTagged", { promptId, tags: domainTags });
+        emitPromptEvent("pv:prompt_updated", { promptId });
       }
     });
   }
@@ -686,6 +942,7 @@ export class PromptVaultService {
 
       this.logger.info("prompt_untagged", { promptId, count: removalIds.length });
       this.pluginHost.emit("onPromptUntagged", { promptId, labels: normalized });
+      emitPromptEvent("pv:prompt_updated", { promptId });
     });
   }
 
@@ -694,7 +951,7 @@ export class PromptVaultService {
    * @param promptId - Identifier of the prompt to delete.
    * @param deletedAt - Timestamp when the prompt was deleted.
    */
-  public softDeletePrompt(promptId: PromptId, deletedAt: Date = new Date()): void {
+  public softDeletePrompt(promptId: PromptId, deletedAt: Date = new Date(), context: PromptVaultOperationContext = {}): void {
     return this.telemetry.withSpan("service.softDeletePrompt", { promptId }, () => {
       // Ensure the prompt exists and is not already deleted
       const prompt = this.repository.getPromptById(promptId);
@@ -704,7 +961,12 @@ export class PromptVaultService {
 
       this.repository.softDeletePrompt(promptId, deletedAt);
       this.logger.info("prompt_soft_deleted", { promptId });
-      // Note: Plugin events for soft delete not implemented yet
+      this.pluginHost.emit("onPromptDeleted", { promptId, mode: "soft", actor: context.actor });
+      emitPromptEvent("pv:prompt_deleted", {
+        promptId,
+        actorUserId: context.actor?.userId,
+        requestId: context.actor?.requestId,
+      });
     });
   }
 
@@ -741,14 +1003,19 @@ export class PromptVaultService {
    * Permanently delete a prompt and all its associated data.
    * @param promptId - Identifier of the prompt to permanently delete.
    */
-  public permanentlyDeletePrompt(promptId: PromptId): void {
+  public permanentlyDeletePrompt(promptId: PromptId, context: PromptVaultOperationContext = {}): void {
     return this.telemetry.withSpan("service.permanentlyDeletePrompt", { promptId }, () => {
       // Ensure the prompt exists (could be deleted or not)
       this.repository.getPromptById(promptId);
 
       this.repository.permanentlyDeletePrompt(promptId);
       this.logger.info("prompt_permanently_deleted", { promptId });
-      // Note: Plugin events for permanent delete not implemented yet
+      this.pluginHost.emit("onPromptDeleted", { promptId, mode: "permanent", actor: context.actor });
+      emitPromptEvent("pv:prompt_deleted", {
+        promptId,
+        actorUserId: context.actor?.userId,
+        requestId: context.actor?.requestId,
+      });
     });
   }
 
@@ -1001,6 +1268,17 @@ export class PromptVaultService {
   private async applyTagsToPrompt(promptId: string, tagIds: readonly string[]): Promise<void> {
     for (const tagId of tagIds) {
       await tagSharedPrompt(promptId, tagId);
+    }
+  }
+
+  private async assertProjectTagExists(projectTagId: string): Promise<void> {
+    await this.ensureCoreDb();
+    const tag = await getTagById(projectTagId);
+    if (!tag) {
+      throw new ValidationError([`Project tag not found: ${projectTagId}`]);
+    }
+    if (tag.kind !== "project") {
+      throw new ValidationError([`Tag ${projectTagId} is not a project tag`]);
     }
   }
 

@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use nw_secrets::{decrypt_from_base64, encrypt_to_base64};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rusqlite::{params, Connection, Error as SqlError, ErrorCode, OptionalExtension};
@@ -10,7 +11,6 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use thiserror::Error;
 use uuid::Uuid;
-use nw_secrets::{decrypt_from_base64, encrypt_to_base64};
 
 const MIGRATIONS: &str = include_str!("../../src/db/migrations/001_init.sql");
 
@@ -56,6 +56,8 @@ struct PromptSummary {
     slug: String,
     title: String,
     description: Option<String>,
+    is_favorite: bool,
+    rating: Option<i32>,
     tags: Vec<String>,
     created_at: String,
     updated_at: String,
@@ -77,6 +79,8 @@ struct CreatePromptPayload {
     slug: String,
     title: String,
     description: Option<String>,
+    is_favorite: Option<bool>,
+    rating: Option<i32>,
     body: String,
     semantic_version: String,
     changelog: Option<String>,
@@ -127,6 +131,8 @@ struct UpdatePromptPayload {
     id: String,
     title: Option<String>,
     description: Option<String>,
+    is_favorite: Option<bool>,
+    rating: Option<Option<i32>>,
     tags: Option<Vec<String>>,
 }
 
@@ -386,7 +392,7 @@ fn list_prompts_inner(state: State<'_, AppState>) -> Result<ListPromptsResponse,
         .map_err(|_| AppError::Internal("database lock poisoned".into()))?;
 
     let mut stmt = connection_guard.prepare(
-        "SELECT id, slug, title, description, created_at, updated_at
+        "SELECT id, slug, title, description, is_favorite, rating, created_at, updated_at
      FROM prompts
      ORDER BY updated_at DESC",
     )?;
@@ -397,8 +403,10 @@ fn list_prompts_inner(state: State<'_, AppState>) -> Result<ListPromptsResponse,
             slug: row.get(1)?,
             title: row.get(2)?,
             description: row.get(3)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
+            is_favorite: row.get(4)?,
+            rating: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
         })
     })?;
 
@@ -438,6 +446,9 @@ fn create_prompt_inner(
         .filter(|tag| !tag.is_empty())
         .collect();
 
+    let is_favorite = payload.is_favorite.unwrap_or(false);
+    let rating = payload.rating;
+
     let mut connection = state
         .connection
         .lock()
@@ -448,9 +459,9 @@ fn create_prompt_inner(
     let now = chrono::Utc::now().to_rfc3339();
 
     tx.execute(
-        "INSERT INTO prompts (id, slug, title, description, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-        params![id, slug, title, description, now,],
+          "INSERT INTO prompts (id, slug, title, description, is_favorite, rating, created_at, updated_at)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+          params![id, slug, title, description, if is_favorite { 1 } else { 0 }, rating, now,],
     )
     .map_err(|error| match error {
         SqlError::SqliteFailure(ref sqlite_error, _)
@@ -487,6 +498,8 @@ fn create_prompt_inner(
             slug,
             title,
             description,
+            is_favorite: if is_favorite { 1 } else { 0 },
+            rating,
             created_at: now.clone(),
             updated_at: now,
         },
@@ -567,6 +580,8 @@ fn update_prompt_inner(
         .description
         .map(|d| d.trim().to_string())
         .filter(|d| !d.is_empty());
+    let is_favorite = payload.is_favorite;
+    let rating = payload.rating;
     let tags = payload.tags.map(|t| {
         t.into_iter()
             .map(|tag| tag.trim().to_string())
@@ -574,31 +589,36 @@ fn update_prompt_inner(
             .collect::<Vec<_>>()
     });
 
-    let mut updates = Vec::new();
-    let mut params_vec = Vec::new();
+    let mut updates: Vec<&str> = Vec::new();
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-    if let Some(ref t) = title {
+    if let Some(t) = title {
         updates.push("title = ?");
-        params_vec.push(t.as_str());
+        params_vec.push(Box::new(t));
     }
-    if let Some(ref d) = description {
+    if let Some(d) = description {
         updates.push("description = ?");
-        params_vec.push(d.as_str());
+        params_vec.push(Box::new(d));
     }
+    if let Some(fav) = is_favorite {
+        updates.push("is_favorite = ?");
+        params_vec.push(Box::new(if fav { 1 } else { 0 }));
+    }
+    if let Some(r) = rating {
+        updates.push("rating = ?");
+        params_vec.push(Box::new(r));
+    }
+
     updates.push("updated_at = ?");
     let now = chrono::Utc::now().to_rfc3339();
-    params_vec.push(&now);
-
-    if updates.is_empty() {
-        return Err(AppError::Validation("No fields to update".into()));
-    }
+    params_vec.push(Box::new(now.clone()));
 
     let query = format!("UPDATE prompts SET {} WHERE id = ?", updates.join(", "));
-    params_vec.push(&id);
+    params_vec.push(Box::new(id.clone()));
 
     let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec
         .iter()
-        .map(|s| s as &dyn rusqlite::ToSql)
+        .map(|value| value.as_ref() as &dyn rusqlite::ToSql)
         .collect();
 
     connection.execute(&query, &params_refs[..])?;
@@ -612,7 +632,7 @@ fn update_prompt_inner(
 
     // Fetch updated prompt
     let mut stmt = connection.prepare(
-        "SELECT id, slug, title, description, created_at, updated_at FROM prompts WHERE id = ?",
+        "SELECT id, slug, title, description, is_favorite, rating, created_at, updated_at FROM prompts WHERE id = ?",
     )?;
     let partial = stmt.query_row([&id], |row| {
         Ok(PartialPrompt {
@@ -620,8 +640,10 @@ fn update_prompt_inner(
             slug: row.get(1)?,
             title: row.get(2)?,
             description: row.get(3)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
+            is_favorite: row.get(4)?,
+            rating: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
         })
     })?;
 
@@ -635,6 +657,8 @@ struct PartialPrompt {
     slug: String,
     title: String,
     description: Option<String>,
+    is_favorite: i64,
+    rating: Option<i32>,
     created_at: String,
     updated_at: String,
 }
@@ -651,6 +675,8 @@ fn compose_prompt_summary(
         slug: partial.slug.clone(),
         title: partial.title.clone(),
         description: partial.description.clone(),
+        is_favorite: partial.is_favorite != 0,
+        rating: partial.rating,
         tags,
         created_at: partial.created_at.clone(),
         updated_at: partial.updated_at.clone(),
@@ -766,9 +792,34 @@ fn ensure_database(handle: &AppHandle) -> Result<AppState, AppError> {
     connection.pragma_update(None, "foreign_keys", "ON")?;
     connection.execute_batch(MIGRATIONS)?;
 
+    ensure_prompt_columns(&connection)?;
+
     Ok(AppState {
         connection: Mutex::new(connection),
     })
+}
+
+fn ensure_prompt_columns(connection: &Connection) -> Result<(), AppError> {
+    let mut stmt = connection.prepare("PRAGMA table_info(prompts)")?;
+    let mut rows = stmt.query([])?;
+    let mut columns: std::collections::HashSet<String> = std::collections::HashSet::new();
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        columns.insert(name);
+    }
+
+    if !columns.contains("is_favorite") {
+        connection.execute(
+            "ALTER TABLE prompts ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+
+    if !columns.contains("rating") {
+        connection.execute("ALTER TABLE prompts ADD COLUMN rating INTEGER", [])?;
+    }
+
+    Ok(())
 }
 
 fn main() {

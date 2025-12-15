@@ -3,6 +3,11 @@ import { Router as createRouter } from "express";
 import { createHmac, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { getSecret, storeSecret } from "@nw/secrets";
+import {
+  verifyCoreDbApiKey,
+  verifyCoreDbSessionToken,
+  type CoreDbAuthContext,
+} from "@nw/core-db";
 import type { StructuredLogger } from "../observability/logger.js";
 import { createEndpointRateLimiter } from "./rate-limit.js";
 
@@ -50,6 +55,7 @@ export interface AuthPayload {
   userId: string;
   username: string;
   roles?: string[];
+  scopes?: string[];
   iat?: number;
   exp?: number;
 }
@@ -163,6 +169,10 @@ export class AuthManager {
     return this.tokenTtlSeconds;
   }
 
+  public getJwtSecret(): string {
+    return this.jwtSecret;
+  }
+
   private parseExpiresIn(expiresIn: string): number {
     const match = expiresIn.match(/^(\d+)([smhd])$/);
     if (!match) {
@@ -249,7 +259,7 @@ export function createAuthRouter(options: {
     })
   );
 
-  router.post("/token", (request, response) => {
+  router.post("/token", async (request, response) => {
     const parsed = tokenRequestSchema.safeParse(request.body ?? {});
 
     if (!parsed.success) {
@@ -271,9 +281,38 @@ export function createAuthRouter(options: {
       return;
     }
 
-    const keyName = authManager.validateApiKey(apiKey);
+    const localKeyName = authManager.validateApiKey(apiKey);
 
-    if (!keyName) {
+    let tokenPayload: Omit<AuthPayload, "iat" | "exp"> | null = null;
+
+    if (localKeyName) {
+      tokenPayload = {
+        userId: `api-key:${localKeyName}`,
+        username: localKeyName,
+        roles: ["api-key"],
+        scopes: ["prompt-vault:*"]
+      };
+    } else {
+      let authCtx: CoreDbAuthContext | null = null;
+      try {
+        authCtx = await verifyCoreDbApiKey(apiKey, { scopes: ["prompt-vault:token"] });
+      } catch (error) {
+        logger?.warn("core_db_api_key_verification_failed", {
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
+
+      if (authCtx) {
+        tokenPayload = {
+          userId: authCtx.userId,
+          username: authCtx.displayName ?? authCtx.userId,
+          roles: authCtx.roles,
+          scopes: authCtx.scopes,
+        };
+      }
+    }
+
+    if (!tokenPayload) {
       response.status(401).json({
         error: "Unauthorized",
         message: "Invalid API key",
@@ -281,21 +320,19 @@ export function createAuthRouter(options: {
       return;
     }
 
-    const token = authManager.generateToken({
-      userId: parsed.data.userId ?? keyName,
-      username: parsed.data.username ?? keyName,
-      roles: parsed.data.roles ?? ["api"],
-    });
+    // Issue Prompt Vault JWT signed with Prompt Vault secret.
+    const ttlSeconds = authManager.getTokenTtlSeconds();
+    const token = authManager.generateToken(tokenPayload);
 
     logger?.info("auth_token_issued", {
-      userId: parsed.data.userId ?? keyName,
+      userId: tokenPayload.userId,
       requestId: response.locals.requestId,
     });
 
     response.status(201).json({
       token,
       tokenType: "Bearer",
-      expiresInSeconds: authManager.getTokenTtlSeconds(),
+      expiresInSeconds: ttlSeconds,
     });
   });
 
@@ -323,7 +360,7 @@ export function createAuthMiddleware(options: {
 }) {
   const { authManager, requireAuth = false, localhostOnly = false, logger } = options;
 
-  return (request: Request, response: Response, next: NextFunction) => {
+  return async (request: Request, response: Response, next: NextFunction) => {
     // Check localhost-only restriction
     if (localhostOnly) {
       const remoteAddr = request.socket.remoteAddress || request.ip;
@@ -353,62 +390,94 @@ export function createAuthMiddleware(options: {
     const apiKeyHeader = request.header("x-api-key");
 
     let authenticated = false;
-    let authPayload: AuthPayload | null = null;
     let authMethod: string | undefined;
+    let authCtx: CoreDbAuthContext | null = null;
 
-    // Try JWT Bearer token
+    const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+    const isUnsafeMethod = unsafeMethods.has(request.method.toUpperCase());
+
+    // Treat unsafe/write methods as authenticated-only even when requireAuth=false.
+    // Note: route-level requireAuth() runs after this middleware.
+    const routeRequiresAuth = requireAuth || isUnsafeMethod;
+
+    const requiredScopes = routeRequiresAuth ? [isUnsafeMethod ? "prompt-vault:write" : "prompt-vault:read"] : [];
+
+    const scopeAllows = (granted: string, required: string): boolean => {
+      if (granted === "*" || granted === required) return true;
+      if (granted.endsWith("*")) return required.startsWith(granted.slice(0, -1));
+      return false;
+    };
+
+    const hasAllScopes = (grantedScopes: string[], required: string[]): boolean => {
+      if (required.length === 0) return true;
+      if (grantedScopes.length === 0) return false;
+      return required.every((req) => grantedScopes.some((g) => scopeAllows(g, req)));
+    };
+
+    // Try Bearer token (Prompt Vault JWT) first, then Core DB fallbacks.
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.substring(7);
-      authPayload = authManager.verifyToken(token);
 
-      if (authPayload) {
-        authenticated = true;
-        authMethod = "jwt";
-        response.locals.userId = authPayload.userId;
-        response.locals.username = authPayload.username;
-        response.locals.userRoles = authPayload.roles || [];
+      const jwtPayload = authManager.verifyToken(token);
+      if (jwtPayload) {
+        const grantedScopes = jwtPayload.scopes ?? ["prompt-vault:*"];
+        if (hasAllScopes(grantedScopes, requiredScopes)) {
+          authenticated = true;
+          authMethod = "jwt";
+          authCtx = {
+            kind: "jwt",
+            userId: jwtPayload.userId,
+            displayName: jwtPayload.username,
+            roles: jwtPayload.roles ?? [],
+            scopes: grantedScopes,
+          };
+        }
+      }
+
+      if (!authenticated) {
+        try {
+          authCtx =
+            (await verifyCoreDbSessionToken(token, authManager.getJwtSecret(), { scopes: requiredScopes })) ??
+            (await verifyCoreDbApiKey(token, { scopes: requiredScopes }));
+          if (authCtx) {
+            authenticated = true;
+            authMethod = authCtx.kind;
+          }
+        } catch (error) {
+          logger?.warn("core_db_bearer_verification_failed", {
+            message: error instanceof Error ? error.message : String(error)
+          });
+        }
       }
     }
 
-    // Try API key
+    // Try X-API-Key (local keys first, then Core DB)
     if (!authenticated && apiKeyHeader) {
-      const keyName = authManager.validateApiKey(apiKeyHeader);
-
-      if (keyName) {
+      const localKeyName = authManager.validateApiKey(apiKeyHeader);
+      if (localKeyName) {
         authenticated = true;
         authMethod = "api-key";
-        response.locals.userId = keyName;
-        response.locals.username = keyName;
-        response.locals.userRoles = ["api"];
+        authCtx = {
+          kind: "api-key",
+          userId: `api-key:${localKeyName}`,
+          displayName: localKeyName,
+          roles: ["api-key"],
+          scopes: ["prompt-vault:*"]
+        };
+      } else {
+        try {
+          authCtx = await verifyCoreDbApiKey(apiKeyHeader, { scopes: requiredScopes });
+          if (authCtx) {
+            authenticated = true;
+            authMethod = authCtx.kind;
+          }
+        } catch (error) {
+          logger?.warn("core_db_api_key_header_verification_failed", {
+            message: error instanceof Error ? error.message : String(error)
+          });
+        }
       }
     }
-
-    // Enforce API key for unsafe/write HTTP methods even when requireAuth is false.
-    const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-    if (unsafeMethods.has(request.method.toUpperCase())) {
-      // If the request was not authenticated via API key, reject.
-      const apiKeyHeaderPresent = !!apiKeyHeader;
-      const apiKeyValid = apiKeyHeaderPresent && authManager.validateApiKey(apiKeyHeader || "") !== null;
-      if (!apiKeyValid) {
-        logger?.warn("unsafe_method_requires_api_key", {
-          method: request.method,
-          path: request.path,
-          requestId: response.locals.requestId,
-        });
-
-        response.status(401).json({
-          error: "Unauthorized",
-          message: "Unsafe HTTP methods require a valid API key in the X-API-Key header",
-        });
-        return;
-      }
-      // mark authenticated by api-key
-      authenticated = true;
-      authMethod = "api-key";
-    }
-
-    // Check if authentication is required
-    const routeRequiresAuth = requireAuth || response.locals.requireAuth;
 
     if (routeRequiresAuth && !authenticated) {
       logger?.warn("authentication_required", {
@@ -428,6 +497,10 @@ export function createAuthMiddleware(options: {
     if (authenticated) {
       response.locals.authenticated = true;
       response.locals.authMethod = authMethod;
+      response.locals.userId = authCtx?.userId;
+      response.locals.username = authCtx?.displayName ?? authCtx?.userId;
+      response.locals.userRoles = authCtx?.roles ?? [];
+      response.locals.userScopes = authCtx?.scopes ?? [];
 
       logger?.debug("request_authenticated", {
         userId: response.locals.userId,
@@ -450,9 +523,17 @@ export function createAuthMiddleware(options: {
  * router.delete("/prompts/:id", requireAuth({ roles: ["admin"] }), handler);
  * ```
  */
-export function requireAuth(options: { roles?: string[] } = {}) {
+export function requireAuth(options: { roles?: string[]; scopes?: string[] } = {}) {
   return (request: Request, response: Response, next: NextFunction) => {
     response.locals.requireAuth = true;
+
+    if (!response.locals.authenticated) {
+      response.status(401).json({
+        error: "Unauthorized",
+        message: "Authentication required",
+      });
+      return;
+    }
 
     // Check role requirements
     if (options.roles && options.roles.length > 0) {
@@ -463,6 +544,23 @@ export function requireAuth(options: { roles?: string[] } = {}) {
         response.status(403).json({
           error: "Forbidden",
           message: `Access denied. Required roles: ${options.roles.join(", ")}`,
+        });
+        return;
+      }
+    }
+
+    if (options.scopes && options.scopes.length > 0) {
+      const userScopes = (response.locals.userScopes as string[]) || [];
+      const scopeAllows = (granted: string, required: string): boolean => {
+        if (granted === "*" || granted === required) return true;
+        if (granted.endsWith("*")) return required.startsWith(granted.slice(0, -1));
+        return false;
+      };
+      const hasAll = options.scopes.every((req) => userScopes.some((g) => scopeAllows(g, req)));
+      if (!hasAll) {
+        response.status(403).json({
+          error: "Forbidden",
+          message: `Access denied. Missing required scopes: ${options.scopes.join(", ")}`,
         });
         return;
       }

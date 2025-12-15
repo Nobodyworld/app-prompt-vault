@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
 
 vi.mock("@nw/tags-projects", () => {
   return {
@@ -76,7 +76,7 @@ describe("promptService facade", () => {
 
   it("filters prompts by project slug via projectTagId", async () => {
     const tagsProjects = (await import("@nw/tags-projects")) as TagsProjectsModule;
-    (tagsProjects.getProjectTagBySlug as unknown as vi.Mock).mockResolvedValue({
+    (tagsProjects.getProjectTagBySlug as unknown as Mock).mockResolvedValue({
       id: "project-123",
       slug: "demo-project",
       label: "Demo",

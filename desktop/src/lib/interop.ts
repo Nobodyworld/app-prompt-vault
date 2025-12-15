@@ -25,7 +25,7 @@ export interface ButtonsSwitchboardPayload {
   switchboard: {
     tileSize: "xs" | "sm" | "md" | "lg";
     allowSearch?: boolean;
-    phrases: Array<{ id: string; label: string; value: string }>;
+    phrases: Array<{ id: string; label: string; value: string; valueType?: "text" | "pv_prompt_id" }>;
   };
 }
 
@@ -48,12 +48,13 @@ export function buildButtonsSwitchboardPayload(
   limit = 8
 ): ButtonsSwitchboardPayload | null {
   const phrases = prompts
-    .filter((p) => p.latestVersion?.body)
+    .filter((p) => Boolean(p.id) && Boolean(p.latestVersion?.body))
     .slice(0, limit)
     .map((p, idx) => ({
       id: p.id || `pv-${idx}`,
       label: p.title || p.slug,
-      value: p.latestVersion?.body ?? "",
+      value: p.id || `pv-${idx}`,
+      valueType: "pv_prompt_id" as const,
     }));
 
   if (phrases.length === 0) return null;

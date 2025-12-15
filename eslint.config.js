@@ -26,7 +26,19 @@ export default ts.config(
       "@typescript-eslint/consistent-type-imports": ["error", {
         "prefer": "type-imports",
         "fixStyle": "separate-type-imports"
-      }]
+      }],
+      // Guardrail: prefer app-local adapter modules for UI imports of shared packages.
+      "no-restricted-imports": [
+        "warn",
+        {
+          patterns: [
+            {
+              group: ["@nw/*"],
+              message: "Prefer routing @nw/* imports through an app-local adapter module (e.g. src/lib/platform-core) for UI code.",
+            },
+          ],
+        },
+      ],
     },
   },
   {
@@ -49,7 +61,19 @@ export default ts.config(
       "@typescript-eslint/consistent-type-imports": ["error", {
         "prefer": "type-imports",
         "fixStyle": "separate-type-imports"
-      }]
+      }],
+      // Guardrail: prefer app-local adapter modules for UI imports of shared packages.
+      "no-restricted-imports": [
+        "warn",
+        {
+          patterns: [
+            {
+              group: ["@nw/*"],
+              message: "Prefer routing @nw/* imports through an app-local adapter module (e.g. src/lib/platform-core) for UI code.",
+            },
+          ],
+        },
+      ],
     },
   },
   {

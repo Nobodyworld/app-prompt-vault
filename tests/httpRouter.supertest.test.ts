@@ -1,12 +1,14 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import request, { type SuperTest, type Test } from "supertest";
+import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createProjectTag, tagPrompt } from "@nw/tags-projects";
 import { StructuredLogger } from "../src/observability/logger.js";
 import { PromptVaultService } from "../src/services/PromptVaultService.js";
 import { createPromptVaultRouter } from "../src/web/createPromptVaultRouter.js";
+
+type Agent = ReturnType<typeof request>;
 
 function buildApp() {
     const database = new Database(":memory:");
@@ -39,7 +41,7 @@ function buildApp() {
     return { app, service, database };
 }
 
-async function withApp(handler: (context: { agent: SuperTest<Test>; service: PromptVaultService }) => Promise<void>): Promise<void> {
+async function withApp(handler: (context: { agent: Agent; service: PromptVaultService }) => Promise<void>): Promise<void> {
     const { app, service, database } = buildApp();
     const agent = request(app);
 
@@ -51,6 +53,14 @@ async function withApp(handler: (context: { agent: SuperTest<Test>; service: Pro
 }
 
 describe("HTTP router (supertest)", () => {
+    it("returns 404 for missing prompts", async () => {
+        await withApp(async ({ agent }) => {
+            const missingId = randomUUID();
+            const response = await agent.get(`/api/prompts/${missingId}`).expect(404);
+            expect(String(response.body.error)).toContain("not found");
+        });
+    });
+
     it("creates, lists, and retrieves prompts with tags", async () => {
         await withApp(async ({ agent }) => {
             const slug = `supertest-${randomUUID().slice(0, 8)}`;
@@ -78,6 +88,38 @@ describe("HTTP router (supertest)", () => {
             const listResponse = await agent.get("/api/prompts?page=0&pageSize=5&tags=alpha").expect(200);
             expect(listResponse.body.pagination.total).toBeGreaterThan(0);
             expect(listResponse.body.prompts.some((prompt: { id: string }) => prompt.id === promptId)).toBe(true);
+        });
+    });
+
+    it("tags and untags prompts via endpoints", async () => {
+        await withApp(async ({ agent }) => {
+            const slug = `supertest-${randomUUID().slice(0, 8)}`;
+            const createResponse = await agent
+                .post("/api/prompts")
+                .send({
+                    slug,
+                    title: "Taggable",
+                    body: "Body",
+                    semanticVersion: "1.0.0",
+                    tags: [],
+                })
+                .expect(201);
+
+            const promptId = createResponse.body.prompt.id as string;
+
+            const tagResponse = await agent
+                .post(`/api/prompts/${promptId}/tags`)
+                .send({ tags: ["one", "two"] })
+                .expect(200);
+
+            expect(tagResponse.body.data.tags.map((tag: { label: string }) => tag.label).sort()).toEqual(["one", "two"]);
+
+            const untagResponse = await agent
+                .delete(`/api/prompts/${promptId}/tags`)
+                .send({ tags: ["one"] })
+                .expect(200);
+
+            expect(untagResponse.body.data.tags.map((tag: { label: string }) => tag.label)).toEqual(["two"]);
         });
     });
 
@@ -183,7 +225,7 @@ describe("HTTP router (supertest)", () => {
                 .set("content-type", "application/json")
                 .send("{")
                 .expect(400)
-                .expect((response) => {
+                .expect((response: any) => {
                     expect(response.body.error).toBe("Malformed JSON payload");
                     expect(response.body.requestId).toBeDefined();
                 });

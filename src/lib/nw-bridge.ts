@@ -5,9 +5,7 @@
  * with the shared Nobodyworld OS packages.
  */
 
-import { createLogger } from '@nw/logging';
-import { getEventBus, type PlatformEventMap } from '@nw/event-bus';
-import type { Tag as NwTag } from '@nw/tags-projects';
+import { createLogger, getEventBus, type PlatformEventMap, type SharedTag as NwTag } from './platform-core.js';
 import type { Tag as PvTag } from '../domain/models.js';
 
 // Create a logger for Prompt Vault operations
@@ -118,7 +116,7 @@ export function subscribeToTagEvents(handlers: {
  */
 export function emitPromptEvent(
     type: 'pv:prompt_created' | 'pv:prompt_updated' | 'pv:prompt_deleted',
-    data: { promptId: string }
+    data: { promptId: string; actorUserId?: string; requestId?: string }
 ): void {
     pvLogger.debug('Emitting prompt event', { type, promptId: data.promptId });
     eventBus.emit(type, data);
@@ -146,7 +144,7 @@ export async function initializeNwIntegrations(): Promise<void> {
 
     // Register Prompt Vault widgets with the shared pages-widgets registry
     try {
-        const { registerWidgets } = await import('@nw/pages-widgets');
+        const { registerWidgets } = await import('./platform-core.js');
         registerWidgets([
             {
                 id: 'pv:quick-add',

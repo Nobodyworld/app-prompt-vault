@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS prompts (
   title TEXT,
   description TEXT,
   category TEXT,
+  is_favorite INTEGER NOT NULL DEFAULT 0,
+  rating INTEGER,
   integrity_checksum TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,

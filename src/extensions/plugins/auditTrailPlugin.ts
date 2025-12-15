@@ -9,13 +9,48 @@ export function createAuditTrailPlugin(): PromptVaultPlugin {
       context = pluginContext;
       context.logger.info("audit_trail_plugin_ready");
     },
-    onPromptCreated({ prompt, version }) {
+    onPromptCreated({ prompt, version, actor }) {
       context?.logger.info("audit_prompt_created", {
         promptId: prompt.id,
         slug: prompt.slug,
         version: version.semanticVersion,
+        actorUserId: actor?.userId,
+        requestId: actor?.requestId,
       });
-      context?.telemetry.recordEvent("audit.prompt_created", { promptId: prompt.id });
+      context?.telemetry.recordEvent("audit.prompt_created", {
+        promptId: prompt.id,
+        actorUserId: actor?.userId,
+        requestId: actor?.requestId,
+      });
+    },
+    onPromptUpdated({ prompt, updatedFields, actor }) {
+      context?.logger.info("audit_prompt_updated", {
+        promptId: prompt.id,
+        slug: prompt.slug,
+        updatedFields,
+        actorUserId: actor?.userId,
+        requestId: actor?.requestId,
+      });
+      context?.telemetry.recordEvent("audit.prompt_updated", {
+        promptId: prompt.id,
+        updatedFields: updatedFields.join(","),
+        actorUserId: actor?.userId,
+        requestId: actor?.requestId,
+      });
+    },
+    onPromptDeleted({ promptId, mode, actor }) {
+      context?.logger.info("audit_prompt_deleted", {
+        promptId,
+        mode,
+        actorUserId: actor?.userId,
+        requestId: actor?.requestId,
+      });
+      context?.telemetry.recordEvent("audit.prompt_deleted", {
+        promptId,
+        mode,
+        actorUserId: actor?.userId,
+        requestId: actor?.requestId,
+      });
     },
     onVersionAdded({ promptId, version }) {
       context?.logger.info("audit_version_added", {

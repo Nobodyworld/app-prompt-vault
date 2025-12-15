@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { isTauriAvailable } from "../lib/tauri";
 import { subscribeFallback, isUsingFallback } from "../services/promptApi";
+import { useI18n } from "../i18n";
 
 export function Layout(): React.JSX.Element {
+  const { t } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
   const [isHidden, setIsHidden] = useState(false);
@@ -176,10 +178,14 @@ export function Layout(): React.JSX.Element {
       {isDesktop && (
         <div className="window-controls-bar">
           <div className="window-controls">
-            <button className="window-control window-control--minimize" onClick={handleMinimize} title="Minimize">
+            <button
+              className="window-control window-control--minimize"
+              onClick={handleMinimize}
+              title={t("window.minimize")}
+            >
               ─
             </button>
-            <button className="window-control window-control--close" onClick={handleClose} title="Close">
+            <button className="window-control window-control--close" onClick={handleClose} title={t("window.close")}>
               ✕
             </button>
           </div>
@@ -191,28 +197,28 @@ export function Layout(): React.JSX.Element {
             <div className={`sidebar-arrow ${sidebarExpanded ? 'sidebar-arrow--expanded' : ''}`} onClick={handleSidebarArrowClick}>
               {sidebarExpanded ? '‹' : '›'}
             </div>
-            <NavLink to="/settings" className="sidebar-icon" title="Settings">
+            <NavLink to="/settings" className="sidebar-icon" title={t("sidebar.settings")}>
               ⚙️
             </NavLink>
-            <div className="sidebar-icon sidebar-profile" title="Profile">
+            <div className="sidebar-icon sidebar-profile" title={t("sidebar.profile")}>
               👤
             </div>
           </aside>
           <div className="app-main">
             <header className="app-shell__header" data-tauri-drag-region>
-              <h1>Prompt Vault</h1>
+              <h1>{t("app.title")}</h1>
               <nav>
                 <NavLink to="/" className="nav-highlight">
-                  Library
+                  {t("nav.library")}
                 </NavLink>
                 <NavLink to="/create" className="nav-highlight" onClick={handleCreateClick}>
-                  Create
+                  {t("nav.create")}
                 </NavLink>
               </nav>
             </header>
             {fallbackActiveState && (
               <div className="offline-banner">
-                Offline / demo mode — using local fallback data. Changes will be synced when the server is available.
+                {t("banner.offline")}
               </div>
             )}
             <main className="app-shell__content">

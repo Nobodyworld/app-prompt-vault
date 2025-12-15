@@ -21,10 +21,14 @@ const promptCreateSchema = z.object({
     .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumerics and hyphens"),
   title: z.string().min(3, "Title must be at least 3 characters long"),
   description: z.string().max(2000).optional(),
+  category: z.string().max(100).optional(),
+  isFavorite: z.boolean().default(false),
+  rating: z.number().int().min(1).max(5).nullable().optional(),
   body: z.string().min(1, "Prompt body is required"),
   format: z.enum(["markdown", "yaml", "json"]).default("markdown"),
   semanticVersion: semanticVersionSchema.default("1.0.0"),
   tags: z.array(z.string().min(1)).default([]),
+  projectTagId: z.string().uuid().optional(),
   changelog: z.string().max(2000).optional(),
 });
 
@@ -44,8 +48,27 @@ const promptSearchSchema = z.object({
         .filter((item) => item.length > 0);
       return labels.length > 0 ? labels : undefined;
     }),
+  formats: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((value) => {
+      if (!value) {
+        return undefined;
+      }
+      const parts = Array.isArray(value) ? value : value.split(",");
+      const normalized = parts
+        .flatMap((part) => part.split(","))
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+
+      const allowed = new Set(["markdown", "yaml", "json"]);
+      const valid = normalized.filter((entry) => allowed.has(entry));
+      return valid.length > 0 ? (valid as Array<"markdown" | "yaml" | "json">) : undefined;
+    }),
   page: z.coerce.number().int().min(0).default(0),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  caseSensitive: z.coerce.boolean().optional(),
+  category: z.string().max(100).optional(),
   projectTagId: z.string().uuid().optional(),
 });
 
@@ -108,6 +131,8 @@ export function createPromptVaultRouter(
       title: prompt.title,
       description: prompt.description,
       category: prompt.category,
+      isFavorite: prompt.isFavorite ?? false,
+      rating: prompt.rating ?? null,
       body: prompt.latestVersion?.body,
       tags: prompt.tags.map((tag) => ({ id: tag.id, label: tag.label })),
       createdAt: prompt.createdAt,
@@ -134,6 +159,9 @@ export function createPromptVaultRouter(
       const result = await service.searchPrompts({
         text: query.text,
         tags: query.tags,
+        formats: query.formats,
+        category: query.category,
+        caseSensitive: query.caseSensitive,
         page: query.page,
         pageSize: query.pageSize,
         projectTagId: query.projectTagId,
@@ -147,6 +175,55 @@ export function createPromptVaultRouter(
           total: result.total,
         },
       });
+    })
+  );
+
+  router.get(
+    "/bundles/prompts",
+    asyncHandler("export-prompt-bundle", async (request, response) => {
+      const query = z
+        .object({
+          format: z.enum(["json", "yaml"]).default("json"),
+          ids: z
+            .string()
+            .optional()
+            .transform((value) => {
+              if (!value) return undefined;
+              const parts = value
+                .split(",")
+                .map((item) => item.trim())
+                .filter((item) => item.length > 0);
+              return parts.length > 0 ? parts : undefined;
+            }),
+          includeMetadata: z.coerce.boolean().optional(),
+        })
+        .parse(request.query);
+
+      const result = await service.exportPromptBundle({
+        format: query.format,
+        promptIds: query.ids,
+        includeMetadata: query.includeMetadata,
+      });
+
+      response.setHeader("Content-Type", result.mimeType);
+      response.send(result.content);
+    })
+  );
+
+  router.post(
+    "/bundles/prompts/import",
+    asyncHandler("import-prompt-bundle", async (request, response) => {
+      const payload = z
+        .object({
+          format: z.enum(["json", "yaml"]),
+          content: z.string().min(1),
+          conflictStrategy: z.enum(["skip", "addVersion"]).optional(),
+          projectTagId: z.string().uuid().optional(),
+        })
+        .parse(request.body);
+
+      const result = await service.importPromptBundle(payload);
+      response.json({ result });
     })
   );
 
@@ -166,6 +243,11 @@ export function createPromptVaultRouter(
       const prompt = await service.createPrompt({
         ...payload,
         id: payload.id ?? randomUUID(),
+      }, {
+        actor: {
+          userId: response.locals?.userId,
+          requestId: response.locals?.requestId,
+        },
       });
       response.status(201).json({ prompt: mapPromptToResponse(prompt) });
     })
@@ -178,11 +260,19 @@ export function createPromptVaultRouter(
         title: z.string().min(1).max(200).optional(),
         description: z.string().max(2000).optional(),
         category: z.string().max(100).optional(),
+        isFavorite: z.boolean().optional(),
+        rating: z.number().int().min(1).max(5).nullable().optional(),
         tags: z.array(z.string().min(1)).optional(),
+        projectTagId: z.string().uuid().optional(),
       }).parse(request.body);
 
       const { promptId } = promptIdParamSchema.parse(request.params);
-      const prompt = await service.updatePrompt(promptId, payload);
+      const prompt = await service.updatePrompt(promptId, payload, {
+        actor: {
+          userId: response.locals?.userId,
+          requestId: response.locals?.requestId,
+        },
+      });
       response.json({ prompt: mapPromptToResponse(prompt) });
     })
   );

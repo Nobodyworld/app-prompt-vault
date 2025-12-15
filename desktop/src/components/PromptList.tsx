@@ -36,9 +36,15 @@ export function PromptList({ prompts, copiedPromptId, onCopy, onEdit, copyError 
                 aria-label={`Copy prompt ${prompt.title}`}
               >
                 <div className="prompt-row__content">
-                  <span className="prompt-row__title">{prompt.title || "Untitled Prompt"}</span>
+                  <span className="prompt-row__title">
+                    {prompt.isFavorite ? "★ " : ""}
+                    {prompt.title || "Untitled Prompt"}
+                  </span>
                   {prompt.category && (
                     <span className="prompt-row__category">{prompt.category}</span>
+                  )}
+                  {prompt.rating != null && (
+                    <span className="prompt-row__category">Rating: {prompt.rating}</span>
                   )}
                   {hasTags && (
                     <div className="prompt-row__tags">

@@ -9,8 +9,8 @@ import { PromptVaultService } from "../services/PromptVaultService.js";
 import {
   createProjectTag,
   getProjectTagBySlug,
+  getTagById,
   listTagsForEntity,
-  tagPrompt,
   untagPrompt,
 } from "@nw/tags-projects";
 
@@ -19,6 +19,7 @@ type UpdatePromptParams = Parameters<PromptVaultService["updatePrompt"]>[1];
 
 export interface PromptFilters {
   projectSlug?: string;
+  projectTagId?: string;
   tags?: string[];
   query?: string;
 }
@@ -27,10 +28,11 @@ export interface PromptInput {
   title: string;
   body: string;
   projectSlug?: string;
+  projectTagId?: string;
   tags?: string[];
 }
 
-export interface PromptImportItem extends PromptInput {}
+export type PromptImportItem = PromptInput;
 
 let serviceInstance: PromptVaultService | null = null;
 
@@ -81,11 +83,23 @@ async function ensureProjectTagId(projectSlug: string): Promise<string> {
   return created.id;
 }
 
+async function assertProjectTagExists(projectTagId: string): Promise<void> {
+  const tag = await getTagById(projectTagId);
+  if (!tag) {
+    throw new Error(`Project tag not found: ${projectTagId}`);
+  }
+  if (tag.kind !== "project") {
+    throw new Error(`Tag ${projectTagId} is not a project tag`);
+  }
+}
+
 export async function listPrompts(filters: PromptFilters = {}): Promise<Prompt[]> {
   const service = getService();
 
   let projectTagId: string | undefined;
-  if (filters.projectSlug) {
+  if (filters.projectTagId) {
+    projectTagId = filters.projectTagId;
+  } else if (filters.projectSlug) {
     const projectTag = await getProjectTagBySlug(filters.projectSlug);
     if (!projectTag) {
       return [];
@@ -120,6 +134,14 @@ export async function createPrompt(input: PromptInput): Promise<Prompt> {
   const id = randomUUID();
   const slug = generateSlugFromTitle(input.title);
 
+  let resolvedProjectTagId: string | undefined;
+  if (input.projectTagId) {
+    await assertProjectTagExists(input.projectTagId);
+    resolvedProjectTagId = input.projectTagId;
+  } else if (input.projectSlug) {
+    resolvedProjectTagId = await ensureProjectTagId(input.projectSlug);
+  }
+
   const created = await service.createPrompt({
     id,
     slug,
@@ -130,13 +152,9 @@ export async function createPrompt(input: PromptInput): Promise<Prompt> {
     format: "markdown",
     semanticVersion: "1.0.0",
     tags: input.tags ?? [],
+    projectTagId: resolvedProjectTagId,
     changelog: "Created via orchestrator",
   } as CreatePromptParams);
-
-  if (input.projectSlug) {
-    const projectTagId = await ensureProjectTagId(input.projectSlug);
-    await tagPrompt(created.id, projectTagId);
-  }
 
   return created;
 }
@@ -145,27 +163,26 @@ export async function updatePrompt(id: string, patch: Partial<PromptInput>): Pro
   const service = getService();
 
   try {
-    if (patch.title || patch.body || patch.tags) {
-      const updateData: Partial<UpdatePromptParams> = {};
-      if (patch.title) updateData.title = patch.title;
-      if (patch.tags) updateData.tags = patch.tags;
-
-      if (Object.keys(updateData).length > 0) {
-        await service.updatePrompt(id, updateData);
-      }
-
-      if (patch.body) {
-        const existing = await service.getPrompt(id);
-        const currentVersion = existing.latestVersion?.semanticVersion ?? "1.0.0";
-        const parts = currentVersion.split(".").map((part) => Number.parseInt(part, 10) || 0);
-        const nextVersion = [parts[0], parts[1], (parts[2] ?? 0) + 1].join(".");
-        service.addVersion(id, patch.body, nextVersion, "markdown");
-      }
+    const updateData: Partial<UpdatePromptParams> = {};
+    if (patch.title) updateData.title = patch.title;
+    if (patch.tags) updateData.tags = patch.tags;
+    if (patch.projectTagId) {
+      await assertProjectTagExists(patch.projectTagId);
+      updateData.projectTagId = patch.projectTagId;
+    } else if (patch.projectSlug) {
+      updateData.projectTagId = await ensureProjectTagId(patch.projectSlug);
     }
 
-    if (patch.projectSlug) {
-      const projectTagId = await ensureProjectTagId(patch.projectSlug);
-      await tagPrompt(id, projectTagId);
+    if (Object.keys(updateData).length > 0) {
+      await service.updatePrompt(id, updateData);
+    }
+
+    if (patch.body) {
+      const existing = await service.getPrompt(id);
+      const currentVersion = existing.latestVersion?.semanticVersion ?? "1.0.0";
+      const parts = currentVersion.split(".").map((part) => Number.parseInt(part, 10) || 0);
+      const nextVersion = [parts[0], parts[1], (parts[2] ?? 0) + 1].join(".");
+      service.addVersion(id, patch.body, nextVersion, "markdown");
     }
 
     return await service.getPrompt(id);
@@ -196,6 +213,76 @@ export async function deletePrompt(id: string): Promise<void> {
       // Ignore failures; callers treat delete as best-effort.
     }
   }
+}
+
+export async function getLibraryStats(options: { projectTagId?: string } = {}): Promise<Awaited<ReturnType<PromptVaultService["getLibraryStats"]>>> {
+  const service = getService();
+  const projectTagId = options.projectTagId?.trim() ? options.projectTagId.trim() : undefined;
+
+  if (!projectTagId) {
+    return service.getLibraryStats();
+  }
+
+  await assertProjectTagExists(projectTagId);
+
+  const [allPrompts, deletedPrompts] = await Promise.all([
+    service.listAllPrompts(),
+    service.getDeletedPrompts(),
+  ]);
+
+  const matchesProject = (prompt: Prompt): boolean => prompt.tags.some((tag) => tag.id === projectTagId);
+  const projectPrompts = allPrompts.filter(matchesProject);
+  const projectDeleted = deletedPrompts.filter(matchesProject);
+
+  const formatCounts: Record<string, number> = {};
+  for (const prompt of projectPrompts) {
+    const format = prompt.latestVersion?.format;
+    if (!format) continue;
+    formatCounts[format] = (formatCounts[format] || 0) + 1;
+  }
+
+  const tagUsage = new Map<string, number>();
+  for (const prompt of projectPrompts) {
+    for (const tag of prompt.tags) {
+      if (tag.id === projectTagId) continue;
+      tagUsage.set(tag.label, (tagUsage.get(tag.label) || 0) + 1);
+    }
+  }
+
+  const mostUsedTags = Array.from(tagUsage.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([label, count]) => ({ label, count }));
+
+  const totalVersions = projectPrompts.reduce((sum, prompt) => sum + (prompt.latestVersion ? 1 : 0), 0);
+
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const createdThisWeek = projectPrompts.filter((p) => p.createdAt >= weekAgo).length;
+  const updatedThisWeek = projectPrompts.filter((p) => p.updatedAt >= weekAgo).length;
+  const deletedThisWeek = projectDeleted.filter((p) => p.deletedAt && p.deletedAt >= weekAgo).length;
+
+  return {
+    prompts: {
+      total: projectPrompts.length,
+      active: projectPrompts.length - projectDeleted.length,
+      deleted: projectDeleted.length,
+      byFormat: formatCounts,
+    },
+    tags: {
+      total: tagUsage.size,
+      averagePerPrompt: projectPrompts.length > 0 ? tagUsage.size / projectPrompts.length : 0,
+      mostUsed: mostUsedTags,
+    },
+    versions: {
+      total: totalVersions,
+      averagePerPrompt: projectPrompts.length > 0 ? totalVersions / projectPrompts.length : 0,
+    },
+    activity: {
+      createdThisWeek,
+      updatedThisWeek,
+      deletedThisWeek,
+    },
+  };
 }
 
 /**
@@ -248,4 +335,34 @@ export async function importPrompts(items: readonly PromptImportItem[]): Promise
   }
 
   return { created, failed };
+}
+
+/**
+ * Import a Planner AiDo bucket draft into Prompt Vault.
+ *
+ * The Planner draft shape is task-oriented; this maps tasks to prompt items.
+ */
+export async function importPlannerBucketDraft(
+  draft: PlannerBucketDraft,
+  options: { projectSlug?: string; defaultTags?: string[] } = {}
+): Promise<{
+  created: Prompt[];
+  failed: Array<{ title: string; reason: string }>;
+}> {
+  const items: PromptImportItem[] = (draft.tasks ?? []).map((task) => {
+    const title = task.title?.trim() || "Imported task";
+    const body = (task.note && task.note.trim().length > 0 ? task.note : title) ?? title;
+    const mergedTags = Array.from(
+      new Set([...(options.defaultTags ?? []), ...(task.tags ?? []), "planner-aido"].map((t) => t.trim()).filter(Boolean))
+    );
+
+    return {
+      title,
+      body,
+      tags: mergedTags,
+      projectSlug: options.projectSlug,
+    };
+  });
+
+  return importPrompts(items);
 }

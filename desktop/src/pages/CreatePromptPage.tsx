@@ -4,11 +4,14 @@ import { useNavigate } from "react-router-dom";
 import { createPrompt } from "../services/promptApi";
 import { isTauriAvailable } from "../lib/tauri";
 import { useToast } from "../components/Toast";
+import { useI18n } from "../i18n";
 
 interface FormState {
   title: string;
   body: string;
   category: string;
+  isFavorite: boolean;
+  rating: string;
   customTags: string;
 }
 
@@ -16,6 +19,8 @@ const INITIAL_FORM: FormState = {
   title: "",
   body: "",
   category: "",
+  isFavorite: false,
+  rating: "",
   customTags: "",
 };
 
@@ -50,6 +55,7 @@ interface PersistedState {
 }
 
 export function CreatePromptPage(): React.JSX.Element {
+  const { t } = useI18n();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [slugSuffix, setSlugSuffix] = useState<string>(createSlugSuffix);
@@ -134,38 +140,46 @@ export function CreatePromptPage(): React.JSX.Element {
     setError(null);
 
     if (!runtimeAvailable) {
-      setError("Desktop runtime unavailable. Launch Prompt Vault from the desktop app to save prompts.");
+      setError(t("create.runtimeUnavailable"));
       setIsSubmitting(false);
       return;
     }
 
     if (form.body.trim().length === 0) {
-      setError("Prompt body is required.");
+      setError(t("create.bodyRequired"));
       setIsSubmitting(false);
       return;
     }
 
     try {
-      const title = form.title.trim() || "Untitled Prompt";
+      const title = form.title.trim() || t("create.untitled");
       const customTags = parseCustomTags(form.customTags);
       const tags = Array.from(new Set([...selectedTags, ...customTags]));
+
+      const ratingNumber = form.rating.trim() === "" ? null : Number.parseInt(form.rating, 10);
+      if (form.rating.trim() !== "" && (Number.isNaN(ratingNumber) || ratingNumber < 1 || ratingNumber > 5)) {
+        setError(t("create.ratingInvalid"));
+        return;
+      }
 
       await createPrompt({
         slug: slugPreview,
         title,
         description: undefined,
         category: form.category.trim() || undefined,
+        isFavorite: form.isFavorite,
+        rating: ratingNumber,
         body: form.body,
         semanticVersion: INITIAL_VERSION,
         changelog: undefined,
         tags,
       });
 
-      addToast("Prompt created successfully!", "success");
+      addToast(t("create.success"), "success");
       resetForm();
       navigate("/");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create prompt");
+      setError(err instanceof Error ? err.message : t("create.failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -174,31 +188,50 @@ export function CreatePromptPage(): React.JSX.Element {
   return (
     <form className="prompt-form" onSubmit={handleSubmit}>
       <header>
-        <h2>Create Prompt</h2>
+        <h2>{t("create.title")}</h2>
       </header>
 
       <label>
-        Prompt Message
+        {t("create.promptMessage")}
         <textarea
           required
           rows={10}
           value={form.body}
           onChange={(event) => setForm((state) => ({ ...state, body: event.target.value }))}
-          placeholder="Paste or write your reusable prompt here"
+          placeholder={t("create.promptMessage.placeholder")}
         />
       </label>
 
       <label>
-        Category (optional)
+        {t("create.category")}
         <input
           value={form.category}
           onChange={(event) => setForm((state) => ({ ...state, category: event.target.value }))}
-          placeholder="e.g., Writing, Coding, Business"
+          placeholder={t("create.category.placeholder")}
+        />
+      </label>
+
+      <label>
+        <input
+          type="checkbox"
+          checked={form.isFavorite}
+          onChange={(event) => setForm((state) => ({ ...state, isFavorite: event.target.checked }))}
+        />
+        {t("create.favorite")}
+      </label>
+
+      <label>
+        {t("create.rating")}
+        <input
+          inputMode="numeric"
+          value={form.rating}
+          onChange={(event) => setForm((state) => ({ ...state, rating: event.target.value }))}
+          placeholder={t("create.rating.placeholder")}
         />
       </label>
 
       <section className="tag-selector">
-        <span className="tag-selector__label">Quick Tags</span>
+        <span className="tag-selector__label">{t("create.quickTags")}</span>
         <div className="tag-grid">
           {TAG_PRESETS.map((tag) => {
             const isActive = selectedTags.includes(tag);
@@ -217,26 +250,26 @@ export function CreatePromptPage(): React.JSX.Element {
       </section>
 
       <label>
-        Custom Tags (optional)
+        {t("create.customTags")}
         <input
           value={form.customTags}
           onChange={(event) => setForm((state) => ({ ...state, customTags: event.target.value }))}
-          placeholder="Add comma separated labels"
+          placeholder={t("create.customTags.placeholder")}
         />
       </label>
 
       <div className="metadata-preview">
         <div>
-          <span className="metadata-label">Slug</span>
+          <span className="metadata-label">{t("create.meta.slug")}</span>
           <span className="metadata-value">{slugPreview}</span>
         </div>
         <div>
-          <span className="metadata-label">Version</span>
+          <span className="metadata-label">{t("create.meta.version")}</span>
           <span className="metadata-value">{INITIAL_VERSION}</span>
         </div>
         {tagPreview && (
           <div>
-            <span className="metadata-label">Tags</span>
+            <span className="metadata-label">{t("create.meta.tags")}</span>
             <span className="metadata-value">{tagPreview}</span>
           </div>
         )}
@@ -246,27 +279,27 @@ export function CreatePromptPage(): React.JSX.Element {
 
       <div className="form-actions">
         <button className="secondary" type="button" onClick={() => navigate("/")}>
-          Cancel
+          {t("actions.cancel")}
         </button>
         <button
           className="danger"
           type="button"
           onClick={() => {
-            if (confirm('Are you sure you want to clear the form?')) {
+            if (confirm(t("actions.clearConfirm"))) {
               resetForm();
             }
           }}
         >
-          Clear
+          {t("actions.clear")}
         </button>
         <button type="submit" disabled={isSubmitting || !runtimeAvailable}>
-          {isSubmitting ? "Creating..." : "Create Prompt"}
+          {isSubmitting ? t("actions.creating") : t("actions.create")}
         </button>
       </div>
 
       {!runtimeAvailable && (
         <p className="warning">
-          Desktop runtime unavailable. Launch Prompt Vault from the desktop app to save prompts locally.
+          {t("create.warning.runtimeUnavailable")}
         </p>
       )}
     </form>

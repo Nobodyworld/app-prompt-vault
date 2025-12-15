@@ -36,7 +36,12 @@ function makeReq(method: string, path: string): MockReq {
         locals: {},
         ip: "127.0.0.1",
         socket: { remoteAddress: "127.0.0.1" } as unknown as Request["socket"],
-        get: vi.fn(() => "test-agent"),
+        get: vi.fn((name: string) => {
+            if (name === "set-cookie") {
+                return undefined;
+            }
+            return "test-agent";
+        }) as unknown as Request["get"],
     };
 }
 
