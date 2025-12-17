@@ -1,44 +1,39 @@
-# Contributing Guide
+# Contributing
 
-Thank you for your interest in improving Prompt Vault! This guide outlines the preferred workflow for contributing changes.
+This app lives in the Nobodyworld OS monorepo (`nobodyworld_full_build`) under `apps/app-prompt-vault/`.
 
-## Getting Started
+## Preferred verification (VS Code)
 
-1. Fork the repository and clone your fork locally.
-2. Install dependencies with `npm install`.
-3. Run `npm run quality:gate` to ensure linting, build, tests (with coverage thresholds), and security scan pass before making changes.
+- `Prompt Vault: Full Check`
 
-## Development Workflow
+## Setup
 
-1. Create a feature branch using the `<type>/<short-description>` convention (e.g., `feat/plugin-audit`).
-2. Make your changes following the architecture documented in `docs/architecture/overview.md` and the indices in
-   `docs/README.md`.
-3. Write or update tests under `tests/` to cover your changes.
-4. Run `npm run quality:gate` locally (or `npm run validate` for backwards compatibility).
-5. When adding plugins, prefer the `npm run extension:scaffold <name>` template and export them via `src/extensions/index.ts`.
-6. Document new behaviour in the relevant directory README/guide and update `CHANGELOG.md` or `docs/releases/notes.md` where
-   appropriate.
-7. Commit using descriptive messages and open a pull request against `main`.
+- Read `../../docs/DEV/DEV_WORKFLOW.md` (submodule guardrails, Windows/WSL gotchas).
+- Install dependencies once at repo root:
 
-## Code Style
+```bash
+pnpm install
+```
 
-- Use TypeScript with strict typing enabled.
-- Keep functions small and pure where possible; push side-effects to the CLI or platform-specific adapters.
-- Include docstrings (JSDoc) for classes and exported functions.
-- Format code using your editor's TypeScript formatter; lint errors must be resolved before submission.
-- Instrument long-running flows with `StructuredLogger` and telemetry spans so they appear in metrics; scrape `/observability/metrics` in local testing when troubleshooting.
+## Common commands (from repo root)
 
-## Commit & PR Expectations
+```bash
+pnpm --filter prompt-vault dev
+pnpm --filter prompt-vault desktop:dev
+pnpm --filter prompt-vault tauri:dev
+pnpm --filter prompt-vault lint
+pnpm --filter prompt-vault test
+pnpm --filter prompt-vault quality:gate
+```
 
-- Reference related issues in commit messages or PR description.
-- Provide a summary of changes, testing performed, and screenshots (if UI-related).
-- Update relevant documentation, changelog entries, and release notes.
-- Call out residual risks or follow-ups using `TODO(P#, <estimate>)` markers when code changes cannot fully resolve them.
+## Prompt Vault docs
 
-## Reporting Issues
+- Dev workflows: `docs/developer-guide/workflows.md`
+- Extension/plugins: `docs/developer-guide/guides/extension-guide.md`
+- Automation guardrails: `docs/operations/automation.md`
 
-1. Search existing issues to avoid duplicates.
-2. Include reproduction steps, expected vs. actual results, and environment details.
-3. If the issue involves security, follow the disclosure process described in `docs/policies/security.md`.
+## Submodule workflow
 
-We appreciate your contributions and feedback! Together we can build a polished Prompt Vault experience.
+Changes inside `apps/app-prompt-vault/` are changes to the app repo (submodule). Commit/push here first, then update the root repo submodule pointer.
+
+See `../../docs/DEV/DEV_WORKFLOW.md` and `../../.github/instructions/nw.commit-workflow.instructions.md`.

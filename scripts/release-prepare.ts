@@ -21,17 +21,6 @@ const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string };
 pkg.version = version;
 writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 
-const lockPath = new URL("../package-lock.json", import.meta.url);
-const lock = JSON.parse(readFileSync(lockPath, "utf8")) as {
-  version: string;
-  packages?: Record<string, { version?: string }>;
-};
-lock.version = version;
-if (lock.packages && lock.packages[""]) {
-  lock.packages[""]!.version = version;
-}
-writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-
 const changelogPath = new URL("../CHANGELOG.md", import.meta.url);
 const changelog = readFileSync(changelogPath, "utf8");
 const changelogEntry = `## [${version}] - ${date}\n\n### Added\n- TODO(P2, 1d): Describe additions.\n\n### Changed\n- TODO(P2, 1d): Describe changes.\n\n### Fixed\n- TODO(P2, 1d): Describe fixes.\n`;
