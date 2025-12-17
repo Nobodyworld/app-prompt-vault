@@ -760,6 +760,50 @@ export class PromptRepository {
   }
 
   /**
+   * List all versions for a prompt (most recent first).
+   */
+  public listPromptVersions(promptId: PromptId): readonly PromptVersion[] {
+    return this.telemetry.withSpan("repository.listPromptVersions", { promptId }, () => {
+      const exists = this.database
+        .prepare("SELECT 1 as ok FROM prompts WHERE id = @promptId LIMIT 1")
+        .get({ promptId }) as { ok?: number } | undefined;
+
+      if (!exists?.ok) {
+        throw new PromptNotFoundError(promptId);
+      }
+
+      const rows = this.database
+        .prepare(
+          `SELECT id, prompt_id, semantic_version, body, format, changelog, created_at, updated_at
+           FROM prompt_versions
+           WHERE prompt_id = @promptId
+           ORDER BY datetime(created_at) DESC, rowid DESC`
+        )
+        .all({ promptId }) as {
+          id: string;
+          prompt_id: string;
+          semantic_version: string;
+          body: string;
+          format: string | null;
+          changelog: string | null;
+          created_at: string;
+          updated_at: string;
+        }[];
+
+      return rows.map((row) => ({
+        id: row.id,
+        promptId: row.prompt_id,
+        semanticVersion: row.semantic_version,
+        body: row.body,
+        format: (row.format as PromptFormat) ?? "markdown",
+        changelog: row.changelog ?? undefined,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+      }));
+    });
+  }
+
+  /**
    * Upsert tags and attach them to a prompt. Preserves existing tag metadata when new payload omits it.
    */
   public upsertTags(promptId: PromptId, tags: readonly Tag[]): void {

@@ -108,6 +108,20 @@ async function browserApiCallText(endpoint: string, options?: RequestInit): Prom
   return response.text();
 }
 
+async function browserApiCallVoid(endpoint: string, options?: RequestInit): Promise<void> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const response = await fetch(url, {
+    headers: {
+      ...options?.headers,
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+  }
+}
+
 // --- Persistence and fallback state management ---
 const LOCAL_STORAGE_KEY = 'prompt-vault:inMemoryStore:v1';
 let fallbackActive = false;
@@ -340,6 +354,24 @@ function addPromptVersionInMemory(input: AddPromptVersionInput): Version {
   return v;
 }
 
+function listPromptVersionsFromMemory(promptId: string): Version[] {
+  loadStore();
+  const prompt = inMemoryStore.prompts.find((p) => p.id === promptId);
+  if (!prompt) throw new Error(`Prompt not found: ${promptId}`);
+  return [...prompt.versions].slice().reverse();
+}
+
+function deletePromptFromMemory(promptId: string): void {
+  loadStore();
+  const before = inMemoryStore.prompts.length;
+  inMemoryStore.prompts = inMemoryStore.prompts.filter((p) => p.id !== promptId);
+  if (inMemoryStore.prompts.length === before) {
+    throw new Error(`Prompt not found: ${promptId}`);
+  }
+  saveStore();
+  notifyFallback(true);
+}
+
 function updatePromptInMemory(input: UpdatePromptInput): Summary {
   const prompt = inMemoryStore.prompts.find((p) => p.id === input.id);
   if (!prompt) throw new Error(`Prompt not found: ${input.id}`);
@@ -535,5 +567,41 @@ export async function updatePrompt(input: UpdatePromptInput): Promise<PromptSumm
       console.warn('updatePrompt: HTTP API failed, updating in-memory', err);
       return updatePromptInMemory(input);
     }
+  }
+}
+
+export async function listPromptVersions(promptId: string): Promise<PromptVersionSummary[]> {
+  if (isTauriAvailable()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const response = await invoke<{ versions: PromptVersionSummary[] }>("list_prompt_versions", {
+      payload: { promptId },
+    });
+    return response.versions;
+  }
+
+  try {
+    const response = await browserApiCall<{ versions: PromptVersionSummary[] }>(`/prompts/${promptId}/versions`);
+    return response.versions;
+  } catch (err: unknown) {
+    console.warn("listPromptVersions: HTTP API failed, using in-memory fallback", err);
+    notifyFallback(true);
+    return listPromptVersionsFromMemory(promptId);
+  }
+}
+
+export async function deletePrompt(promptId: string): Promise<void> {
+  if (isTauriAvailable()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("delete_prompt", {
+      payload: { promptId },
+    });
+    return;
+  }
+
+  try {
+    await browserApiCallVoid(`/prompts/${promptId}`, { method: "DELETE" });
+  } catch (err: unknown) {
+    console.warn("deletePrompt: HTTP API failed, deleting in-memory", err);
+    deletePromptFromMemory(promptId);
   }
 }

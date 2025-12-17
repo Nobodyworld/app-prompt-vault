@@ -7,7 +7,7 @@ import type { StructuredLogger } from "../observability/logger.js";
 import type { Telemetry } from "../observability/telemetry.js";
 import { createNoopTelemetry } from "../observability/telemetry.js";
 import { DuplicatePromptError, PromptNotFoundError, ValidationError } from "../domain/errors.js";
-import type { Prompt } from "../domain/models.js";
+import type { Prompt, PromptVersion } from "../domain/models.js";
 import { executePromptTemplate } from "../lib/promptService.js";
 
 const semanticVersionSchema = z
@@ -157,6 +157,15 @@ export function createPromptVaultRouter(
     };
   }
 
+  function mapVersionToResponse(version: PromptVersion): Record<string, unknown> {
+    return {
+      id: version.id,
+      semanticVersion: version.semanticVersion,
+      updatedAt: version.updatedAt,
+      body: version.body,
+    };
+  }
+
   router.get(
     "/prompts",
     asyncHandler("list-prompts", async (request, response) => {
@@ -241,6 +250,15 @@ export function createPromptVaultRouter(
     })
   );
 
+  router.get(
+    "/prompts/:promptId/versions",
+    asyncHandler("list-prompt-versions", async (request, response) => {
+      const { promptId } = promptIdParamSchema.parse(request.params);
+      const versions = service.listPromptVersions(promptId);
+      response.json({ versions: versions.map(mapVersionToResponse) });
+    })
+  );
+
   router.post(
     "/prompts",
     asyncHandler("create-prompt", async (request, response) => {
@@ -255,6 +273,20 @@ export function createPromptVaultRouter(
         },
       });
       response.status(201).json({ prompt: mapPromptToResponse(prompt) });
+    })
+  );
+
+  router.delete(
+    "/prompts/:promptId",
+    asyncHandler("delete-prompt", async (request, response) => {
+      const { promptId } = promptIdParamSchema.parse(request.params);
+      service.permanentlyDeletePrompt(promptId, {
+        actor: {
+          userId: response.locals?.userId,
+          requestId: response.locals?.requestId,
+        },
+      });
+      response.status(204).send();
     })
   );
 
@@ -295,6 +327,22 @@ export function createPromptVaultRouter(
         payload.changelog
       );
       response.status(201).json({ version });
+    })
+  );
+
+  router.get(
+    "/prompts/:promptId/versions",
+    asyncHandler("list-versions", async (request, response) => {
+      const { promptId } = promptIdParamSchema.parse(request.params);
+      const versions = service.listPromptVersions(promptId);
+      response.json({
+        versions: versions.map((version) => ({
+          id: version.id,
+          semanticVersion: version.semanticVersion,
+          updatedAt: version.updatedAt,
+          body: version.body,
+        })),
+      });
     })
   );
 

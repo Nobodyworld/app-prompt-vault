@@ -407,6 +407,17 @@ body {
   display: block;
 }
 
+.prompt-row__select {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 2;
+}
+
+.prompt-row__select input {
+  cursor: pointer;
+}
+
 .prompt-row__copy {
   position: relative;
   display: block;
@@ -588,6 +599,24 @@ body {
 .metadata-value {
   font-weight: 600;
   color: #e2e8f0;
+}
+
+.version-history__content {
+  width: 100%;
+}
+
+.version-history__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+}
+
+.version-history__item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.375rem 0;
 }
 
 .prompt-form label {

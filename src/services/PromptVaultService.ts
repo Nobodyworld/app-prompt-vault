@@ -375,6 +375,15 @@ export class PromptVaultService {
   }
 
   /**
+   * List all versions for a prompt (most recent first).
+   */
+  public listPromptVersions(promptId: PromptId): readonly PromptVersion[] {
+    return this.telemetry.withSpan("service.listPromptVersions", { promptId }, () => {
+      return this.repository.listPromptVersions(promptId);
+    });
+  }
+
+  /**
    * Convert a prompt's content to a different format.
    * @param promptId - Identifier of the prompt.
    * @param targetFormat - The desired output format.

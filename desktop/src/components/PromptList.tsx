@@ -7,9 +7,19 @@ interface PromptListProps {
   readonly onCopy: (prompt: PromptSummary) => void;
   readonly onEdit: (prompt: PromptSummary) => void;
   readonly copyError?: string | null;
+  readonly selectedPromptIds?: ReadonlySet<string>;
+  readonly onToggleSelected?: (promptId: string) => void;
 }
 
-export function PromptList({ prompts, copiedPromptId, onCopy, onEdit, copyError }: PromptListProps): React.JSX.Element {
+export function PromptList({
+  prompts,
+  copiedPromptId,
+  onCopy,
+  onEdit,
+  copyError,
+  selectedPromptIds,
+  onToggleSelected,
+}: PromptListProps): React.JSX.Element {
   return (
     <div className="library-panel">
       {copyError && <p className="error library-error">{copyError}</p>}
@@ -19,16 +29,29 @@ export function PromptList({ prompts, copiedPromptId, onCopy, onEdit, copyError 
           const hasTags = prompt.tags.length > 0;
           const isCopied = copiedPromptId === prompt.id;
           const tagsDisplay = hasTags ? prompt.tags : [];
+          const isSelectable = Boolean(selectedPromptIds && onToggleSelected);
+          const isSelected = Boolean(selectedPromptIds?.has(prompt.id));
 
           return (
             <div key={prompt.id} className={`prompt-row${isCopied ? " prompt-row--copied" : ""}`}>
+              {isSelectable && (
+                <label className="prompt-row__select" aria-label={`Select prompt ${prompt.title || "Untitled Prompt"}`}>
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => onToggleSelected?.(prompt.id)}
+                    onClick={(event: React.MouseEvent<HTMLInputElement>) => event.stopPropagation()}
+                  />
+                </label>
+              )}
+
               <div
                 className="prompt-row__copy"
                 onClick={() => onCopy(prompt)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+                onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     onCopy(prompt);
                   }
@@ -40,12 +63,8 @@ export function PromptList({ prompts, copiedPromptId, onCopy, onEdit, copyError 
                     {prompt.isFavorite ? "★ " : ""}
                     {prompt.title || "Untitled Prompt"}
                   </span>
-                  {prompt.category && (
-                    <span className="prompt-row__category">{prompt.category}</span>
-                  )}
-                  {prompt.rating != null && (
-                    <span className="prompt-row__category">Rating: {prompt.rating}</span>
-                  )}
+                  {prompt.category && <span className="prompt-row__category">{prompt.category}</span>}
+                  {prompt.rating != null && <span className="prompt-row__category">Rating: {prompt.rating}</span>}
                   {hasTags && (
                     <div className="prompt-row__tags">
                       {tagsDisplay.map((tag) => (
@@ -59,6 +78,7 @@ export function PromptList({ prompts, copiedPromptId, onCopy, onEdit, copyError 
                   {isCopied && <span className="prompt-row__feedback">Copied!</span>}
                 </div>
               </div>
+
               <button
                 type="button"
                 className="prompt-row__edit"

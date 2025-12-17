@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import type { PromptSummary } from "../types/prompt";
-import { addPromptVersion, updatePrompt } from "../services/promptApi";
+import type { PromptVersionSummary } from "../types/prompt";
+import { addPromptVersion, listPromptVersions, updatePrompt } from "../services/promptApi";
 import { isTauriAvailable } from "../lib/tauri";
 import { useI18n } from "../i18n";
 
@@ -51,6 +52,8 @@ export function EditPromptPage(): React.JSX.Element {
   const [changelog, setChangelog] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [versions, setVersions] = useState<PromptVersionSummary[]>([]);
   const [title, setTitle] = useState(safePrompt.title ?? "");
   const [category, setCategory] = useState(safePrompt.category ?? "");
   const [isFavorite, setIsFavorite] = useState(Boolean(safePrompt.isFavorite));
@@ -59,6 +62,54 @@ export function EditPromptPage(): React.JSX.Element {
   const promptId = safePrompt.id;
 
   const hasBody = body.trim().length > 0;
+
+  useEffect(() => {
+    let mounted = true;
+    setIsLoadingVersions(true);
+    void (async () => {
+      try {
+        const result = await listPromptVersions(promptId);
+        if (mounted) setVersions(result);
+      } catch (err: unknown) {
+        if (mounted) {
+          setError(err instanceof Error ? err.message : t("edit.failed"));
+        }
+      } finally {
+        if (mounted) setIsLoadingVersions(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [promptId, t]);
+
+  async function handleRevert(version: PromptVersionSummary): Promise<void> {
+    if (!runtimeAvailable) {
+      setError(t("edit.runtimeUnavailable"));
+      return;
+    }
+
+    const ok = window.confirm(`Revert to v${version.semanticVersion}? This will create a new version.`);
+    if (!ok) return;
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const nextVersion = bumpPatch(latestVersion?.semanticVersion ?? version.semanticVersion);
+      await addPromptVersion({
+        promptId: safePrompt.id,
+        body: version.body,
+        semanticVersion: nextVersion,
+        changelog: `Revert to v${version.semanticVersion}`,
+      });
+      navigate("/", { replace: true, state: { refresh: true } });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t("edit.failed"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -193,6 +244,31 @@ export function EditPromptPage(): React.JSX.Element {
           </div>
         )}
       </div>
+
+      <section className="metadata-preview" aria-label="Version history">
+        <div>
+          <span className="metadata-label">Version history</span>
+          <span className="metadata-value">
+            {isLoadingVersions ? "Loading…" : `${versions.length} version(s)`}
+          </span>
+        </div>
+        {!isLoadingVersions && versions.length > 0 && (
+          <div className="metadata-value version-history__content">
+            <ul className="version-history__list">
+              {versions.map((version) => (
+                <li key={version.id} className="version-history__item">
+                  <span>
+                    v{version.semanticVersion} · {new Date(version.updatedAt).toLocaleString()}
+                  </span>
+                  <button type="button" className="secondary" onClick={() => void handleRevert(version)} disabled={isSaving}>
+                    Revert
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
 
       <label>
         {t("edit.label.newVersion")}

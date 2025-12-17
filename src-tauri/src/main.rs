@@ -125,6 +125,24 @@ struct AddVersionResponse {
     version: PromptVersionSummary,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListPromptVersionsResponse {
+    versions: Vec<PromptVersionSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListPromptVersionsPayload {
+    prompt_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeletePromptPayload {
+    prompt_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdatePromptPayload {
@@ -156,6 +174,22 @@ async fn update_prompt(
     payload: UpdatePromptPayload,
 ) -> Result<UpdatePromptResponse, String> {
     update_prompt_inner(state, payload).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn list_prompt_versions(
+    state: State<'_, AppState>,
+    payload: ListPromptVersionsPayload,
+) -> Result<ListPromptVersionsResponse, String> {
+    list_prompt_versions_inner(state, payload).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn delete_prompt(
+    state: State<'_, AppState>,
+    payload: DeletePromptPayload,
+) -> Result<(), String> {
+    delete_prompt_inner(state, payload).map_err(|error| error.to_string())
 }
 
 // Helper that persists telemetry payload into the provided directory, with rotation by max_bytes.
@@ -652,6 +686,88 @@ fn update_prompt_inner(
     Ok(UpdatePromptResponse { prompt: summary })
 }
 
+fn list_prompt_versions_inner(
+    state: State<'_, AppState>,
+    payload: ListPromptVersionsPayload,
+) -> Result<ListPromptVersionsResponse, AppError> {
+    let connection = state
+        .connection
+        .lock()
+        .map_err(|_| AppError::Internal("database lock poisoned".into()))?;
+
+    // If missing, mimic not-found behavior with a validation error string
+    // (desktop currently surfaces errors via toString())
+    let exists = connection
+        .query_row(
+            "SELECT 1 FROM prompts WHERE id = ?1",
+            [payload.prompt_id.as_str()],
+            |_| Ok(1i32),
+        )
+        .optional()?;
+    if exists.is_none() {
+        return Err(AppError::Validation("Prompt not found".into()));
+    }
+
+    let mut stmt = connection.prepare(
+        "SELECT id, semantic_version, updated_at, body
+         FROM prompt_versions
+         WHERE prompt_id = ?1
+         ORDER BY created_at DESC, rowid DESC",
+    )?;
+
+    let rows = stmt.query_map([payload.prompt_id.as_str()], |row| {
+        Ok(PromptVersionSummary {
+            id: row.get(0)?,
+            semantic_version: row.get(1)?,
+            updated_at: row.get(2)?,
+            body: row.get(3)?,
+        })
+    })?;
+
+    let mut versions = Vec::new();
+    for row in rows {
+        versions.push(row?);
+    }
+
+    Ok(ListPromptVersionsResponse { versions })
+}
+
+fn delete_prompt_inner(
+    state: State<'_, AppState>,
+    payload: DeletePromptPayload,
+) -> Result<(), AppError> {
+    let connection = state
+        .connection
+        .lock()
+        .map_err(|_| AppError::Internal("database lock poisoned".into()))?;
+
+    let exists = connection
+        .query_row(
+            "SELECT 1 FROM prompts WHERE id = ?1",
+            [payload.prompt_id.as_str()],
+            |_| Ok(1i32),
+        )
+        .optional()?;
+    if exists.is_none() {
+        return Err(AppError::Validation("Prompt not found".into()));
+    }
+
+    connection.execute(
+        "DELETE FROM prompt_tags WHERE prompt_id = ?1",
+        [payload.prompt_id.as_str()],
+    )?;
+    connection.execute(
+        "DELETE FROM prompt_versions WHERE prompt_id = ?1",
+        [payload.prompt_id.as_str()],
+    )?;
+    connection.execute(
+        "DELETE FROM prompts WHERE id = ?1",
+        [payload.prompt_id.as_str()],
+    )?;
+
+    Ok(())
+}
+
 struct PartialPrompt {
     id: String,
     slug: String,
@@ -880,6 +996,8 @@ fn main() {
             create_prompt,
             add_prompt_version,
             update_prompt,
+            list_prompt_versions,
+            delete_prompt,
             record_telemetry_event,
             get_telemetry_dir,
             force_telemetry_retention_cleanup,

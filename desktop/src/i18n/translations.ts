@@ -28,6 +28,7 @@ export const en = {
   "library.search.tagPlaceholder": "Filter by tag (exact match)",
   "library.search.categoryPlaceholder": "Filter by category (exact match)",
   "library.search.projectTagIdPlaceholder": "Filter by projectTagId (UUID)",
+  "library.search.searching": "Searching...",
   "library.search.noMatches": "No prompts match your search.",
   "library.search.found": ({ count }) =>
     `Found ${count} prompt${count === 1 ? "" : "s"}`,
@@ -154,6 +155,7 @@ export const es: Record<TranslationKey, TranslationValue> = {
   "library.search.tagPlaceholder": "Filtrar por etiqueta (coincidencia exacta)",
   "library.search.categoryPlaceholder": "Filtrar por categoría (coincidencia exacta)",
   "library.search.projectTagIdPlaceholder": "Filtrar por projectTagId (UUID)",
+  "library.search.searching": "Buscando...",
   "library.search.noMatches": "Ningún prompt coincide con tu búsqueda.",
   "library.search.found": ({ count }) =>
     `Se encontraron ${count} prompt${count === 1 ? "" : "s"}`,

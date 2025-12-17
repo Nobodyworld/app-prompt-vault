@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { exportPromptBundle, importPromptBundle, listPrompts, searchPrompts } from "../services/promptApi";
+import { deletePrompt, exportPromptBundle, importPromptBundle, listPrompts, searchPrompts, updatePrompt } from "../services/promptApi";
 import type { PromptSummary } from "../types/prompt";
 import { PromptList } from "../components/PromptList";
 import { useToast } from "../components/Toast";
@@ -15,6 +15,7 @@ export function PromptListPage(): React.JSX.Element {
   const [prompts, setPrompts] = useState<PromptSummary[]>([]);
   const [displayPrompts, setDisplayPrompts] = useState<PromptSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -25,11 +26,30 @@ export function PromptListPage(): React.JSX.Element {
   const [projectTagIdFilter, setProjectTagIdFilter] = useState("");
   const [bundleText, setBundleText] = useState("");
   const [isBundleBusy, setIsBundleBusy] = useState(false);
+  const [selectedPromptIds, setSelectedPromptIds] = useState<Set<string>>(() => new Set());
+  const [bulkTags, setBulkTags] = useState("");
+  const [isBulkBusy, setIsBulkBusy] = useState(false);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasShownSearchFallbackToastRef = useRef(false);
+  const searchRequestIdRef = useRef(0);
   const navigate = useNavigate();
   const { state } = useLocation() as { state: LocationState };
   const { addToast } = useToast();
+
+  const selectedCount = selectedPromptIds.size;
+
+  const toggleSelected = useCallback((promptId: string) => {
+    setSelectedPromptIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(promptId)) next.delete(promptId);
+      else next.add(promptId);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedPromptIds(new Set());
+  }, []);
 
   const requestReload = useCallback(() => {
     setReloadToken((token) => token + 1);
@@ -53,10 +73,13 @@ export function PromptListPage(): React.JSX.Element {
           setPrompts(data);
           setDisplayPrompts(data);
           setError(null);
+          setSelectedPromptIds(new Set());
         }
       } catch (err: unknown) {
         if (mounted) {
-          setError(err instanceof Error ? err.message : t("library.failedLoad"));
+          const message = err instanceof Error ? err.message : t("library.failedLoad");
+          setError(message);
+          addToast(message, "error");
         }
       } finally {
         if (mounted) {
@@ -73,7 +96,22 @@ export function PromptListPage(): React.JSX.Element {
   }, [reloadToken, t]);
 
   useEffect(() => {
+    // Prune selections that are no longer present in the currently displayed list.
+    setSelectedPromptIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(displayPrompts.map((p) => p.id));
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (visible.has(id)) next.add(id);
+      }
+      return next;
+    });
+  }, [displayPrompts]);
+
+  useEffect(() => {
     let cancelled = false;
+
+    const requestId = (searchRequestIdRef.current += 1);
 
     const activeText = searchQuery.trim();
     const activeTag = tagFilter.trim();
@@ -83,10 +121,13 @@ export function PromptListPage(): React.JSX.Element {
 
     if (!hasServerFilters) {
       setDisplayPrompts(prompts);
+      setIsSearching(false);
       return () => {
         cancelled = true;
       };
     }
+
+    setIsSearching(true);
 
     const handle = window.setTimeout(() => {
       void (async () => {
@@ -99,7 +140,7 @@ export function PromptListPage(): React.JSX.Element {
             page: 0,
             pageSize: 200,
           });
-          if (!cancelled) {
+          if (!cancelled && requestId === searchRequestIdRef.current) {
             setDisplayPrompts(serverResults);
           }
         } catch {
@@ -134,8 +175,12 @@ export function PromptListPage(): React.JSX.Element {
             return titleMatch || categoryMatch || tagMatch || bodyMatch;
           });
 
-          if (!cancelled) {
+          if (!cancelled && requestId === searchRequestIdRef.current) {
             setDisplayPrompts(filtered);
+          }
+        } finally {
+          if (!cancelled && requestId === searchRequestIdRef.current) {
+            setIsSearching(false);
           }
         }
       })();
@@ -147,8 +192,115 @@ export function PromptListPage(): React.JSX.Element {
     };
   }, [addToast, categoryFilter, projectTagIdFilter, prompts, searchQuery, tagFilter, t]);
 
+  const availableTags = useMemo(() => {
+    const unique = new Set<string>();
+    for (const prompt of prompts) {
+      for (const tag of prompt.tags ?? []) {
+        const trimmed = tag.trim();
+        if (trimmed) unique.add(trimmed);
+      }
+    }
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [prompts]);
+
+  const availableCategories = useMemo(() => {
+    const unique = new Set<string>();
+    for (const prompt of prompts) {
+      const category = (prompt.category ?? "").trim();
+      if (category) unique.add(category);
+    }
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [prompts]);
+
   const buttonsPayload = useMemo(() => buildButtonsSwitchboardPayload(displayPrompts), [displayPrompts]);
   const plannerDraft = useMemo(() => buildPlannerBucketDraft(displayPrompts), [displayPrompts]);
+
+  const handleSelectAllVisible = useCallback(() => {
+    setSelectedPromptIds((prev) => {
+      const allIds = displayPrompts.map((p) => p.id);
+      if (prev.size === allIds.length && allIds.length > 0) {
+        return new Set();
+      }
+      return new Set(allIds);
+    });
+  }, [displayPrompts]);
+
+  const handleBulkTag = useCallback(async () => {
+    const tagsToAdd = bulkTags
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+
+    if (tagsToAdd.length === 0) {
+      addToast("Enter one or more tags (comma-separated).", "warning");
+      return;
+    }
+
+    if (selectedPromptIds.size === 0) {
+      addToast("Select one or more prompts first.", "warning");
+      return;
+    }
+
+    setIsBulkBusy(true);
+    try {
+      const promptsById = new Map(prompts.map((p) => [p.id, p] as const));
+      for (const promptId of selectedPromptIds) {
+        const prompt = promptsById.get(promptId);
+        if (!prompt) continue;
+
+        const existing = prompt.tags ?? [];
+        const existingLower = new Set(existing.map((tag) => tag.toLowerCase()));
+        const merged = [...existing];
+        for (const tag of tagsToAdd) {
+          const key = tag.toLowerCase();
+          if (!existingLower.has(key)) {
+            existingLower.add(key);
+            merged.push(tag);
+          }
+        }
+
+        await updatePrompt({
+          id: promptId,
+          tags: merged,
+        });
+      }
+
+      addToast(`Added tags to ${selectedPromptIds.size} prompt(s).`, "success");
+      setBulkTags("");
+      requestReload();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      addToast(message, "error");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }, [addToast, bulkTags, prompts, requestReload, selectedPromptIds]);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedPromptIds.size === 0) {
+      addToast("Select one or more prompts first.", "warning");
+      return;
+    }
+
+    const ok = window.confirm(`Delete ${selectedPromptIds.size} prompt(s)? This cannot be undone.`);
+    if (!ok) return;
+
+    setIsBulkBusy(true);
+    try {
+      for (const promptId of selectedPromptIds) {
+        await deletePrompt(promptId);
+      }
+
+      addToast(`Deleted ${selectedPromptIds.size} prompt(s).`, "success");
+      clearSelection();
+      requestReload();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      addToast(message, "error");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }, [addToast, clearSelection, requestReload, selectedPromptIds]);
 
   const handleCopy = useCallback(
     async (prompt: PromptSummary): Promise<void> => {
@@ -327,12 +479,23 @@ export function PromptListPage(): React.JSX.Element {
         </div>
 
         <div className="search-filters">
+          <datalist id="prompt-vault-tag-options">
+            {availableTags.map((tag) => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
+          <datalist id="prompt-vault-category-options">
+            {availableCategories.map((category) => (
+              <option key={category} value={category} />
+            ))}
+          </datalist>
           <input
             type="text"
             value={tagFilter}
             onChange={(e) => setTagFilter(e.target.value)}
             placeholder={t("library.search.tagPlaceholder")}
             className="search-input search-input--small"
+            list="prompt-vault-tag-options"
           />
           <input
             type="text"
@@ -340,6 +503,7 @@ export function PromptListPage(): React.JSX.Element {
             onChange={(e) => setCategoryFilter(e.target.value)}
             placeholder={t("library.search.categoryPlaceholder")}
             className="search-input search-input--small"
+            list="prompt-vault-category-options"
           />
           <input
             type="text"
@@ -352,9 +516,11 @@ export function PromptListPage(): React.JSX.Element {
 
         {hasAnyFilter && (
           <p className="search-results">
-            {displayPrompts.length === 0
-              ? t("library.search.noMatches")
-              : t("library.search.found", { count: displayPrompts.length })}
+            {isSearching
+              ? t("library.search.searching")
+              : displayPrompts.length === 0
+                ? t("library.search.noMatches")
+                : t("library.search.found", { count: displayPrompts.length })}
           </p>
         )}
       </div>
@@ -453,12 +619,47 @@ export function PromptListPage(): React.JSX.Element {
 
       {copyError && <p className="error library-error">{copyError}</p>}
 
+      <div className="interop-card">
+        <div className="interop-card__header">
+          <div>
+            <p className="interop-eyebrow">Bulk actions</p>
+            <h3>Manage multiple prompts</h3>
+            <p className="interop-muted">Select prompts below, then tag or delete them in one go.</p>
+          </div>
+          <div className="interop-counts">
+            <span className="interop-pill">{selectedCount} selected</span>
+          </div>
+        </div>
+        <div className="bundle-stack">
+          <input
+            type="text"
+            value={bulkTags}
+            onChange={(event) => setBulkTags(event.target.value)}
+            placeholder="Tags to add (comma-separated)"
+            className="search-input"
+          />
+          <div className="interop-actions">
+            <button type="button" className="interop-btn secondary" onClick={handleSelectAllVisible} disabled={isBulkBusy || displayPrompts.length === 0}>
+              {selectedCount === displayPrompts.length && displayPrompts.length > 0 ? "Clear selection" : "Select all filtered"}
+            </button>
+            <button type="button" className="interop-btn" onClick={() => void handleBulkTag()} disabled={isBulkBusy}>
+              Add tags
+            </button>
+            <button type="button" className="interop-btn secondary" onClick={() => void handleBulkDelete()} disabled={isBulkBusy}>
+              Delete selected
+            </button>
+          </div>
+        </div>
+      </div>
+
       <PromptList
         prompts={displayPrompts}
         copiedPromptId={copiedPromptId}
         copyError={copyError}
         onCopy={handleCopy}
         onEdit={handleEdit}
+        selectedPromptIds={selectedPromptIds}
+        onToggleSelected={toggleSelected}
       />
     </div>
   );
