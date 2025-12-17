@@ -402,12 +402,10 @@ logsRouter.get("/", (request, response) => {
     .safeParse(request.query);
 
   if (!parsed.success) {
-    response
-      .status(400)
-      .json({
-        error: "Request validation failed",
-        details: parsed.error.issues.map((i) => i.message),
-      });
+    response.status(400).json({
+      error: "Request validation failed",
+      details: parsed.error.issues.map((i) => i.message),
+    });
     return;
   }
 
@@ -441,13 +439,11 @@ const errorHandler: ErrorRequestHandler = (error, request, response, _next) => {
     requestId: response.locals.requestId,
     traceId: response.locals.traceId,
   });
-  response
-    .status(500)
-    .json({
-      error: "Internal Server Error",
-      requestId: response.locals.requestId,
-      traceId: response.locals.traceId,
-    });
+  response.status(500).json({
+    error: "Internal Server Error",
+    requestId: response.locals.requestId,
+    traceId: response.locals.traceId,
+  });
 };
 
 app.use(errorHandler);

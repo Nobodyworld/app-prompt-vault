@@ -447,14 +447,12 @@ export function createPromptVaultRouter(
           error instanceof ValidationError
             ? error.issues
             : error.issues.map((issue) => issue.message);
-        response
-          .status(400)
-          .json({
-            error: "Request validation failed",
-            details: issues,
-            requestId,
-            traceId,
-          });
+        response.status(400).json({
+          error: "Request validation failed",
+          details: issues,
+          requestId,
+          traceId,
+        });
         return;
       }
 
