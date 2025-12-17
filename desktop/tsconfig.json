@@ -2,11 +2,18 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "react": ["../node_modules/react"],
+      "react/jsx-runtime": ["../node_modules/react/jsx-runtime"],
+      "react-dom": ["../node_modules/react-dom"]
+    },
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "allowJs": false,
     "jsx": "react-jsx",
     "strict": true,
+    "typeRoots": ["../node_modules/@types", "../../node_modules/@types"],
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
@@ -15,5 +22,5 @@
     "skipLibCheck": true
   },
   "include": ["./src"],
-  "exclude": ["../node_modules", "../dist"]
+  "exclude": ["../dist"]
 }
