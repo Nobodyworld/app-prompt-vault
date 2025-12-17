@@ -1,22 +1,27 @@
-﻿# Prompt Vault .gitignore
-# Build outputs and dependencies - DO NOT commit these files
-
-#########################################
-# NODE.JS / TYPESCRIPT BUILD ARTIFACTS
-#########################################
+# Nobodyworld OS app .gitignore
+# Keep this file consistent across apps/app-*.
 
 # Dependencies
 node_modules/
+.pnpm/
 .npm/
 .yarn/
-.pnpm/
+
+# Monorepo lockfiles (use root pnpm-lock.yaml)
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+npm-shrinkwrap.json
+
+# Turbo
+.turbo/
 
 # Build outputs
 dist/
 build/
 out/
-target/
 coverage/
+*.tsbuildinfo
 
 # Logs
 *.log
@@ -25,119 +30,67 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
-# Runtime files
 *.pid
 *.seed
 *.pid.lock
 .eslintcache
 
-#########################################
-# RUST / TAURI
-#########################################
+# Environment
+.env
+.env.*
+!.env.example
+.envrc
 
-# Rust build outputs
-target/
-**/*.rs.bk
-Cargo.lock
-
-# Tauri build artifacts
-src-tauri/target/
-*.exe
-*.app
-*.dmg
-*.deb
-*.rpm
-*.msi
-
-#########################################
-# DATABASES & DATA
-#########################################
-
-# SQLite files
+# Databases
 *.db
-*.sqlite
-*.sqlite3
 *.db-journal
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
 
-# Test data
-data/
-temp-data/
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
 
-#########################################
-# ENVIRONMENT & SECRETS
-#########################################
+# Vitest UI outputs
+html/
 
-# Environment files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.envrc
+# Tauri / Rust
+src-tauri/target/
+target/
+**/*.rs.bk
 
-# Secrets and keys
-*.pem
-*.key
-*.p12
-*.pfx
-
-#########################################
-# OPERATING SYSTEM FILES
-#########################################
-
-# Windows
+# OS files
+.DS_Store
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 *.lnk
 
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-._*
-
-# Linux
-*~
-.directory
-.Trash-*
-
-#########################################
-# DEVELOPMENT TOOLS
-#########################################
-
-# VS Code
-.vscode/
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
+# IDEs
+.idea/
+.vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
 *.code-workspace
 
-# JetBrains
-.idea/
-*.iws
-*.iml
-*.ipr
-
-# Vim
+# Vim swap files
 *.swp
 *.swo
 *~
 
-#########################################
-# PROJECT-SPECIFIC
-#########################################
-
-# Generated files
-plugins/
-temp/
+# Temp
 tmp/
+temp/
+.local/
 
-# Development utilities
-*.backup
-*.bak
-
+# Python (if any tooling uses it)
+__pycache__/
+*.py[cod]
