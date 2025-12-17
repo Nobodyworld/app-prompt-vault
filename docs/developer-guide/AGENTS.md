@@ -1,11 +1,19 @@
-# Agent Instructions
+# Agent Notes (Prompt Vault in Nobodyworld)
 
-Welcome! This repository already contains automation guardrails. Use this checklist when contributing via an agent workflow:
+In this repo (`nobodyworld_full_build`), Prompt Vault is developed via the **pnpm workspace**.
+Keep agent policy centralized at the root:
 
-1. Always run `npm run quality:gate` before committing; it enforces linting, build output, coverage thresholds, and the security scan.
-2. Enable metrics locally with `PROMPT_VAULT_METRICS=true` when touching observability code so `/observability/metrics`, `/healthz`, and `/readyz` reflect your changes.
-3. Prefer the provided scaffolding helpers (`npm run extension:scaffold <name>`, `npm run release:prepare -- <version>`) over manual edits.
-4. Keep documentation in sync with code—update `CHANGELOG.md`, `docs/releases/notes.md`, and relevant guides after feature work.
-5. Tag follow-up work using `TODO(P#, <estimate>):` markers so prioritisation remains machine-readable.
+- Baseline invariants (no agent logs, Git Maintainer only, don’t restore deletions): `../../../../.github/instructions/nw.base.instructions.md`
+- Commit workflow (apps first, then root): `../../../../.github/instructions/nw.commit-workflow.instructions.md`
 
-Refer to `docs/operations/automation.md` for deeper guardrails and `docs/guides/extension-guide.md` when authoring plugins.
+Checklist when working on Prompt Vault:
+
+1. Prefer VS Code tasks (repeatable): `Prompt Vault: Full Check`.
+2. If working on observability, enable metrics: set `PROMPT_VAULT_METRICS=true` so `/observability/metrics`, `/healthz`, and `/readyz` reflect your changes.
+3. Prefer existing app scripts, but run them via pnpm filter (examples):
+ - `pnpm --filter prompt-vault release:prepare -- <version>`
+ - `pnpm --filter prompt-vault extension:scaffold -- <name>`
+4. Keep docs in sync with code (e.g. `CHANGELOG.md`, `docs/releases/notes.md`, and relevant guides).
+5. Tag follow-up work using `TODO(P#, <estimate>):` markers so prioritization remains machine-readable.
+
+For deeper automation guardrails, see `docs/operations/automation.md` and `docs/guides/extension-guide.md`.
