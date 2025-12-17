@@ -17,7 +17,7 @@ export type PromptConversionTarget = PromptFormat;
 export function convertPromptContent(
   sourceContent: string,
   sourceFormat: PromptFormat,
-  targetFormat: PromptFormat
+  targetFormat: PromptFormat,
 ): string {
   // If source and target formats are the same, return as-is
   if (sourceFormat === targetFormat) {
@@ -56,7 +56,11 @@ export function convertPromptContent(
         return YAML.stringify(parsedContent);
       case "markdown":
         // For markdown, extract content from the object
-        if (typeof parsedContent === "object" && parsedContent !== null && "content" in parsedContent) {
+        if (
+          typeof parsedContent === "object" &&
+          parsedContent !== null &&
+          "content" in parsedContent
+        ) {
           return String((parsedContent as { content: unknown }).content);
         }
         // If it's not an object with content, convert the whole thing to YAML-like markdown
@@ -79,8 +83,10 @@ export function detectPromptFormat(content: string): PromptFormat {
   const trimmed = content.trim();
 
   // Try JSON first
-  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
-      (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+  if (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  ) {
     try {
       JSON.parse(trimmed);
       return "json";
@@ -93,8 +99,11 @@ export function detectPromptFormat(content: string): PromptFormat {
   try {
     YAML.parse(trimmed);
     // Check for YAML indicators (colons, dashes at start of lines)
-    if (trimmed.includes(": ") || trimmed.includes(":\n") ||
-        trimmed.split("\n").some(line => line.trim().startsWith("- "))) {
+    if (
+      trimmed.includes(": ") ||
+      trimmed.includes(":\n") ||
+      trimmed.split("\n").some((line) => line.trim().startsWith("- "))
+    ) {
       return "yaml";
     }
   } catch {
@@ -111,7 +120,10 @@ export function detectPromptFormat(content: string): PromptFormat {
  * @param format - The expected format
  * @returns true if valid, throws error if invalid
  */
-export function validatePromptContent(content: string, format: PromptFormat): boolean {
+export function validatePromptContent(
+  content: string,
+  format: PromptFormat,
+): boolean {
   try {
     switch (format) {
       case "json":

@@ -15,13 +15,16 @@ export function Layout(): React.JSX.Element {
   const inactivityTimerRef = useRef<number | null>(null);
   const hoverTimerRef = useRef<number | null>(null);
   const isDesktop = isTauriAvailable();
-  const [fallbackActiveState, setFallbackActiveState] = useState<boolean>(isUsingFallback());
+  const [fallbackActiveState, setFallbackActiveState] =
+    useState<boolean>(isUsingFallback());
 
   const handleSidebarArrowClick = (): void => {
     setSidebarExpanded(!sidebarExpanded);
   };
 
-  const handleCreateClick = (event: React.MouseEvent<HTMLAnchorElement>): void => {
+  const handleCreateClick = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+  ): void => {
     if (location.pathname === "/create") {
       event.preventDefault();
       // Dispatch custom event to trigger form submission
@@ -99,7 +102,7 @@ export function Layout(): React.JSX.Element {
     resetInactivityTimer();
 
     // Add mouse move listener
-    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener("mousemove", handleMouseMove);
 
     return () => {
       if (inactivityTimerRef.current) {
@@ -108,7 +111,7 @@ export function Layout(): React.JSX.Element {
       if (hoverTimerRef.current) {
         clearTimeout(hoverTimerRef.current);
       }
-      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener("mousemove", handleMouseMove);
     };
   }, [isHidden, isDesktop]);
 
@@ -130,48 +133,49 @@ export function Layout(): React.JSX.Element {
     const handleKeyDown = (event: KeyboardEvent): void => {
       // Only handle shortcuts when not typing in an input/textarea
       const target = event.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.contentEditable === "true"
+      ) {
         return;
       }
 
       // Ctrl/Cmd + N: Create new prompt
-      if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
+      if ((event.ctrlKey || event.metaKey) && event.key === "n") {
         event.preventDefault();
-        navigate('/create');
+        navigate("/create");
         return;
       }
 
       // Ctrl/Cmd + K: Focus search (only on library page)
-      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+      if ((event.ctrlKey || event.metaKey) && event.key === "k") {
         event.preventDefault();
-        if (location.pathname === '/') {
+        if (location.pathname === "/") {
           // Dispatch custom event to focus search in PromptListPage
-          window.dispatchEvent(new CustomEvent('focus-search'));
+          window.dispatchEvent(new CustomEvent("focus-search"));
         }
         return;
       }
 
       // Escape: Clear search or go back
-      if (event.key === 'Escape') {
-        if (location.pathname === '/') {
+      if (event.key === "Escape") {
+        if (location.pathname === "/") {
           // Dispatch custom event to clear search in PromptListPage
-          window.dispatchEvent(new CustomEvent('clear-search'));
+          window.dispatchEvent(new CustomEvent("clear-search"));
         }
         return;
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [navigate, location.pathname]);
 
   return (
     <>
       {isDesktop && showOverlay && (
-        <div
-          className="window-overlay"
-          onMouseEnter={handleOverlayHover}
-        >
+        <div className="window-overlay" onMouseEnter={handleOverlayHover}>
           <div className="overlay-icon">💬</div>
         </div>
       )}
@@ -185,22 +189,40 @@ export function Layout(): React.JSX.Element {
             >
               ─
             </button>
-            <button className="window-control window-control--close" onClick={handleClose} title={t("window.close")}>
+            <button
+              className="window-control window-control--close"
+              onClick={handleClose}
+              title={t("window.close")}
+            >
               ✕
             </button>
           </div>
         </div>
       )}
-      <div className={`app-shell ${isDesktop && isHidden ? 'app-shell--hidden' : ''}`}>
+      <div
+        className={`app-shell ${isDesktop && isHidden ? "app-shell--hidden" : ""}`}
+      >
         <div className="app-layout">
-          <aside className={`app-sidebar ${sidebarExpanded ? 'app-sidebar--expanded' : ''}`}>
-            <div className={`sidebar-arrow ${sidebarExpanded ? 'sidebar-arrow--expanded' : ''}`} onClick={handleSidebarArrowClick}>
-              {sidebarExpanded ? '‹' : '›'}
+          <aside
+            className={`app-sidebar ${sidebarExpanded ? "app-sidebar--expanded" : ""}`}
+          >
+            <div
+              className={`sidebar-arrow ${sidebarExpanded ? "sidebar-arrow--expanded" : ""}`}
+              onClick={handleSidebarArrowClick}
+            >
+              {sidebarExpanded ? "‹" : "›"}
             </div>
-            <NavLink to="/settings" className="sidebar-icon" title={t("sidebar.settings")}>
+            <NavLink
+              to="/settings"
+              className="sidebar-icon"
+              title={t("sidebar.settings")}
+            >
               ⚙️
             </NavLink>
-            <div className="sidebar-icon sidebar-profile" title={t("sidebar.profile")}>
+            <div
+              className="sidebar-icon sidebar-profile"
+              title={t("sidebar.profile")}
+            >
               👤
             </div>
           </aside>
@@ -211,15 +233,17 @@ export function Layout(): React.JSX.Element {
                 <NavLink to="/" className="nav-highlight">
                   {t("nav.library")}
                 </NavLink>
-                <NavLink to="/create" className="nav-highlight" onClick={handleCreateClick}>
+                <NavLink
+                  to="/create"
+                  className="nav-highlight"
+                  onClick={handleCreateClick}
+                >
                   {t("nav.create")}
                 </NavLink>
               </nav>
             </header>
             {fallbackActiveState && (
-              <div className="offline-banner">
-                {t("banner.offline")}
-              </div>
+              <div className="offline-banner">{t("banner.offline")}</div>
             )}
             <main className="app-shell__content">
               <Outlet />

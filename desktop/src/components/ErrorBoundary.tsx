@@ -18,11 +18,15 @@ function Fallback({ error }: { error: Error | null }): React.ReactElement {
 }
 
 export function ErrorBoundary({ children }: Props): React.ReactElement {
-  async function handleError(error: Error, info: { componentStack: string }): Promise<void> {
+  async function handleError(
+    error: Error,
+    info: { componentStack: string },
+  ): Promise<void> {
     try {
-      const traceId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : String(Date.now());
+      const traceId =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : String(Date.now());
 
       const payload = {
         name: "error_boundary",
@@ -38,7 +42,7 @@ export function ErrorBoundary({ children }: Props): React.ReactElement {
         // invokeOrThrow will import the Tauri core invoke and send to Rust command
         await invokeOrThrow("record_telemetry_event", payload).catch((err) => {
           // swallow errors - telemetry must not crash the app; keep debug trace
-          console.debug('invokeOrThrow record_telemetry_event failed', err);
+          console.debug("invokeOrThrow record_telemetry_event failed", err);
         });
       } else {
         // When not running in Tauri (dev browser), just log to console for diagnostics

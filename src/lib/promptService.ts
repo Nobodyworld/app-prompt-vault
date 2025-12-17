@@ -3,8 +3,15 @@ import Database from "better-sqlite3";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { Prompt } from "../domain/models.js";
-import { buildPlannerBucketDraft, type PlannerBucketDraft } from "../domain/interop.js";
-import { renderTemplate, templateVariablesSchema, type TemplateVariables } from "../domain/templating.js";
+import {
+  buildPlannerBucketDraft,
+  type PlannerBucketDraft,
+} from "../domain/interop.js";
+import {
+  renderTemplate,
+  templateVariablesSchema,
+  type TemplateVariables,
+} from "../domain/templating.js";
 import { PromptVaultService } from "../services/PromptVaultService.js";
 import {
   createProjectTag,
@@ -40,7 +47,9 @@ let serviceInstance: PromptVaultService | null = null;
  * Test hook to inject a PromptVaultService instance.
  * When set, the injected instance will be used instead of creating a new one.
  */
-export function setPromptVaultServiceForTests(service: PromptVaultService | null): void {
+export function setPromptVaultServiceForTests(
+  service: PromptVaultService | null,
+): void {
   serviceInstance = service;
 }
 
@@ -79,7 +88,10 @@ async function ensureProjectTagId(projectSlug: string): Promise<string> {
   if (existing) {
     return existing.id;
   }
-  const created = await createProjectTag({ slug: projectSlug, label: projectSlug });
+  const created = await createProjectTag({
+    slug: projectSlug,
+    label: projectSlug,
+  });
   return created.id;
 }
 
@@ -93,7 +105,9 @@ async function assertProjectTagExists(projectTagId: string): Promise<void> {
   }
 }
 
-export async function listPrompts(filters: PromptFilters = {}): Promise<Prompt[]> {
+export async function listPrompts(
+  filters: PromptFilters = {},
+): Promise<Prompt[]> {
   const service = getService();
 
   let projectTagId: string | undefined;
@@ -159,7 +173,10 @@ export async function createPrompt(input: PromptInput): Promise<Prompt> {
   return created;
 }
 
-export async function updatePrompt(id: string, patch: Partial<PromptInput>): Promise<Prompt | null> {
+export async function updatePrompt(
+  id: string,
+  patch: Partial<PromptInput>,
+): Promise<Prompt | null> {
   const service = getService();
 
   try {
@@ -180,7 +197,9 @@ export async function updatePrompt(id: string, patch: Partial<PromptInput>): Pro
     if (patch.body) {
       const existing = await service.getPrompt(id);
       const currentVersion = existing.latestVersion?.semanticVersion ?? "1.0.0";
-      const parts = currentVersion.split(".").map((part) => Number.parseInt(part, 10) || 0);
+      const parts = currentVersion
+        .split(".")
+        .map((part) => Number.parseInt(part, 10) || 0);
       const nextVersion = [parts[0], parts[1], (parts[2] ?? 0) + 1].join(".");
       service.addVersion(id, patch.body, nextVersion, "markdown");
     }
@@ -195,7 +214,10 @@ export async function deletePrompt(id: string): Promise<void> {
   const service = getService();
 
   try {
-    const existingTags = await listTagsForEntity({ entityType: "prompts", entityId: id });
+    const existingTags = await listTagsForEntity({
+      entityType: "prompts",
+      entityId: id,
+    });
     for (const tag of existingTags) {
       await untagPrompt(id, tag.id);
     }
@@ -215,9 +237,13 @@ export async function deletePrompt(id: string): Promise<void> {
   }
 }
 
-export async function getLibraryStats(options: { projectTagId?: string } = {}): Promise<Awaited<ReturnType<PromptVaultService["getLibraryStats"]>>> {
+export async function getLibraryStats(
+  options: { projectTagId?: string } = {},
+): Promise<Awaited<ReturnType<PromptVaultService["getLibraryStats"]>>> {
   const service = getService();
-  const projectTagId = options.projectTagId?.trim() ? options.projectTagId.trim() : undefined;
+  const projectTagId = options.projectTagId?.trim()
+    ? options.projectTagId.trim()
+    : undefined;
 
   if (!projectTagId) {
     return service.getLibraryStats();
@@ -230,7 +256,8 @@ export async function getLibraryStats(options: { projectTagId?: string } = {}): 
     service.getDeletedPrompts(),
   ]);
 
-  const matchesProject = (prompt: Prompt): boolean => prompt.tags.some((tag) => tag.id === projectTagId);
+  const matchesProject = (prompt: Prompt): boolean =>
+    prompt.tags.some((tag) => tag.id === projectTagId);
   const projectPrompts = allPrompts.filter(matchesProject);
   const projectDeleted = deletedPrompts.filter(matchesProject);
 
@@ -254,12 +281,21 @@ export async function getLibraryStats(options: { projectTagId?: string } = {}): 
     .slice(0, 10)
     .map(([label, count]) => ({ label, count }));
 
-  const totalVersions = projectPrompts.reduce((sum, prompt) => sum + (prompt.latestVersion ? 1 : 0), 0);
+  const totalVersions = projectPrompts.reduce(
+    (sum, prompt) => sum + (prompt.latestVersion ? 1 : 0),
+    0,
+  );
 
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const createdThisWeek = projectPrompts.filter((p) => p.createdAt >= weekAgo).length;
-  const updatedThisWeek = projectPrompts.filter((p) => p.updatedAt >= weekAgo).length;
-  const deletedThisWeek = projectDeleted.filter((p) => p.deletedAt && p.deletedAt >= weekAgo).length;
+  const createdThisWeek = projectPrompts.filter(
+    (p) => p.createdAt >= weekAgo,
+  ).length;
+  const updatedThisWeek = projectPrompts.filter(
+    (p) => p.updatedAt >= weekAgo,
+  ).length;
+  const deletedThisWeek = projectDeleted.filter(
+    (p) => p.deletedAt && p.deletedAt >= weekAgo,
+  ).length;
 
   return {
     prompts: {
@@ -270,12 +306,14 @@ export async function getLibraryStats(options: { projectTagId?: string } = {}): 
     },
     tags: {
       total: tagUsage.size,
-      averagePerPrompt: projectPrompts.length > 0 ? tagUsage.size / projectPrompts.length : 0,
+      averagePerPrompt:
+        projectPrompts.length > 0 ? tagUsage.size / projectPrompts.length : 0,
       mostUsed: mostUsedTags,
     },
     versions: {
       total: totalVersions,
-      averagePerPrompt: projectPrompts.length > 0 ? totalVersions / projectPrompts.length : 0,
+      averagePerPrompt:
+        projectPrompts.length > 0 ? totalVersions / projectPrompts.length : 0,
     },
     activity: {
       createdThisWeek,
@@ -291,7 +329,7 @@ export async function getLibraryStats(options: { projectTagId?: string } = {}): 
  */
 export function executePromptTemplate(
   template: string,
-  variables: Record<string, unknown> = {}
+  variables: Record<string, unknown> = {},
 ): ReturnType<typeof renderTemplate> {
   const parsed = templateVariablesSchema.parse(variables) as TemplateVariables;
   return renderTemplate(template, parsed);
@@ -302,7 +340,7 @@ export function executePromptTemplate(
  */
 export async function exportPlannerDraft(
   filters: PromptFilters = {},
-  limit = 10
+  limit = 10,
 ): Promise<PlannerBucketDraft | null> {
   const prompts = await listPrompts(filters);
   return buildPlannerBucketDraft(prompts, limit);
@@ -312,7 +350,9 @@ export async function exportPlannerDraft(
  * Bulk-import prompts into Prompt Vault.
  * Returns both created prompts and any failures for telemetry/reporting.
  */
-export async function importPrompts(items: readonly PromptImportItem[]): Promise<{
+export async function importPrompts(
+  items: readonly PromptImportItem[],
+): Promise<{
   created: Prompt[];
   failed: Array<{ title: string; reason: string }>;
 }> {
@@ -344,16 +384,21 @@ export async function importPrompts(items: readonly PromptImportItem[]): Promise
  */
 export async function importPlannerBucketDraft(
   draft: PlannerBucketDraft,
-  options: { projectSlug?: string; defaultTags?: string[] } = {}
+  options: { projectSlug?: string; defaultTags?: string[] } = {},
 ): Promise<{
   created: Prompt[];
   failed: Array<{ title: string; reason: string }>;
 }> {
   const items: PromptImportItem[] = (draft.tasks ?? []).map((task) => {
     const title = task.title?.trim() || "Imported task";
-    const body = (task.note && task.note.trim().length > 0 ? task.note : title) ?? title;
+    const body =
+      (task.note && task.note.trim().length > 0 ? task.note : title) ?? title;
     const mergedTags = Array.from(
-      new Set([...(options.defaultTags ?? []), ...(task.tags ?? []), "planner-aido"].map((t) => t.trim()).filter(Boolean))
+      new Set(
+        [...(options.defaultTags ?? []), ...(task.tags ?? []), "planner-aido"]
+          .map((t) => t.trim())
+          .filter(Boolean),
+      ),
     );
 
     return {

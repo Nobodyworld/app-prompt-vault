@@ -25,7 +25,9 @@ export function SettingsPage(): React.JSX.Element {
   } | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem("prompt-vault-window-placement") as WindowPlacement;
+    const saved = localStorage.getItem(
+      "prompt-vault-window-placement",
+    ) as WindowPlacement;
     if (saved) setPlacement(saved);
   }, []);
 
@@ -34,40 +36,45 @@ export function SettingsPage(): React.JSX.Element {
       try {
         const prompts = await listPrompts();
         const total = prompts.length;
-        const withTags = prompts.filter(p => p.tags.length > 0).length;
-        const allTags = prompts.flatMap(p => p.tags);
+        const withTags = prompts.filter((p) => p.tags.length > 0).length;
+        const allTags = prompts.flatMap((p) => p.tags);
         const totalTags = allTags.length;
         const avgTagsPerPrompt = total > 0 ? totalTags / total : 0;
 
         // Find most used tag
         const tagCounts: Record<string, number> = {};
-        allTags.forEach(tag => {
+        allTags.forEach((tag) => {
           tagCounts[tag] = (tagCounts[tag] || 0) + 1;
         });
-        const mostUsedTag = Object.entries(tagCounts).sort(([,a], [,b]) => b - a)[0]?.[0] || null;
+        const mostUsedTag =
+          Object.entries(tagCounts).sort(([, a], [, b]) => b - a)[0]?.[0] ||
+          null;
 
         setPromptStats({
           total,
           withTags,
           totalTags,
           avgTagsPerPrompt: Math.round(avgTagsPerPrompt * 10) / 10,
-          mostUsedTag
+          mostUsedTag,
         });
       } catch (err) {
-        console.error('Failed to load prompt stats:', err);
+        console.error("Failed to load prompt stats:", err);
       }
     };
 
     void loadStats();
   }, []);
 
-  const positionWindow = async (newPlacement: WindowPlacement): Promise<void> => {
+  const positionWindow = async (
+    newPlacement: WindowPlacement,
+  ): Promise<void> => {
     if (!isTauriAvailable()) {
       // Running in browser/dev server: skip Tauri-only window positioning.
       return;
     }
     try {
-      const { getCurrentWindow, LogicalPosition } = await import("@tauri-apps/api/window");
+      const { getCurrentWindow, LogicalPosition } =
+        await import("@tauri-apps/api/window");
       const window = getCurrentWindow();
 
       // Get screen dimensions
@@ -95,7 +102,9 @@ export function SettingsPage(): React.JSX.Element {
     }
   };
 
-  const handlePlacementChange = async (newPlacement: WindowPlacement): Promise<void> => {
+  const handlePlacementChange = async (
+    newPlacement: WindowPlacement,
+  ): Promise<void> => {
     setPlacement(newPlacement);
     localStorage.setItem("prompt-vault-window-placement", newPlacement);
     await positionWindow(newPlacement);
@@ -117,7 +126,7 @@ export function SettingsPage(): React.JSX.Element {
       const exportData = {
         version: "1.0",
         exportedAt: new Date().toISOString(),
-        prompts: prompts.map(prompt => ({
+        prompts: prompts.map((prompt) => ({
           id: prompt.id,
           slug: prompt.slug,
           title: prompt.title,
@@ -126,32 +135,35 @@ export function SettingsPage(): React.JSX.Element {
           createdAt: prompt.createdAt,
           updatedAt: prompt.updatedAt,
           body: prompt.latestVersion?.body || "",
-          version: prompt.latestVersion?.semanticVersion || "1.0.0"
-        }))
+          version: prompt.latestVersion?.semanticVersion || "1.0.0",
+        })),
       };
 
       // Convert to JSON and trigger download
       const jsonString = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
+      const blob = new Blob([jsonString], { type: "application/json" });
       const url = URL.createObjectURL(blob);
 
       // Create download link and trigger it
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = `prompt-vault-export-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `prompt-vault-export-${new Date().toISOString().split("T")[0]}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-
     } catch (err: unknown) {
-      setExportError(err instanceof Error ? err.message : "Failed to export prompts");
+      setExportError(
+        err instanceof Error ? err.message : "Failed to export prompts",
+      );
     } finally {
       setIsExporting(false);
     }
   };
 
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+  const handleImport = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ): Promise<void> => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -199,13 +211,17 @@ export function SettingsPage(): React.JSX.Element {
         }
       }
 
-      addToast(`Successfully imported ${importedCount} prompt${importedCount === 1 ? '' : 's'}.`, "success");
+      addToast(
+        `Successfully imported ${importedCount} prompt${importedCount === 1 ? "" : "s"}.`,
+        "success",
+      );
 
       // Clear the file input
-      event.target.value = '';
-
+      event.target.value = "";
     } catch (err: unknown) {
-      setImportError(err instanceof Error ? err.message : "Failed to import prompts");
+      setImportError(
+        err instanceof Error ? err.message : "Failed to import prompts",
+      );
     } finally {
       setIsImporting(false);
     }

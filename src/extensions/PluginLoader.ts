@@ -21,10 +21,14 @@ export class PluginLoader {
     for (const dir of this.options.pluginDirs) {
       try {
         const absoluteDir = resolve(dir);
-        this.options.logger.info("scanning_plugin_directory", { dir: absoluteDir });
+        this.options.logger.info("scanning_plugin_directory", {
+          dir: absoluteDir,
+        });
 
         if (!this.isDirectory(absoluteDir)) {
-          this.options.logger.warn("plugin_directory_not_found", { dir: absoluteDir });
+          this.options.logger.warn("plugin_directory_not_found", {
+            dir: absoluteDir,
+          });
           continue;
         }
 
@@ -49,14 +53,19 @@ export class PluginLoader {
     return plugins;
   }
 
-  public async loadPlugin(metadata: PluginMetadata): Promise<PromptVaultPlugin | null> {
+  public async loadPlugin(
+    metadata: PluginMetadata,
+  ): Promise<PromptVaultPlugin | null> {
     try {
-      this.options.logger.info("loading_plugin", { name: metadata.name, path: metadata.path });
+      this.options.logger.info("loading_plugin", {
+        name: metadata.name,
+        path: metadata.path,
+      });
 
       // Convert Windows paths to file:// URLs for ESM compatibility
       let importPath = metadata.path;
-      if (process.platform === 'win32' && !importPath.startsWith('file://')) {
-        importPath = `file:///${importPath.replace(/\\/g, '/')}`;
+      if (process.platform === "win32" && !importPath.startsWith("file://")) {
+        importPath = `file:///${importPath.replace(/\\/g, "/")}`;
       }
 
       // Dynamic import of the plugin

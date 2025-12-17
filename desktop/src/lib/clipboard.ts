@@ -4,20 +4,25 @@ export async function copyTextToClipboard(text: string): Promise<void> {
   }
 
   // Try modern Clipboard API first
-  if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.clipboard &&
+    navigator.clipboard.writeText
+  ) {
     try {
       await navigator.clipboard.writeText(text);
       return;
     } catch (error) {
       // Clipboard API failed - likely due to permissions policy or HTTPS requirement
-      console.warn('Clipboard API failed:', error);
+      console.warn("Clipboard API failed:", error);
       // Check if it's a permissions-related error
-      if (error instanceof Error && (
-        error.message.includes('permissions') ||
-        error.message.includes('blocked') ||
-        error.name === 'NotAllowedError'
-      )) {
-        throw new Error('CLIPBOARD_PERMISSIONS_BLOCKED');
+      if (
+        error instanceof Error &&
+        (error.message.includes("permissions") ||
+          error.message.includes("blocked") ||
+          error.name === "NotAllowedError")
+      ) {
+        throw new Error("CLIPBOARD_PERMISSIONS_BLOCKED");
       }
       // Fall through to fallback method
     }
@@ -48,12 +53,12 @@ export async function copyTextToClipboard(text: string): Promise<void> {
     document.body.removeChild(textarea);
 
     if (!successful) {
-      throw new Error('FALLBACK_COPY_FAILED');
+      throw new Error("FALLBACK_COPY_FAILED");
     }
   } catch (error) {
-    console.error('Failed to copy text to clipboard:', error);
+    console.error("Failed to copy text to clipboard:", error);
     // As a last resort, show the text in an alert so user can manually copy
     alert(`Copy this text manually:\n\n${text}`);
-    throw new Error('MANUAL_COPY_REQUIRED');
+    throw new Error("MANUAL_COPY_REQUIRED");
   }
 }

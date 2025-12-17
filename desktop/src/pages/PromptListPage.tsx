@@ -1,11 +1,27 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { deletePrompt, exportPromptBundle, importPromptBundle, listPrompts, searchPrompts, updatePrompt } from "../services/promptApi";
+import {
+  deletePrompt,
+  exportPromptBundle,
+  importPromptBundle,
+  listPrompts,
+  searchPrompts,
+  updatePrompt,
+} from "../services/promptApi";
 import type { PromptSummary } from "../types/prompt";
 import { PromptList } from "../components/PromptList";
 import { useToast } from "../components/Toast";
 import { copyTextToClipboard } from "../lib/clipboard";
-import { buildButtonsSwitchboardPayload, buildPlannerBucketDraft } from "../lib/interop";
+import {
+  buildButtonsSwitchboardPayload,
+  buildPlannerBucketDraft,
+} from "../lib/interop";
 import { useI18n } from "../i18n";
 
 type LocationState = { refresh?: boolean } | null;
@@ -26,7 +42,9 @@ export function PromptListPage(): React.JSX.Element {
   const [projectTagIdFilter, setProjectTagIdFilter] = useState("");
   const [bundleText, setBundleText] = useState("");
   const [isBundleBusy, setIsBundleBusy] = useState(false);
-  const [selectedPromptIds, setSelectedPromptIds] = useState<Set<string>>(() => new Set());
+  const [selectedPromptIds, setSelectedPromptIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [bulkTags, setBulkTags] = useState("");
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,7 +95,8 @@ export function PromptListPage(): React.JSX.Element {
         }
       } catch (err: unknown) {
         if (mounted) {
-          const message = err instanceof Error ? err.message : t("library.failedLoad");
+          const message =
+            err instanceof Error ? err.message : t("library.failedLoad");
           setError(message);
           addToast(message, "error");
         }
@@ -117,7 +136,9 @@ export function PromptListPage(): React.JSX.Element {
     const activeTag = tagFilter.trim();
     const activeCategory = categoryFilter.trim();
     const activeProjectTagId = projectTagIdFilter.trim();
-    const hasServerFilters = Boolean(activeText || activeTag || activeCategory || activeProjectTagId);
+    const hasServerFilters = Boolean(
+      activeText || activeTag || activeCategory || activeProjectTagId,
+    );
 
     if (!hasServerFilters) {
       setDisplayPrompts(prompts);
@@ -160,18 +181,28 @@ export function PromptListPage(): React.JSX.Element {
             }
 
             if (normalizedTag) {
-              if (!prompt.tags.some((tag) => tag.toLowerCase() === normalizedTag)) return false;
+              if (
+                !prompt.tags.some((tag) => tag.toLowerCase() === normalizedTag)
+              )
+                return false;
             }
 
             if (normalizedCategory) {
-              if ((prompt.category ?? "").toLowerCase() !== normalizedCategory) return false;
+              if ((prompt.category ?? "").toLowerCase() !== normalizedCategory)
+                return false;
             }
 
             if (!query) return true;
             const titleMatch = prompt.title?.toLowerCase().includes(query);
-            const categoryMatch = prompt.category?.toLowerCase().includes(query);
-            const tagMatch = prompt.tags.some((tag) => tag.toLowerCase().includes(query));
-            const bodyMatch = prompt.latestVersion?.body?.toLowerCase().includes(query);
+            const categoryMatch = prompt.category
+              ?.toLowerCase()
+              .includes(query);
+            const tagMatch = prompt.tags.some((tag) =>
+              tag.toLowerCase().includes(query),
+            );
+            const bodyMatch = prompt.latestVersion?.body
+              ?.toLowerCase()
+              .includes(query);
             return titleMatch || categoryMatch || tagMatch || bodyMatch;
           });
 
@@ -190,7 +221,15 @@ export function PromptListPage(): React.JSX.Element {
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [addToast, categoryFilter, projectTagIdFilter, prompts, searchQuery, tagFilter, t]);
+  }, [
+    addToast,
+    categoryFilter,
+    projectTagIdFilter,
+    prompts,
+    searchQuery,
+    tagFilter,
+    t,
+  ]);
 
   const availableTags = useMemo(() => {
     const unique = new Set<string>();
@@ -212,8 +251,14 @@ export function PromptListPage(): React.JSX.Element {
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
   }, [prompts]);
 
-  const buttonsPayload = useMemo(() => buildButtonsSwitchboardPayload(displayPrompts), [displayPrompts]);
-  const plannerDraft = useMemo(() => buildPlannerBucketDraft(displayPrompts), [displayPrompts]);
+  const buttonsPayload = useMemo(
+    () => buildButtonsSwitchboardPayload(displayPrompts),
+    [displayPrompts],
+  );
+  const plannerDraft = useMemo(
+    () => buildPlannerBucketDraft(displayPrompts),
+    [displayPrompts],
+  );
 
   const handleSelectAllVisible = useCallback(() => {
     setSelectedPromptIds((prev) => {
@@ -282,7 +327,9 @@ export function PromptListPage(): React.JSX.Element {
       return;
     }
 
-    const ok = window.confirm(`Delete ${selectedPromptIds.size} prompt(s)? This cannot be undone.`);
+    const ok = window.confirm(
+      `Delete ${selectedPromptIds.size} prompt(s)? This cannot be undone.`,
+    );
     if (!ok) return;
 
     setIsBulkBusy(true);
@@ -324,7 +371,10 @@ export function PromptListPage(): React.JSX.Element {
           clearTimerRef.current = null;
         }, 2000);
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : "Unable to copy prompt to the clipboard.";
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Unable to copy prompt to the clipboard.";
         setCopyError(errorMessage);
 
         if (errorMessage === "CLIPBOARD_PERMISSIONS_BLOCKED") {
@@ -338,7 +388,7 @@ export function PromptListPage(): React.JSX.Element {
         }
       }
     },
-    [addToast, t]
+    [addToast, t],
   );
 
   const handleCopyButtonsPayload = useCallback(async () => {
@@ -363,7 +413,7 @@ export function PromptListPage(): React.JSX.Element {
     (prompt: PromptSummary) => {
       navigate(`/edit/${prompt.id}`, { state: { prompt } });
     },
-    [navigate]
+    [navigate],
   );
 
   const handleExportBundle = useCallback(
@@ -384,7 +434,7 @@ export function PromptListPage(): React.JSX.Element {
         setIsBundleBusy(false);
       }
     },
-    [addToast, displayPrompts, t]
+    [addToast, displayPrompts, t],
   );
 
   const handleImportBundle = useCallback(
@@ -401,7 +451,10 @@ export function PromptListPage(): React.JSX.Element {
           content: bundleText,
           conflictStrategy: "addVersion",
         });
-        addToast(t("bundle.toast.imported", { count: result.imported }), "success");
+        addToast(
+          t("bundle.toast.imported", { count: result.imported }),
+          "success",
+        );
         setBundleText("");
         requestReload();
       } catch (err: unknown) {
@@ -411,7 +464,7 @@ export function PromptListPage(): React.JSX.Element {
         setIsBundleBusy(false);
       }
     },
-    [addToast, bundleText, requestReload, t]
+    [addToast, bundleText, requestReload, t],
   );
 
   useEffect(() => {
@@ -424,13 +477,17 @@ export function PromptListPage(): React.JSX.Element {
 
   useEffect(() => {
     const handleFocusSearch = (): void => {
-      const searchInput = document.querySelector(".search-input") as HTMLInputElement | null;
+      const searchInput = document.querySelector(
+        ".search-input",
+      ) as HTMLInputElement | null;
       searchInput?.focus();
     };
 
     const handleClearSearch = (): void => {
       setSearchQuery("");
-      const searchInput = document.querySelector(".search-input") as HTMLInputElement | null;
+      const searchInput = document.querySelector(
+        ".search-input",
+      ) as HTMLInputElement | null;
       searchInput?.blur();
     };
 
@@ -452,7 +509,10 @@ export function PromptListPage(): React.JSX.Element {
   }
 
   const hasAnyFilter = Boolean(
-    searchQuery.trim() || tagFilter.trim() || categoryFilter.trim() || projectTagIdFilter.trim()
+    searchQuery.trim() ||
+    tagFilter.trim() ||
+    categoryFilter.trim() ||
+    projectTagIdFilter.trim(),
   );
 
   return (
@@ -531,11 +591,14 @@ export function PromptListPage(): React.JSX.Element {
             <p className="interop-eyebrow">Send to other apps</p>
             <h3>Reuse these prompts elsewhere</h3>
             <p className="interop-muted">
-              Copy JSON payloads that drop directly into Buttons (floating switchboard) or Planner (bucket draft).
+              Copy JSON payloads that drop directly into Buttons (floating
+              switchboard) or Planner (bucket draft).
             </p>
           </div>
           <div className="interop-counts">
-            <span className="interop-pill">{displayPrompts.length} selected</span>
+            <span className="interop-pill">
+              {displayPrompts.length} selected
+            </span>
             <span className="interop-pill interop-pill--soft">
               {buttonsPayload?.switchboard.phrases.length ?? 0} phrases
             </span>
@@ -624,7 +687,9 @@ export function PromptListPage(): React.JSX.Element {
           <div>
             <p className="interop-eyebrow">Bulk actions</p>
             <h3>Manage multiple prompts</h3>
-            <p className="interop-muted">Select prompts below, then tag or delete them in one go.</p>
+            <p className="interop-muted">
+              Select prompts below, then tag or delete them in one go.
+            </p>
           </div>
           <div className="interop-counts">
             <span className="interop-pill">{selectedCount} selected</span>
@@ -639,13 +704,31 @@ export function PromptListPage(): React.JSX.Element {
             className="search-input"
           />
           <div className="interop-actions">
-            <button type="button" className="interop-btn secondary" onClick={handleSelectAllVisible} disabled={isBulkBusy || displayPrompts.length === 0}>
-              {selectedCount === displayPrompts.length && displayPrompts.length > 0 ? "Clear selection" : "Select all filtered"}
+            <button
+              type="button"
+              className="interop-btn secondary"
+              onClick={handleSelectAllVisible}
+              disabled={isBulkBusy || displayPrompts.length === 0}
+            >
+              {selectedCount === displayPrompts.length &&
+              displayPrompts.length > 0
+                ? "Clear selection"
+                : "Select all filtered"}
             </button>
-            <button type="button" className="interop-btn" onClick={() => void handleBulkTag()} disabled={isBulkBusy}>
+            <button
+              type="button"
+              className="interop-btn"
+              onClick={() => void handleBulkTag()}
+              disabled={isBulkBusy}
+            >
               Add tags
             </button>
-            <button type="button" className="interop-btn secondary" onClick={() => void handleBulkDelete()} disabled={isBulkBusy}>
+            <button
+              type="button"
+              className="interop-btn secondary"
+              onClick={() => void handleBulkDelete()}
+              disabled={isBulkBusy}
+            >
               Delete selected
             </button>
           </div>

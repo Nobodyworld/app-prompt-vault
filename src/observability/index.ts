@@ -34,7 +34,11 @@ export type { LogLevel, LogFields, LoggerOptions } from "./logger.js";
 export { StructuredLogger, createLoggerFromEnv } from "./logger.js";
 
 // Telemetry exports
-export { MetricRegistry, createTelemetry, createNoopTelemetry } from "./telemetry.js";
+export {
+  MetricRegistry,
+  createTelemetry,
+  createNoopTelemetry,
+} from "./telemetry.js";
 export type { Telemetry, TelemetrySpanAttributes } from "./telemetry.js";
 
 // Health monitoring exports

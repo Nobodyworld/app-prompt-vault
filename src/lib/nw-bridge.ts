@@ -5,15 +5,20 @@
  * with the shared Nobodyworld OS packages.
  */
 
-import { createLogger, getEventBus, type PlatformEventMap, type SharedTag as NwTag } from './platform-core.js';
-import type { Tag as PvTag } from '../domain/models.js';
+import {
+  createLogger,
+  getEventBus,
+  type PlatformEventMap,
+  type SharedTag as NwTag,
+} from "./platform-core.js";
+import type { Tag as PvTag } from "../domain/models.js";
 
 // Create a logger for Prompt Vault operations
 export const pvLogger = createLogger({
-    context: {
-        app: 'prompt-vault',
-        package: 'nw-bridge',
-    },
+  context: {
+    app: "prompt-vault",
+    package: "nw-bridge",
+  },
 });
 
 // Get the shared event bus
@@ -25,29 +30,29 @@ export const eventBus: ReturnType<typeof getEventBus> = getEventBus();
  * Note: PV Tags use string UUIDs, NW Tags use numeric IDs.
  * This adapter creates a bridge but the underlying storage remains separate.
  */
-export function pvTagToNwTag(pvTag: PvTag): Omit<NwTag, 'id'> & { id: string } {
-    return {
-        id: pvTag.id, // Keep as string - apps can use their own ID scheme
-        name: pvTag.label,
-        kind: 'label',
-        color: '#6366f1', // Default color - PV tags don't have color
-        description: pvTag.description,
-        isArchived: false,
-        createdAt: pvTag.createdAt.toISOString(),
-        updatedAt: pvTag.createdAt.toISOString(),
-    };
+export function pvTagToNwTag(pvTag: PvTag): Omit<NwTag, "id"> & { id: string } {
+  return {
+    id: pvTag.id, // Keep as string - apps can use their own ID scheme
+    name: pvTag.label,
+    kind: "label",
+    color: "#6366f1", // Default color - PV tags don't have color
+    description: pvTag.description,
+    isArchived: false,
+    createdAt: pvTag.createdAt.toISOString(),
+    updatedAt: pvTag.createdAt.toISOString(),
+  };
 }
 
 /**
  * Convert an NW Tag to Prompt Vault Tag format
  */
 export function nwTagToPvTag(nwTag: NwTag): PvTag {
-    return {
-        id: String(nwTag.id),
-        label: nwTag.name,
-        description: undefined,
-        createdAt: new Date(nwTag.createdAt ?? Date.now()),
-    };
+  return {
+    id: String(nwTag.id),
+    label: nwTag.name,
+    description: undefined,
+    createdAt: new Date(nwTag.createdAt ?? Date.now()),
+  };
 }
 
 /**
@@ -56,70 +61,91 @@ export function nwTagToPvTag(nwTag: NwTag): PvTag {
  * This allows Prompt Vault to react to tag changes from other apps
  */
 export function subscribeToTagEvents(handlers: {
-    onTagCreated?: (tag: NwTag) => void;
-    onTagUpdated?: (tag: NwTag) => void;
-    onTagDeleted?: (tagId: string | number) => void;
+  onTagCreated?: (tag: NwTag) => void;
+  onTagUpdated?: (tag: NwTag) => void;
+  onTagDeleted?: (tagId: string | number) => void;
 }): () => void {
-    const subscriptions: Array<() => void> = [];
+  const subscriptions: Array<() => void> = [];
 
-    if (handlers.onTagCreated) {
-        const unsubscribe = eventBus.on('tag:created', (data: PlatformEventMap['tag:created']) => {
-            const tag = data.tag;
-            pvLogger.info('External tag created', { tagId: tag.id });
-            const fallbackTimestamp = new Date().toISOString();
-            const createdAt = 'createdAt' in tag && tag.createdAt ? tag.createdAt : fallbackTimestamp;
-            const updatedAt = 'updatedAt' in tag && tag.updatedAt ? tag.updatedAt : fallbackTimestamp;
-            const fullTag: NwTag = {
-                ...tag,
-                createdAt,
-                updatedAt,
-            } as NwTag;
-            handlers.onTagCreated!(fullTag);
-        });
-        subscriptions.push(unsubscribe);
-    }
+  if (handlers.onTagCreated) {
+    const unsubscribe = eventBus.on(
+      "tag:created",
+      (data: PlatformEventMap["tag:created"]) => {
+        const tag = data.tag;
+        pvLogger.info("External tag created", { tagId: tag.id });
+        const fallbackTimestamp = new Date().toISOString();
+        const createdAt =
+          "createdAt" in tag && tag.createdAt
+            ? tag.createdAt
+            : fallbackTimestamp;
+        const updatedAt =
+          "updatedAt" in tag && tag.updatedAt
+            ? tag.updatedAt
+            : fallbackTimestamp;
+        const fullTag: NwTag = {
+          ...tag,
+          createdAt,
+          updatedAt,
+        } as NwTag;
+        handlers.onTagCreated!(fullTag);
+      },
+    );
+    subscriptions.push(unsubscribe);
+  }
 
-    if (handlers.onTagUpdated) {
-        const unsubscribe = eventBus.on('tag:updated', (data: PlatformEventMap['tag:updated']) => {
-            const tag = data.tag;
-            pvLogger.info('External tag updated', { tagId: tag.id });
-            const fallbackTimestamp = new Date().toISOString();
-            const createdAt = 'createdAt' in tag && tag.createdAt ? tag.createdAt : fallbackTimestamp;
-            const updatedAt = 'updatedAt' in tag && tag.updatedAt ? tag.updatedAt : fallbackTimestamp;
-            const fullTag: NwTag = {
-                ...tag,
-                createdAt,
-                updatedAt,
-            } as NwTag;
-            handlers.onTagUpdated!(fullTag);
-        });
-        subscriptions.push(unsubscribe);
-    }
+  if (handlers.onTagUpdated) {
+    const unsubscribe = eventBus.on(
+      "tag:updated",
+      (data: PlatformEventMap["tag:updated"]) => {
+        const tag = data.tag;
+        pvLogger.info("External tag updated", { tagId: tag.id });
+        const fallbackTimestamp = new Date().toISOString();
+        const createdAt =
+          "createdAt" in tag && tag.createdAt
+            ? tag.createdAt
+            : fallbackTimestamp;
+        const updatedAt =
+          "updatedAt" in tag && tag.updatedAt
+            ? tag.updatedAt
+            : fallbackTimestamp;
+        const fullTag: NwTag = {
+          ...tag,
+          createdAt,
+          updatedAt,
+        } as NwTag;
+        handlers.onTagUpdated!(fullTag);
+      },
+    );
+    subscriptions.push(unsubscribe);
+  }
 
-    if (handlers.onTagDeleted) {
-        const unsubscribe = eventBus.on('tag:deleted', (data: PlatformEventMap['tag:deleted']) => {
-            const tagId = data.tagId;
-            pvLogger.info('External tag deleted', { tagId });
-            handlers.onTagDeleted!(tagId);
-        });
-        subscriptions.push(unsubscribe);
-    }
+  if (handlers.onTagDeleted) {
+    const unsubscribe = eventBus.on(
+      "tag:deleted",
+      (data: PlatformEventMap["tag:deleted"]) => {
+        const tagId = data.tagId;
+        pvLogger.info("External tag deleted", { tagId });
+        handlers.onTagDeleted!(tagId);
+      },
+    );
+    subscriptions.push(unsubscribe);
+  }
 
-    // Return cleanup function
-    return () => {
-        subscriptions.forEach((unsubscribe) => unsubscribe());
-    };
+  // Return cleanup function
+  return () => {
+    subscriptions.forEach((unsubscribe) => unsubscribe());
+  };
 }
 
 /**
  * Emit Prompt Vault events to the shared event bus
  */
 export function emitPromptEvent(
-    type: 'pv:prompt_created' | 'pv:prompt_updated' | 'pv:prompt_deleted',
-    data: { promptId: string; actorUserId?: string; requestId?: string }
+  type: "pv:prompt_created" | "pv:prompt_updated" | "pv:prompt_deleted",
+  data: { promptId: string; actorUserId?: string; requestId?: string },
 ): void {
-    pvLogger.debug('Emitting prompt event', { type, promptId: data.promptId });
-    eventBus.emit(type, data);
+  pvLogger.debug("Emitting prompt event", { type, promptId: data.promptId });
+  eventBus.emit(type, data);
 }
 
 /**
@@ -131,48 +157,48 @@ export function emitPromptEvent(
  * Call this at app startup to register tools with the orchestrator
  */
 export async function initializeNwIntegrations(): Promise<void> {
-    pvLogger.info('Initializing NW integrations');
+  pvLogger.info("Initializing NW integrations");
 
-    // Dynamically import tools to avoid circular dependencies
-    try {
-        const { registerPromptVaultTools } = await import('../tools/index.js');
-        registerPromptVaultTools();
-        pvLogger.info('Prompt Vault tools registered with orchestrator');
-    } catch (error) {
-        pvLogger.warn('Failed to register orchestrator tools', { error });
-    }
+  // Dynamically import tools to avoid circular dependencies
+  try {
+    const { registerPromptVaultTools } = await import("../tools/index.js");
+    registerPromptVaultTools();
+    pvLogger.info("Prompt Vault tools registered with orchestrator");
+  } catch (error) {
+    pvLogger.warn("Failed to register orchestrator tools", { error });
+  }
 
-    // Register Prompt Vault widgets with the shared pages-widgets registry
-    try {
-        const { registerWidgets } = await import('./platform-core.js');
-        registerWidgets([
-            {
-                id: 'pv:quick-add',
-                appId: 'prompt-vault',
-                displayName: 'Quick Add Prompt',
-                description: 'Create a new prompt in the current project',
-                icon: 'plus',
-            },
-            {
-                id: 'pv:recent',
-                appId: 'prompt-vault',
-                displayName: 'Recent Prompts',
-                description: 'Recently created or edited prompts',
-                icon: 'clock',
-            },
-            {
-                id: 'pv:stats',
-                appId: 'prompt-vault',
-                displayName: 'Prompt Stats',
-                description: 'Overview of prompt totals and activity',
-                icon: 'bar-chart',
-            },
-        ]);
-        pvLogger.info('Prompt Vault widgets registered with pages-widgets');
-    } catch (error) {
-        pvLogger.warn('Failed to register Prompt Vault widgets', { error });
-    }
+  // Register Prompt Vault widgets with the shared pages-widgets registry
+  try {
+    const { registerWidgets } = await import("./platform-core.js");
+    registerWidgets([
+      {
+        id: "pv:quick-add",
+        appId: "prompt-vault",
+        displayName: "Quick Add Prompt",
+        description: "Create a new prompt in the current project",
+        icon: "plus",
+      },
+      {
+        id: "pv:recent",
+        appId: "prompt-vault",
+        displayName: "Recent Prompts",
+        description: "Recently created or edited prompts",
+        icon: "clock",
+      },
+      {
+        id: "pv:stats",
+        appId: "prompt-vault",
+        displayName: "Prompt Stats",
+        description: "Overview of prompt totals and activity",
+        icon: "bar-chart",
+      },
+    ]);
+    pvLogger.info("Prompt Vault widgets registered with pages-widgets");
+  } catch (error) {
+    pvLogger.warn("Failed to register Prompt Vault widgets", { error });
+  }
 }
 
 // Re-export tools module for direct access
-export * from '../tools/index.js';
+export * from "../tools/index.js";

@@ -28,8 +28,9 @@ export function RecentPromptsWidget({
       try {
         const result = await listPrompts();
         // Sort by updatedAt descending and take the limit
-        const sorted = [...result].sort((a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        const sorted = [...result].sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
         );
         setPrompts(sorted.slice(0, limit));
       } catch (err) {
@@ -75,7 +76,9 @@ export function RecentPromptsWidget({
                 onClick={() => onPromptSelected?.(prompt.id)}
               >
                 <span className="pv-prompt-title">{prompt.title}</span>
-                <span className="pv-prompt-time">{formatTime(prompt.updatedAt)}</span>
+                <span className="pv-prompt-time">
+                  {formatTime(prompt.updatedAt)}
+                </span>
               </li>
             ))}
           </ul>

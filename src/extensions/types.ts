@@ -28,12 +28,30 @@ export interface PromptVaultPlugin {
   readonly description?: string;
   readonly connectors?: readonly PromptVaultConnector[];
   setup?(context: PromptVaultPluginContext): void;
-  onPromptCreated?(payload: { prompt: Prompt; version: PromptVersion; actor?: PromptVaultActorContext }): void;
-  onPromptUpdated?(payload: { prompt: Prompt; updatedFields: readonly string[]; actor?: PromptVaultActorContext }): void;
-  onPromptDeleted?(payload: { promptId: PromptId; mode: "soft" | "permanent"; actor?: PromptVaultActorContext }): void;
-  onVersionAdded?(payload: { promptId: PromptId; version: PromptVersion }): void;
+  onPromptCreated?(payload: {
+    prompt: Prompt;
+    version: PromptVersion;
+    actor?: PromptVaultActorContext;
+  }): void;
+  onPromptUpdated?(payload: {
+    prompt: Prompt;
+    updatedFields: readonly string[];
+    actor?: PromptVaultActorContext;
+  }): void;
+  onPromptDeleted?(payload: {
+    promptId: PromptId;
+    mode: "soft" | "permanent";
+    actor?: PromptVaultActorContext;
+  }): void;
+  onVersionAdded?(payload: {
+    promptId: PromptId;
+    version: PromptVersion;
+  }): void;
   onPromptTagged?(payload: { promptId: PromptId; tags: readonly Tag[] }): void;
-  onPromptUntagged?(payload: { promptId: PromptId; labels: readonly string[] }): void;
+  onPromptUntagged?(payload: {
+    promptId: PromptId;
+    labels: readonly string[];
+  }): void;
 }
 
 export interface PluginMetadata {

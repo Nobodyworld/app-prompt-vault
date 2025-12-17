@@ -3,7 +3,11 @@ import type { FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import type { PromptSummary } from "../types/prompt";
 import type { PromptVersionSummary } from "../types/prompt";
-import { addPromptVersion, listPromptVersions, updatePrompt } from "../services/promptApi";
+import {
+  addPromptVersion,
+  listPromptVersions,
+  updatePrompt,
+} from "../services/promptApi";
 import { isTauriAvailable } from "../lib/tauri";
 import { useI18n } from "../i18n";
 
@@ -13,7 +17,11 @@ function bumpPatch(version: string): string {
   const minorNum = Number.parseInt(minor ?? "0", 10);
   const patchNum = Number.parseInt(patch ?? "0", 10);
 
-  if (Number.isNaN(majorNum) || Number.isNaN(minorNum) || Number.isNaN(patchNum)) {
+  if (
+    Number.isNaN(majorNum) ||
+    Number.isNaN(minorNum) ||
+    Number.isNaN(patchNum)
+  ) {
     return version || "1.0.1";
   }
 
@@ -34,18 +42,16 @@ export function EditPromptPage(): React.JSX.Element {
 
   // Early return if prompt is not available or doesn't match the ID
   if (!prompt || !prompt.id || prompt.id !== id) {
-    return (
-      <div className="status">
-        {t("edit.missingContext")}
-      </div>
-    );
+    return <div className="status">{t("edit.missingContext")}</div>;
   }
 
   // At this point, prompt is guaranteed to be defined
   const safePrompt = prompt;
   const latestVersion = safePrompt.latestVersion;
   const initialBody = latestVersion?.body ?? "";
-  const defaultVersion = latestVersion ? bumpPatch(latestVersion.semanticVersion) : "1.0.1";
+  const defaultVersion = latestVersion
+    ? bumpPatch(latestVersion.semanticVersion)
+    : "1.0.1";
 
   const [body, setBody] = useState(initialBody);
   const [semanticVersion, setSemanticVersion] = useState(defaultVersion);
@@ -57,7 +63,9 @@ export function EditPromptPage(): React.JSX.Element {
   const [title, setTitle] = useState(safePrompt.title ?? "");
   const [category, setCategory] = useState(safePrompt.category ?? "");
   const [isFavorite, setIsFavorite] = useState(Boolean(safePrompt.isFavorite));
-  const [rating, setRating] = useState<string>(safePrompt.rating == null ? "" : String(safePrompt.rating));
+  const [rating, setRating] = useState<string>(
+    safePrompt.rating == null ? "" : String(safePrompt.rating),
+  );
 
   const promptId = safePrompt.id;
 
@@ -89,14 +97,18 @@ export function EditPromptPage(): React.JSX.Element {
       return;
     }
 
-    const ok = window.confirm(`Revert to v${version.semanticVersion}? This will create a new version.`);
+    const ok = window.confirm(
+      `Revert to v${version.semanticVersion}? This will create a new version.`,
+    );
     if (!ok) return;
 
     setIsSaving(true);
     setError(null);
 
     try {
-      const nextVersion = bumpPatch(latestVersion?.semanticVersion ?? version.semanticVersion);
+      const nextVersion = bumpPatch(
+        latestVersion?.semanticVersion ?? version.semanticVersion,
+      );
       await addPromptVersion({
         promptId: safePrompt.id,
         body: version.body,
@@ -111,7 +123,9 @@ export function EditPromptPage(): React.JSX.Element {
     }
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> {
     event.preventDefault();
 
     if (!runtimeAvailable) {
@@ -128,8 +142,12 @@ export function EditPromptPage(): React.JSX.Element {
     setError(null);
 
     try {
-      const ratingNumber = rating.trim() === "" ? null : Number.parseInt(rating, 10);
-      if (rating.trim() !== "" && (Number.isNaN(ratingNumber) || ratingNumber < 1 || ratingNumber > 5)) {
+      const ratingNumber =
+        rating.trim() === "" ? null : Number.parseInt(rating, 10);
+      if (
+        rating.trim() !== "" &&
+        (Number.isNaN(ratingNumber) || ratingNumber < 1 || ratingNumber > 5)
+      ) {
         setError(t("create.ratingInvalid"));
         setIsSaving(false);
         return;
@@ -138,7 +156,8 @@ export function EditPromptPage(): React.JSX.Element {
       const titleChanged = title.trim() !== (safePrompt?.title ?? "");
       const categoryChanged = category.trim() !== (safePrompt?.category ?? "");
       const favoriteChanged = isFavorite !== Boolean(safePrompt.isFavorite);
-      const ratingChanged = (safePrompt.rating ?? null) !== (ratingNumber ?? null);
+      const ratingChanged =
+        (safePrompt.rating ?? null) !== (ratingNumber ?? null);
 
       // Update title and category if changed
       if (titleChanged || categoryChanged || favoriteChanged || ratingChanged) {
@@ -239,8 +258,12 @@ export function EditPromptPage(): React.JSX.Element {
         </div>
         {latestVersion && (
           <div>
-            <span className="metadata-label">{t("edit.meta.currentVersion")}</span>
-            <span className="metadata-value">v{latestVersion.semanticVersion}</span>
+            <span className="metadata-label">
+              {t("edit.meta.currentVersion")}
+            </span>
+            <span className="metadata-value">
+              v{latestVersion.semanticVersion}
+            </span>
           </div>
         )}
       </div>
@@ -258,9 +281,15 @@ export function EditPromptPage(): React.JSX.Element {
               {versions.map((version) => (
                 <li key={version.id} className="version-history__item">
                   <span>
-                    v{version.semanticVersion} · {new Date(version.updatedAt).toLocaleString()}
+                    v{version.semanticVersion} ·{" "}
+                    {new Date(version.updatedAt).toLocaleString()}
                   </span>
-                  <button type="button" className="secondary" onClick={() => void handleRevert(version)} disabled={isSaving}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => void handleRevert(version)}
+                    disabled={isSaving}
+                  >
                     Revert
                   </button>
                 </li>
@@ -283,7 +312,11 @@ export function EditPromptPage(): React.JSX.Element {
       {error && <p className="error">{error}</p>}
 
       <div className="form-actions">
-        <button className="secondary" type="button" onClick={() => navigate(-1)}>
+        <button
+          className="secondary"
+          type="button"
+          onClick={() => navigate(-1)}
+        >
           {t("actions.cancel")}
         </button>
         <button type="submit" disabled={isSaving || !runtimeAvailable}>
@@ -292,9 +325,7 @@ export function EditPromptPage(): React.JSX.Element {
       </div>
 
       {!runtimeAvailable && (
-        <p className="warning">
-          {t("edit.warning.runtimeUnavailable")}
-        </p>
+        <p className="warning">{t("edit.warning.runtimeUnavailable")}</p>
       )}
     </form>
   );

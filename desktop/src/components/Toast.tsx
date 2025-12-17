@@ -28,21 +28,26 @@ interface ToastProviderProps {
   children: ReactNode;
 }
 
-export function ToastProvider({ children }: ToastProviderProps): React.JSX.Element {
+export function ToastProvider({
+  children,
+}: ToastProviderProps): React.JSX.Element {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = useCallback((message: string, type: Toast["type"], duration = 4000): void => {
-    const id = Math.random().toString(36).slice(2, 9);
-    const toast: Toast = { id, message, type, duration };
+  const addToast = useCallback(
+    (message: string, type: Toast["type"], duration = 4000): void => {
+      const id = Math.random().toString(36).slice(2, 9);
+      const toast: Toast = { id, message, type, duration };
 
-    setToasts((prev) => [...prev, toast]);
+      setToasts((prev) => [...prev, toast]);
 
-    if (duration > 0) {
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, duration);
-    }
-  }, []);
+      if (duration > 0) {
+        setTimeout(() => {
+          setToasts((prev) => prev.filter((t) => t.id !== id));
+        }, duration);
+      }
+    },
+    [],
+  );
 
   const removeToast = useCallback((id: string): void => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -61,7 +66,10 @@ interface ToastContainerProps {
   removeToast: (id: string) => void;
 }
 
-function ToastContainer({ toasts, removeToast }: ToastContainerProps): React.JSX.Element {
+function ToastContainer({
+  toasts,
+  removeToast,
+}: ToastContainerProps): React.JSX.Element {
   if (toasts.length === 0) return <></>;
 
   return (

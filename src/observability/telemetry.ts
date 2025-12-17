@@ -52,7 +52,9 @@ class CounterMetric {
     if (entries.length === 0) {
       return "";
     }
-    return entries.map(([key, value]) => `${key}="${value.replace(/"/g, '\\"')}"`).join(",");
+    return entries
+      .map(([key, value]) => `${key}="${value.replace(/"/g, '\\"')}"`)
+      .join(",");
   }
 }
 
@@ -110,7 +112,9 @@ class GaugeMetric {
     if (entries.length === 0) {
       return "";
     }
-    return entries.map(([key, value]) => `${key}="${value.replace(/"/g, '\\"')}"`).join(",");
+    return entries
+      .map(([key, value]) => `${key}="${value.replace(/"/g, '\\"')}"`)
+      .join(",");
   }
 }
 
@@ -127,7 +131,10 @@ class SummaryMetric {
 
   private readonly samples = new Map<string, SummarySample>();
 
-  public constructor(metadata: MetricMetadata, quantiles: readonly number[] = [0.5, 0.9, 0.95, 0.99]) {
+  public constructor(
+    metadata: MetricMetadata,
+    quantiles: readonly number[] = [0.5, 0.9, 0.95, 0.99],
+  ) {
     this.metadata = metadata;
     this.quantiles = quantiles;
   }
@@ -165,7 +172,10 @@ class SummaryMetric {
     lines.push(`# TYPE ${this.metadata.name} summary`);
     for (const [labelKey, sample] of this.samples.entries()) {
       for (const [quantile, value] of sample.quantiles.entries()) {
-        const suffix = labelKey.length > 0 ? `{quantile="${quantile}",${labelKey}}` : `{quantile="${quantile}"}`;
+        const suffix =
+          labelKey.length > 0
+            ? `{quantile="${quantile}",${labelKey}}`
+            : `{quantile="${quantile}"}`;
         lines.push(`${this.metadata.name}${suffix} ${value}`);
       }
       const countSuffix = labelKey.length > 0 ? `{${labelKey}}` : "";
@@ -186,7 +196,9 @@ class SummaryMetric {
     if (entries.length === 0) {
       return "";
     }
-    return entries.map(([key, value]) => `${key}="${value.replace(/"/g, '\\"')}"`).join(",");
+    return entries
+      .map(([key, value]) => `${key}="${value.replace(/"/g, '\\"')}"`)
+      .join(",");
   }
 }
 
@@ -233,9 +245,12 @@ class HistogramMetric {
           suffixParts.push(labelKey);
         }
         const suffix = `{${suffixParts.join(",")}}`;
-        lines.push(`${this.metadata.name}_bucket${suffix} ${sample.buckets.get(bucket) ?? 0}`);
+        lines.push(
+          `${this.metadata.name}_bucket${suffix} ${sample.buckets.get(bucket) ?? 0}`,
+        );
       }
-      const infSuffix = labelKey.length > 0 ? `{le="+Inf",${labelKey}}` : `{le="+Inf"}`;
+      const infSuffix =
+        labelKey.length > 0 ? `{le="+Inf",${labelKey}}` : `{le="+Inf"}`;
       lines.push(`${this.metadata.name}_bucket${infSuffix} ${sample.count}`);
       const countSuffix = labelKey.length > 0 ? `{${labelKey}}` : "";
       lines.push(`${this.metadata.name}_count${countSuffix} ${sample.count}`);
@@ -255,7 +270,9 @@ class HistogramMetric {
     if (entries.length === 0) {
       return "";
     }
-    return entries.map(([key, value]) => `${key}="${value.replace(/"/g, '\\"')}"`).join(",");
+    return entries
+      .map(([key, value]) => `${key}="${value.replace(/"/g, '\\"')}"`)
+      .join(",");
   }
 }
 
@@ -274,9 +291,16 @@ export class MetricRegistry {
     this.defaultLabels = defaultLabels;
   }
 
-  public getOrCreateCounter(name: string, help: string, labelNames: readonly string[] = []): CounterMetric {
+  public getOrCreateCounter(
+    name: string,
+    help: string,
+    labelNames: readonly string[] = [],
+  ): CounterMetric {
     if (!this.counters.has(name)) {
-      this.counters.set(name, new CounterMetric({ name, help, type: "counter", labelNames }));
+      this.counters.set(
+        name,
+        new CounterMetric({ name, help, type: "counter", labelNames }),
+      );
     }
     return this.counters.get(name)!;
   }
@@ -285,17 +309,30 @@ export class MetricRegistry {
     name: string,
     help: string,
     labelNames: readonly string[] = [],
-    buckets: readonly number[] = [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
+    buckets: readonly number[] = [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
   ): HistogramMetric {
     if (!this.histograms.has(name)) {
-      this.histograms.set(name, new HistogramMetric({ name, help, type: "histogram", labelNames }, buckets));
+      this.histograms.set(
+        name,
+        new HistogramMetric(
+          { name, help, type: "histogram", labelNames },
+          buckets,
+        ),
+      );
     }
     return this.histograms.get(name)!;
   }
 
-  public getOrCreateGauge(name: string, help: string, labelNames: readonly string[] = []): GaugeMetric {
+  public getOrCreateGauge(
+    name: string,
+    help: string,
+    labelNames: readonly string[] = [],
+  ): GaugeMetric {
     if (!this.gauges.has(name)) {
-      this.gauges.set(name, new GaugeMetric({ name, help, type: "gauge", labelNames }));
+      this.gauges.set(
+        name,
+        new GaugeMetric({ name, help, type: "gauge", labelNames }),
+      );
     }
     return this.gauges.get(name)!;
   }
@@ -304,17 +341,28 @@ export class MetricRegistry {
     name: string,
     help: string,
     labelNames: readonly string[] = [],
-    quantiles: readonly number[] = [0.5, 0.9, 0.95, 0.99]
+    quantiles: readonly number[] = [0.5, 0.9, 0.95, 0.99],
   ): SummaryMetric {
     if (!this.summaries.has(name)) {
-      this.summaries.set(name, new SummaryMetric({ name, help, type: "summary", labelNames }, quantiles));
+      this.summaries.set(
+        name,
+        new SummaryMetric(
+          { name, help, type: "summary", labelNames },
+          quantiles,
+        ),
+      );
     }
     return this.summaries.get(name)!;
   }
 
   public snapshot(): string {
     const lines: string[] = [];
-    if (this.counters.size === 0 && this.histograms.size === 0 && this.gauges.size === 0 && this.summaries.size === 0) {
+    if (
+      this.counters.size === 0 &&
+      this.histograms.size === 0 &&
+      this.gauges.size === 0 &&
+      this.summaries.size === 0
+    ) {
       lines.push("# No metrics recorded yet");
     }
     for (const counter of this.counters.values()) {
@@ -358,19 +406,42 @@ export interface TelemetryOptions {
 
 export interface Telemetry {
   readonly registry: MetricRegistry;
-  withSpan<T>(name: string, attributes: TelemetrySpanAttributes, fn: () => T): T;
-  withSpan<T>(name: string, attributes: TelemetrySpanAttributes, fn: () => Promise<T>): Promise<T>;
+  withSpan<T>(
+    name: string,
+    attributes: TelemetrySpanAttributes,
+    fn: () => T,
+  ): T;
+  withSpan<T>(
+    name: string,
+    attributes: TelemetrySpanAttributes,
+    fn: () => Promise<T>,
+  ): Promise<T>;
   recordEvent(name: string, attributes?: TelemetrySpanAttributes): void;
   getActiveContext(): TelemetrySpanContext | undefined;
-  createChildSpan(name: string, attributes?: TelemetrySpanAttributes): TelemetrySpanContext;
-  withChildSpan<T>(name: string, attributes: TelemetrySpanAttributes, fn: () => T): T;
-  withChildSpan<T>(name: string, attributes: TelemetrySpanAttributes, fn: () => Promise<T>): Promise<T>;
+  createChildSpan(
+    name: string,
+    attributes?: TelemetrySpanAttributes,
+  ): TelemetrySpanContext;
+  withChildSpan<T>(
+    name: string,
+    attributes: TelemetrySpanAttributes,
+    fn: () => T,
+  ): T;
+  withChildSpan<T>(
+    name: string,
+    attributes: TelemetrySpanAttributes,
+    fn: () => Promise<T>,
+  ): Promise<T>;
 }
 
 class NoopTelemetry implements Telemetry {
   public readonly registry = new MetricRegistry();
 
-  public withSpan<T>(_: string, __: TelemetrySpanAttributes, fn: () => T | Promise<T>): T | Promise<T> {
+  public withSpan<T>(
+    _: string,
+    __: TelemetrySpanAttributes,
+    fn: () => T | Promise<T>,
+  ): T | Promise<T> {
     return fn();
   }
 
@@ -392,7 +463,11 @@ class NoopTelemetry implements Telemetry {
     };
   }
 
-  public withChildSpan<T>(_: string, __: TelemetrySpanAttributes, fn: () => T | Promise<T>): T | Promise<T> {
+  public withChildSpan<T>(
+    _: string,
+    __: TelemetrySpanAttributes,
+    fn: () => T | Promise<T>,
+  ): T | Promise<T> {
     return fn();
   }
 }
@@ -411,27 +486,37 @@ class InstrumentedTelemetry implements Telemetry {
   private readonly eventCounter;
 
   public constructor(options: TelemetryOptions) {
-    this.registry = options.registry ?? new MetricRegistry({ service: options.serviceName });
-    this.logger = options.logger ?? createLoggerFromEnv({
-      serviceName: options.serviceName,
-      telemetry: this,
-      includeTraceId: true,
-    });
-    this.spanCounter = this.registry.getOrCreateCounter("prompt_vault_span_total", "Total spans recorded", [
-      "span_name",
-      "status",
-    ]);
+    this.registry =
+      options.registry ?? new MetricRegistry({ service: options.serviceName });
+    this.logger =
+      options.logger ??
+      createLoggerFromEnv({
+        serviceName: options.serviceName,
+        telemetry: this,
+        includeTraceId: true,
+      });
+    this.spanCounter = this.registry.getOrCreateCounter(
+      "prompt_vault_span_total",
+      "Total spans recorded",
+      ["span_name", "status"],
+    );
     this.spanDuration = this.registry.getOrCreateHistogram(
       "prompt_vault_span_duration_seconds",
       "Span duration in seconds",
-      ["span_name", "status"]
+      ["span_name", "status"],
     );
-    this.eventCounter = this.registry.getOrCreateCounter("prompt_vault_events_total", "Total telemetry events", [
-      "event_name",
-    ]);
+    this.eventCounter = this.registry.getOrCreateCounter(
+      "prompt_vault_events_total",
+      "Total telemetry events",
+      ["event_name"],
+    );
   }
 
-  public withSpan<T>(name: string, attributes: TelemetrySpanAttributes, fn: () => T | Promise<T>): T | Promise<T> {
+  public withSpan<T>(
+    name: string,
+    attributes: TelemetrySpanAttributes,
+    fn: () => T | Promise<T>,
+  ): T | Promise<T> {
     const parent = this.storage.getStore();
     const context: TelemetrySpanContext = {
       traceId: parent?.traceId ?? randomUUID(),
@@ -448,14 +533,19 @@ class InstrumentedTelemetry implements Telemetry {
       const finalise = (status: "ok" | "error", error?: unknown): void => {
         const end = process.hrtime.bigint();
         const durationSeconds = Number(end - start) / 1_000_000_000;
-        this.spanCounter.increment(this.registry.withDefaultLabels({
-          span_name: name,
-          status,
-        }));
-        this.spanDuration.observe(durationSeconds, this.registry.withDefaultLabels({
-          span_name: name,
-          status,
-        }));
+        this.spanCounter.increment(
+          this.registry.withDefaultLabels({
+            span_name: name,
+            status,
+          }),
+        );
+        this.spanDuration.observe(
+          durationSeconds,
+          this.registry.withDefaultLabels({
+            span_name: name,
+            status,
+          }),
+        );
         const logPayload = {
           traceId: context.traceId,
           spanId: context.spanId,
@@ -466,7 +556,10 @@ class InstrumentedTelemetry implements Telemetry {
         if (status === "ok") {
           this.logger.info(`span_completed:${name}`, logPayload);
         } else {
-          this.logger.error(`span_failed:${name}`, { ...logPayload, error: error instanceof Error ? error.message : error });
+          this.logger.error(`span_failed:${name}`, {
+            ...logPayload,
+            error: error instanceof Error ? error.message : error,
+          });
         }
       };
 
@@ -494,16 +587,27 @@ class InstrumentedTelemetry implements Telemetry {
     return this.storage.run(context, run);
   }
 
-  public recordEvent(name: string, attributes: TelemetrySpanAttributes = {}): void {
-    this.eventCounter.increment(this.registry.withDefaultLabels({ event_name: name }));
-    this.logger.debug(`event:${name}`, { ...attributes, traceId: this.storage.getStore()?.traceId });
+  public recordEvent(
+    name: string,
+    attributes: TelemetrySpanAttributes = {},
+  ): void {
+    this.eventCounter.increment(
+      this.registry.withDefaultLabels({ event_name: name }),
+    );
+    this.logger.debug(`event:${name}`, {
+      ...attributes,
+      traceId: this.storage.getStore()?.traceId,
+    });
   }
 
   public getActiveContext(): TelemetrySpanContext | undefined {
     return this.storage.getStore();
   }
 
-  public createChildSpan(name: string, attributes: TelemetrySpanAttributes = {}): TelemetrySpanContext {
+  public createChildSpan(
+    name: string,
+    attributes: TelemetrySpanAttributes = {},
+  ): TelemetrySpanContext {
     const parent = this.storage.getStore();
     return {
       traceId: parent?.traceId ?? randomUUID(),
@@ -515,7 +619,11 @@ class InstrumentedTelemetry implements Telemetry {
     };
   }
 
-  public withChildSpan<T>(name: string, attributes: TelemetrySpanAttributes = {}, fn: () => T | Promise<T>): T | Promise<T> {
+  public withChildSpan<T>(
+    name: string,
+    attributes: TelemetrySpanAttributes = {},
+    fn: () => T | Promise<T>,
+  ): T | Promise<T> {
     const context = this.createChildSpan(name, attributes);
     return this.storage.run(context, () => this.withSpan(name, attributes, fn));
   }

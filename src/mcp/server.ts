@@ -1,28 +1,36 @@
-import { randomUUID } from 'node:crypto';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { PromptVaultService } from '../services/PromptVaultService.js';
-import { bootstrapObservabilityFromEnv } from '../observability/index.js';
-import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from '../extensions/index.js';
-import type { Prompt, PromptFormat } from '../domain/models.js';
-import Database from 'better-sqlite3';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
-import fs from 'fs/promises';
-import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import yaml from 'yaml';
-import { createLogger } from '../lib/platform-core.js';
+import { randomUUID } from "node:crypto";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import { PromptVaultService } from "../services/PromptVaultService.js";
+import { bootstrapObservabilityFromEnv } from "../observability/index.js";
+import {
+  createAuditTrailPlugin,
+  createOperationalTelemetryPlugin,
+} from "../extensions/index.js";
+import type { Prompt, PromptFormat } from "../domain/models.js";
+import Database from "better-sqlite3";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+import fs from "fs/promises";
+import path from "path";
+import { exec } from "child_process";
+import { promisify } from "util";
+import yaml from "yaml";
+import { createLogger } from "../lib/platform-core.js";
 
 const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const defaultDbPath = resolve(__dirname, '..', '..', 'prompt-vault.db');
-const bootstrapLogger = createLogger({ context: { app: 'prompt-vault', module: 'mcp-server' } });
+const defaultDbPath = resolve(__dirname, "..", "..", "prompt-vault.db");
+const bootstrapLogger = createLogger({
+  context: { app: "prompt-vault", module: "mcp-server" },
+});
 
 interface SearchMatch {
   line: number;
@@ -54,13 +62,18 @@ interface MCPManifest {
 }
 
 function toSlug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50).replace(/^-+|-+$/g, '');
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .substring(0, 50)
+    .replace(/^-+|-+$/g, "");
 }
 
 function normalizeFormat(format: string | undefined): PromptFormat {
-  if (!format || format === 'md') return 'markdown';
-  if (format === 'markdown' || format === 'json' || format === 'yaml') return format;
-  return 'markdown';
+  if (!format || format === "md") return "markdown";
+  if (format === "markdown" || format === "json" || format === "yaml")
+    return format;
+  return "markdown";
 }
 
 function mapPromptToMcp(prompt: Prompt): {
@@ -75,9 +88,9 @@ function mapPromptToMcp(prompt: Prompt): {
   return {
     id: prompt.id,
     name: prompt.title,
-    content: prompt.latestVersion?.body ?? '',
+    content: prompt.latestVersion?.body ?? "",
     tags: prompt.tags.map((t) => t.label),
-    format: prompt.latestVersion?.format ?? 'markdown',
+    format: prompt.latestVersion?.format ?? "markdown",
     createdAt: prompt.createdAt.toISOString(),
     updatedAt: prompt.updatedAt.toISOString(),
   };
@@ -93,7 +106,9 @@ class PromptVaultMCPServer {
     const dbPathToUse = dbPath || defaultDbPath;
 
     // Initialize observability
-    this.observability = bootstrapObservabilityFromEnv({ serviceName: 'prompt-vault-mcp' });
+    this.observability = bootstrapObservabilityFromEnv({
+      serviceName: "prompt-vault-mcp",
+    });
 
     // Initialize database
     this.database = new Database(dbPathToUse);
@@ -101,20 +116,20 @@ class PromptVaultMCPServer {
     // Initialize service
     this.promptService = new PromptVaultService(this.database, {
       telemetry: this.observability.telemetry,
-      logger: this.observability.logger.child({ component: 'mcp-service' }),
+      logger: this.observability.logger.child({ component: "mcp-service" }),
       plugins: [createAuditTrailPlugin(), createOperationalTelemetryPlugin()],
     });
 
     this.server = new Server(
       {
-        name: 'prompt-vault-mcp',
-        version: '1.0.0',
+        name: "prompt-vault-mcp",
+        version: "1.0.0",
       },
       {
         capabilities: {
           tools: {},
         },
-      }
+      },
     );
 
     this.setupToolHandlers();
@@ -124,8 +139,8 @@ class PromptVaultMCPServer {
     // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       const mcpManifest = await fs.readFile(
-        path.join(process.cwd(), 'src', 'mcp', 'mcp.json'),
-        'utf-8'
+        path.join(process.cwd(), "src", "mcp", "mcp.json"),
+        "utf-8",
       );
       const manifest: MCPManifest = JSON.parse(mcpManifest);
 
@@ -144,70 +159,87 @@ class PromptVaultMCPServer {
 
       try {
         switch (name) {
-          case 'listPrompts':
-            return await this.handleListPrompts(args as Record<string, unknown>);
-          case 'readPrompt':
+          case "listPrompts":
+            return await this.handleListPrompts(
+              args as Record<string, unknown>,
+            );
+          case "readPrompt":
             return await this.handleReadPrompt(args as { id: string });
-          case 'writePrompt':
-            return await this.handleWritePrompt(args as {
-              id?: string;
-              name: string;
-              content: string;
-              tags?: string[];
-              format?: string;
-            });
-          case 'duplicatePrompt':
-            return await this.handleDuplicatePrompt(args as {
-              sourceId: string;
-              name?: string;
-              content?: string;
-              tags?: string[];
-            });
-          case 'searchPrompts':
-            return await this.handleSearchPrompts(args as {
-              query: string;
-              caseSensitive?: boolean;
-              maxResults?: number;
-              maxMatchesPerPrompt?: number;
-              maxTotalMatches?: number;
-              tags?: string[];
-              formats?: string[];
-            });
-          case 'importPrompts':
-            return await this.handleImportPrompts(args as {
-              files: Array<{
-                path: string;
-                name?: string;
+          case "writePrompt":
+            return await this.handleWritePrompt(
+              args as {
+                id?: string;
+                name: string;
+                content: string;
                 tags?: string[];
-              }>;
-            });
-          case 'exportPrompt':
-            return await this.handleExportPrompt(args as {
-              id: string;
-              path: string;
-              format?: string;
-            });
-          case 'openInVSCode':
+                format?: string;
+              },
+            );
+          case "duplicatePrompt":
+            return await this.handleDuplicatePrompt(
+              args as {
+                sourceId: string;
+                name?: string;
+                content?: string;
+                tags?: string[];
+              },
+            );
+          case "searchPrompts":
+            return await this.handleSearchPrompts(
+              args as {
+                query: string;
+                caseSensitive?: boolean;
+                maxResults?: number;
+                maxMatchesPerPrompt?: number;
+                maxTotalMatches?: number;
+                tags?: string[];
+                formats?: string[];
+              },
+            );
+          case "importPrompts":
+            return await this.handleImportPrompts(
+              args as {
+                files: Array<{
+                  path: string;
+                  name?: string;
+                  tags?: string[];
+                }>;
+              },
+            );
+          case "exportPrompt":
+            return await this.handleExportPrompt(
+              args as {
+                id: string;
+                path: string;
+                format?: string;
+              },
+            );
+          case "openInVSCode":
             return await this.handleOpenInVSCode(args as { id: string });
-          case 'convertPrompt':
-            return await this.handleConvertPrompt(args as {
-              id: string;
-              to: 'md' | 'yaml' | 'json';
-              createNew?: boolean;
-            });
-          case 'deletePrompt':
+          case "convertPrompt":
+            return await this.handleConvertPrompt(
+              args as {
+                id: string;
+                to: "md" | "yaml" | "json";
+                createNew?: boolean;
+              },
+            );
+          case "deletePrompt":
             return await this.handleDeletePrompt(args as { id: string });
-          case 'listTrash':
+          case "listTrash":
             return await this.handleListTrash();
-          case 'restoreTrash':
+          case "restoreTrash":
             return await this.handleRestoreTrash(args as { id: string });
-          case 'restoreLatestTrash':
+          case "restoreLatestTrash":
             return await this.handleRestoreLatestTrash();
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
       } catch (error) {
-        this.observability.logger.error(`Tool execution failed: ${name}`, error);
+        this.observability.logger.error(
+          `Tool execution failed: ${name}`,
+          error,
+        );
         throw error;
       }
     });
@@ -228,7 +260,7 @@ class PromptVaultMCPServer {
     const { tags, formats, limit = 50, offset = 0 } = args;
 
     const searchResult = await this.promptService.searchPrompts({
-      text: '',
+      text: "",
       tags: tags || [],
       formats: formats || [],
       page: Math.floor(offset / limit),
@@ -280,7 +312,7 @@ class PromptVaultMCPServer {
       updatedAt: string;
     };
   }> {
-    const { id, name, content, tags = [], format = 'markdown' } = args;
+    const { id, name, content, tags = [], format = "markdown" } = args;
 
     let prompt: Prompt;
 
@@ -292,9 +324,9 @@ class PromptVaultMCPServer {
       this.promptService.addVersion(
         id,
         content,
-        current.latestVersion?.semanticVersion ?? '1.0.0',
+        current.latestVersion?.semanticVersion ?? "1.0.0",
         normalizeFormat(format),
-        'Updated via MCP'
+        "Updated via MCP",
       );
       prompt = await this.promptService.getPrompt(id);
     } else {
@@ -302,12 +334,12 @@ class PromptVaultMCPServer {
         id: randomUUID(),
         slug: toSlug(name),
         title: name,
-        description: '',
+        description: "",
         body: content,
         format: normalizeFormat(format),
-        semanticVersion: '1.0.0',
+        semanticVersion: "1.0.0",
         tags,
-        changelog: 'Created via MCP',
+        changelog: "Created via MCP",
       });
     }
 
@@ -315,8 +347,8 @@ class PromptVaultMCPServer {
       prompt: {
         id: prompt.id,
         name: prompt.title,
-        tags: prompt.tags.map(t => t.label),
-        format: prompt.latestVersion?.format || 'markdown',
+        tags: prompt.tags.map((t) => t.label),
+        format: prompt.latestVersion?.format || "markdown",
         createdAt: prompt.createdAt.toISOString(),
         updatedAt: prompt.updatedAt.toISOString(),
       },
@@ -349,12 +381,12 @@ class PromptVaultMCPServer {
       id: randomUUID(),
       slug: toSlug(name || `${sourcePrompt.title}-copy`),
       title: name || `${sourcePrompt.title} (Copy)`,
-      description: sourcePrompt.description ?? '',
-      body: content || sourcePrompt.latestVersion?.body || '',
-      format: sourcePrompt.latestVersion?.format ?? 'markdown',
-      semanticVersion: sourcePrompt.latestVersion?.semanticVersion ?? '1.0.0',
+      description: sourcePrompt.description ?? "",
+      body: content || sourcePrompt.latestVersion?.body || "",
+      format: sourcePrompt.latestVersion?.format ?? "markdown",
+      semanticVersion: sourcePrompt.latestVersion?.semanticVersion ?? "1.0.0",
       tags: tags || sourcePrompt.tags.map((t) => t.label),
-      changelog: 'Duplicated via MCP',
+      changelog: "Duplicated via MCP",
     };
 
     const prompt = await this.promptService.createPrompt(duplicateData);
@@ -399,12 +431,12 @@ class PromptVaultMCPServer {
     const results: SearchResult[] = [];
 
     for (const prompt of searchResults.prompts) {
-      const contentText = prompt.latestVersion?.body ?? '';
+      const contentText = prompt.latestVersion?.body ?? "";
       const matches = this.findMatchesInContent(
         contentText,
         query,
         caseSensitive,
-        maxMatchesPerPrompt
+        maxMatchesPerPrompt,
       );
 
       if (matches.length > 0) {
@@ -413,7 +445,7 @@ class PromptVaultMCPServer {
             id: prompt.id,
             name: prompt.title,
             tags: prompt.tags.map((t) => t.label),
-            format: prompt.latestVersion?.format ?? 'markdown',
+            format: prompt.latestVersion?.format ?? "markdown",
           },
           totalMatches: matches.length,
           matches,
@@ -430,20 +462,26 @@ class PromptVaultMCPServer {
     content: string,
     query: string,
     caseSensitive: boolean,
-    maxMatches: number
+    maxMatches: number,
   ): SearchMatch[] {
-    const lines = content.split('\n');
+    const lines = content.split("\n");
     const matches: SearchMatch[] = [];
-    const flags = caseSensitive ? 'g' : 'gi';
+    const flags = caseSensitive ? "g" : "gi";
     const regex = new RegExp(query, flags);
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
       let match;
 
-      while ((match = regex.exec(line)) !== null && matches.length < maxMatches) {
+      while (
+        (match = regex.exec(line)) !== null &&
+        matches.length < maxMatches
+      ) {
         const previewStart = Math.max(0, match.index - 20);
-        const previewEnd = Math.min(line.length, match.index + query.length + 20);
+        const previewEnd = Math.min(
+          line.length,
+          match.index + query.length + 20,
+        );
         const preview = line.substring(previewStart, previewEnd);
 
         matches.push({
@@ -479,10 +517,11 @@ class PromptVaultMCPServer {
 
     for (const file of files) {
       try {
-        const content = await fs.readFile(file.path, 'utf-8');
+        const content = await fs.readFile(file.path, "utf-8");
         const format = this.detectFormat(file.path);
-        const normalizedFormat = format === 'other' ? 'markdown' : format;
-        const name = file.name || path.basename(file.path, path.extname(file.path));
+        const normalizedFormat = format === "other" ? "markdown" : format;
+        const name =
+          file.name || path.basename(file.path, path.extname(file.path));
 
         const prompt = await this.promptService.createPrompt({
           id: randomUUID(),
@@ -491,9 +530,9 @@ class PromptVaultMCPServer {
           description: `Imported from ${file.path}`,
           body: content,
           format: normalizedFormat,
-          semanticVersion: '1.0.0',
+          semanticVersion: "1.0.0",
           tags: file.tags || [],
-          changelog: 'Imported via MCP',
+          changelog: "Imported via MCP",
         });
 
         results.push({
@@ -504,7 +543,7 @@ class PromptVaultMCPServer {
         });
       } catch (error) {
         results.push({
-          id: '',
+          id: "",
           name: file.name || path.basename(file.path),
           path: file.path,
           success: false,
@@ -533,13 +572,13 @@ class PromptVaultMCPServer {
         throw new Error(`Prompt not found: ${id}`);
       }
 
-      const currentFormat = prompt.latestVersion?.format ?? 'markdown';
-      let content = prompt.latestVersion?.body ?? '';
+      const currentFormat = prompt.latestVersion?.format ?? "markdown";
+      let content = prompt.latestVersion?.body ?? "";
       if (format && format !== currentFormat) {
         content = this.convertContent(content, currentFormat, format);
       }
 
-      await fs.writeFile(exportPath, content, 'utf-8');
+      await fs.writeFile(exportPath, content, "utf-8");
 
       return {
         path: exportPath,
@@ -566,14 +605,17 @@ class PromptVaultMCPServer {
         throw new Error(`Prompt not found: ${id}`);
       }
 
-      const latestFormat = prompt.latestVersion?.format ?? 'markdown';
-      const latestBody = prompt.latestVersion?.body ?? '';
+      const latestFormat = prompt.latestVersion?.format ?? "markdown";
+      const latestBody = prompt.latestVersion?.body ?? "";
 
-      const tempDir = path.join(process.cwd(), 'temp');
+      const tempDir = path.join(process.cwd(), "temp");
       await fs.mkdir(tempDir, { recursive: true });
 
-      const tempFile = path.join(tempDir, `${prompt.id}.${this.getExtension(latestFormat)}`);
-      await fs.writeFile(tempFile, latestBody, 'utf-8');
+      const tempFile = path.join(
+        tempDir,
+        `${prompt.id}.${this.getExtension(latestFormat)}`,
+      );
+      await fs.writeFile(tempFile, latestBody, "utf-8");
 
       // Open in VS Code
       await execAsync(`code "${tempFile}"`);
@@ -589,7 +631,7 @@ class PromptVaultMCPServer {
 
   private async handleConvertPrompt(args: {
     id: string;
-    to: 'md' | 'yaml' | 'json';
+    to: "md" | "yaml" | "json";
     createNew?: boolean;
   }): Promise<{
     prompt: {
@@ -608,9 +650,13 @@ class PromptVaultMCPServer {
       throw new Error(`Prompt not found: ${id}`);
     }
 
-    const currentFormat = prompt.latestVersion?.format ?? 'markdown';
-    const currentBody = prompt.latestVersion?.body ?? '';
-    const convertedContent = this.convertContent(currentBody, currentFormat, to);
+    const currentFormat = prompt.latestVersion?.format ?? "markdown";
+    const currentBody = prompt.latestVersion?.body ?? "";
+    const convertedContent = this.convertContent(
+      currentBody,
+      currentFormat,
+      to,
+    );
 
     let resultPrompt: Prompt;
 
@@ -622,7 +668,7 @@ class PromptVaultMCPServer {
         description: prompt.description,
         body: convertedContent,
         format: normalizeFormat(to),
-        semanticVersion: prompt.latestVersion?.semanticVersion ?? '1.0.0',
+        semanticVersion: prompt.latestVersion?.semanticVersion ?? "1.0.0",
         tags: prompt.tags.map((t) => t.label),
         changelog: `Converted to ${to}`,
       });
@@ -630,9 +676,9 @@ class PromptVaultMCPServer {
       this.promptService.addVersion(
         id,
         convertedContent,
-        prompt.latestVersion?.semanticVersion ?? '1.0.0',
+        prompt.latestVersion?.semanticVersion ?? "1.0.0",
         normalizeFormat(to),
-        `Converted to ${to}`
+        `Converted to ${to}`,
       );
       resultPrompt = await this.promptService.getPrompt(id);
     }
@@ -716,11 +762,11 @@ class PromptVaultMCPServer {
     try {
       const deletedPrompts = await this.promptService.getDeletedPrompts();
       if (deletedPrompts.length === 0) {
-        throw new Error('No deleted prompts found');
+        throw new Error("No deleted prompts found");
       }
 
       const latestDeleted = deletedPrompts.sort(
-        (a, b) => b.deletedAt!.getTime() - a.deletedAt!.getTime()
+        (a, b) => b.deletedAt!.getTime() - a.deletedAt!.getTime(),
       )[0];
 
       const prompt = await this.promptService.restorePrompt(latestDeleted.id);
@@ -740,50 +786,50 @@ class PromptVaultMCPServer {
     }
   }
 
-  private detectFormat(filePath: string): PromptFormat | 'other' {
+  private detectFormat(filePath: string): PromptFormat | "other" {
     const ext = path.extname(filePath).toLowerCase();
     switch (ext) {
-      case '.md':
-        return 'markdown';
-      case '.yaml':
-      case '.yml':
-        return 'yaml';
-      case '.json':
-        return 'json';
+      case ".md":
+        return "markdown";
+      case ".yaml":
+      case ".yml":
+        return "yaml";
+      case ".json":
+        return "json";
       default:
-        return 'other';
+        return "other";
     }
   }
 
   private getExtension(format: string): string {
     switch (format) {
-      case 'md':
-      case 'markdown':
-        return 'md';
-      case 'yaml':
-        return 'yaml';
-      case 'json':
-        return 'json';
+      case "md":
+      case "markdown":
+        return "md";
+      case "yaml":
+        return "yaml";
+      case "json":
+        return "json";
       default:
-        return 'txt';
+        return "txt";
     }
   }
 
   private convertContent(content: string, from: string, to: string): string {
-    const normalizedFrom = from === 'markdown' ? 'md' : from;
-    const normalizedTo = to === 'markdown' ? 'md' : to;
+    const normalizedFrom = from === "markdown" ? "md" : from;
+    const normalizedTo = to === "markdown" ? "md" : to;
 
     // Parse content based on source format
     let data: unknown;
 
     switch (normalizedFrom) {
-      case 'json':
+      case "json":
         data = JSON.parse(content);
         break;
-      case 'yaml':
+      case "yaml":
         data = yaml.parse(content);
         break;
-      case 'md':
+      case "md":
         // For markdown, we'll treat it as plain text for now
         // Could be enhanced to parse frontmatter
         data = { content };
@@ -794,16 +840,16 @@ class PromptVaultMCPServer {
 
     // Convert to target format
     switch (normalizedTo) {
-      case 'json':
+      case "json":
         return JSON.stringify(data, null, 2);
-      case 'yaml':
+      case "yaml":
         return yaml.stringify(data);
-      case 'md':
+      case "md":
         if (
-          typeof data === 'object' &&
+          typeof data === "object" &&
           data !== null &&
-          'content' in data &&
-          typeof (data as { content: unknown }).content === 'string'
+          "content" in data &&
+          typeof (data as { content: unknown }).content === "string"
         ) {
           return (data as { content: string }).content;
         }
@@ -816,7 +862,7 @@ class PromptVaultMCPServer {
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    this.observability.logger.info('Prompt Vault MCP Server started');
+    this.observability.logger.info("Prompt Vault MCP Server started");
   }
 }
 
@@ -824,7 +870,7 @@ class PromptVaultMCPServer {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const server = new PromptVaultMCPServer();
   server.start().catch((error) => {
-    bootstrapLogger.error('Failed to start MCP server', { error });
+    bootstrapLogger.error("Failed to start MCP server", { error });
     process.exit(1);
   });
 }

@@ -21,11 +21,12 @@ function resolveRoute(request: Request): string {
   return `/${segments.join("/")}`;
 }
 
-export function createHttpTracingMiddleware(options: HttpTracingOptions): RequestHandler {
+export function createHttpTracingMiddleware(
+  options: HttpTracingOptions,
+): RequestHandler {
   return (request: Request, response: Response, next: NextFunction) => {
     const route = resolveRoute(request);
-    options
-      .telemetry
+    options.telemetry
       .withSpan(
         "http.server.request",
         {
@@ -75,7 +76,7 @@ export function createHttpTracingMiddleware(options: HttpTracingOptions): Reques
             } catch (error) {
               onError(error);
             }
-          })
+          }),
       )
       .catch((error: unknown) => {
         options.logger.error("http_tracing_failed", {

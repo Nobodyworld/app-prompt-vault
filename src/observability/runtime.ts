@@ -2,7 +2,11 @@ import type { Server } from "node:http";
 import type { StructuredLogger } from "./logger.js";
 import { createLoggerFromEnv } from "./logger.js";
 import type { Telemetry } from "./telemetry.js";
-import { createNoopTelemetry, createTelemetry, MetricRegistry } from "./telemetry.js";
+import {
+  createNoopTelemetry,
+  createTelemetry,
+  MetricRegistry,
+} from "./telemetry.js";
 import type { HealthIndicator } from "./healthServer.js";
 import { createHealthIndicator, createHealthServer } from "./healthServer.js";
 import { startTelemetryMetricsWatcher } from "./telemetryFileReader.js";
@@ -24,12 +28,16 @@ export interface ObservabilityHandle {
 }
 
 export function bootstrapObservabilityFromEnv(
-  options: ObservabilityBootstrapOptions
+  options: ObservabilityBootstrapOptions,
 ): ObservabilityHandle {
-  const logger = options.logger ?? createLoggerFromEnv({ serviceName: options.serviceName });
+  const logger =
+    options.logger ?? createLoggerFromEnv({ serviceName: options.serviceName });
   const metricsEnabled =
-    options.enableMetrics ?? (process.env.PROMPT_VAULT_METRICS ?? "").toLowerCase() === "true";
-  const metricsPort = options.metricsPort ?? Number.parseInt(process.env.PROMPT_VAULT_METRICS_PORT ?? "", 10);
+    options.enableMetrics ??
+    (process.env.PROMPT_VAULT_METRICS ?? "").toLowerCase() === "true";
+  const metricsPort =
+    options.metricsPort ??
+    Number.parseInt(process.env.PROMPT_VAULT_METRICS_PORT ?? "", 10);
 
   if (!metricsEnabled) {
     return {
@@ -43,7 +51,11 @@ export function bootstrapObservabilityFromEnv(
   }
 
   const registry = new MetricRegistry({ service: options.serviceName });
-  const telemetry = createTelemetry({ serviceName: options.serviceName, logger, registry });
+  const telemetry = createTelemetry({
+    serviceName: options.serviceName,
+    logger,
+    registry,
+  });
   const indicator = createHealthIndicator();
   const serverHandle = createHealthServer({
     registry,

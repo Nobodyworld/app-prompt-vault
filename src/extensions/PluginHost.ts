@@ -1,5 +1,11 @@
 import type { Prompt, PromptId, PromptVersion, Tag } from "../domain/models.js";
-import type { PromptVaultActorContext, PromptVaultConnector, PromptVaultPlugin, PromptVaultPluginContext, PluginMetadata } from "./types.js";
+import type {
+  PromptVaultActorContext,
+  PromptVaultConnector,
+  PromptVaultPlugin,
+  PromptVaultPluginContext,
+  PluginMetadata,
+} from "./types.js";
 import type { StructuredLogger } from "../observability/logger.js";
 import type { Telemetry } from "../observability/telemetry.js";
 
@@ -9,7 +15,10 @@ export class PluginHost {
   private readonly context: PromptVaultPluginContext;
   private readonly logger: StructuredLogger;
 
-  public constructor(options: { logger: StructuredLogger; telemetry: Telemetry }) {
+  public constructor(options: {
+    logger: StructuredLogger;
+    telemetry: Telemetry;
+  }) {
     this.logger = options.logger;
     this.context = { logger: this.logger, telemetry: options.telemetry };
   }
@@ -32,7 +41,7 @@ export class PluginHost {
     this.connectors.push(connector);
     this.logger.info("connector_registered", {
       connector: connector.name,
-      type: connector.type
+      type: connector.type,
     });
     connector.setup?.(this.context);
   }
@@ -44,7 +53,7 @@ export class PluginHost {
           await connector.connect();
           this.logger.info("connector_connected", {
             connector: connector.name,
-            type: connector.type
+            type: connector.type,
           });
         } catch (error) {
           this.logger.error("connector_connection_failed", {
@@ -64,7 +73,7 @@ export class PluginHost {
           await connector.disconnect();
           this.logger.info("connector_disconnected", {
             connector: connector.name,
-            type: connector.type
+            type: connector.type,
           });
         } catch (error) {
           this.logger.warn("connector_disconnection_failed", {
@@ -86,7 +95,7 @@ export class PluginHost {
   }
 
   public getPluginMetadata(): PluginMetadata[] {
-    return this.plugins.map(plugin => ({
+    return this.plugins.map((plugin) => ({
       name: plugin.name,
       version: plugin.version ?? "1.0.0",
       description: plugin.description,
@@ -97,32 +106,50 @@ export class PluginHost {
 
   public emit<Event extends keyof PluginEvents>(
     event: Event,
-    payload: PluginEvents[Event]
+    payload: PluginEvents[Event],
   ): void {
     for (const plugin of this.plugins) {
-      const handler = plugin[event] as ((payload: PluginEvents[Event]) => void) | undefined;
+      const handler = plugin[event] as
+        | ((payload: PluginEvents[Event]) => void)
+        | undefined;
       if (!handler) {
         continue;
       }
-      this.context.telemetry.withSpan(`plugin.${plugin.name}.${String(event)}`, {}, () => {
-        try {
-          handler.call(plugin, payload);
-        } catch (error) {
-          this.logger.warn("plugin_handler_failed", {
-            plugin: plugin.name,
-            event,
-            error: error instanceof Error ? error.message : error,
-          });
-        }
-      });
+      this.context.telemetry.withSpan(
+        `plugin.${plugin.name}.${String(event)}`,
+        {},
+        () => {
+          try {
+            handler.call(plugin, payload);
+          } catch (error) {
+            this.logger.warn("plugin_handler_failed", {
+              plugin: plugin.name,
+              event,
+              error: error instanceof Error ? error.message : error,
+            });
+          }
+        },
+      );
     }
   }
 }
 
 interface PluginEvents {
-  onPromptCreated: { prompt: Prompt; version: PromptVersion; actor?: PromptVaultActorContext };
-  onPromptUpdated: { prompt: Prompt; updatedFields: readonly string[]; actor?: PromptVaultActorContext };
-  onPromptDeleted: { promptId: PromptId; mode: "soft" | "permanent"; actor?: PromptVaultActorContext };
+  onPromptCreated: {
+    prompt: Prompt;
+    version: PromptVersion;
+    actor?: PromptVaultActorContext;
+  };
+  onPromptUpdated: {
+    prompt: Prompt;
+    updatedFields: readonly string[];
+    actor?: PromptVaultActorContext;
+  };
+  onPromptDeleted: {
+    promptId: PromptId;
+    mode: "soft" | "permanent";
+    actor?: PromptVaultActorContext;
+  };
   onVersionAdded: { promptId: PromptId; version: PromptVersion };
   onPromptTagged: { promptId: PromptId; tags: readonly Tag[] };
   onPromptUntagged: { promptId: PromptId; labels: readonly string[] };

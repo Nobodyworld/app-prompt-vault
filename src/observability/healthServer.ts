@@ -18,7 +18,10 @@ export interface HealthIndicator {
 class StatefulHealthIndicator implements HealthIndicator {
   private liveness: HealthStatus = { status: "ok" };
 
-  private readiness: HealthStatus = { status: "degraded", details: { reason: "not-initialised" } };
+  private readiness: HealthStatus = {
+    status: "degraded",
+    details: { reason: "not-initialised" },
+  };
 
   public setLiveness(status: HealthStatus): void {
     this.liveness = status;
@@ -53,7 +56,11 @@ export interface HealthServerHandle {
   readonly host: string;
 }
 
-function writeJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
+function writeJson(
+  res: http.ServerResponse,
+  statusCode: number,
+  payload: unknown,
+): void {
   const body = JSON.stringify(payload);
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json");
@@ -61,7 +68,9 @@ function writeJson(res: http.ServerResponse, statusCode: number, payload: unknow
   res.end(body);
 }
 
-export function createHealthServer(options: HealthServerOptions): HealthServerHandle {
+export function createHealthServer(
+  options: HealthServerOptions,
+): HealthServerHandle {
   const indicator = options.indicator ?? new StatefulHealthIndicator();
   const logger = options.logger;
 
@@ -113,8 +122,8 @@ export function createHealthServer(options: HealthServerOptions): HealthServerHa
           readiness: indicator.getReadiness(),
         },
         metrics: {
-          snapshotLines: snapshot.split('\n').length,
-          hasMetrics: snapshot.includes('# HELP'),
+          snapshotLines: snapshot.split("\n").length,
+          hasMetrics: snapshot.includes("# HELP"),
         },
       };
       writeJson(res, 200, diagnostics);
@@ -134,7 +143,10 @@ export function createHealthServer(options: HealthServerOptions): HealthServerHa
         });
         return;
       } catch (error) {
-        writeJson(res, 500, { error: "Failed to retrieve stats", details: error instanceof Error ? error.message : error });
+        writeJson(res, 500, {
+          error: "Failed to retrieve stats",
+          details: error instanceof Error ? error.message : error,
+        });
         return;
       }
     }
@@ -150,7 +162,9 @@ export function createHealthServer(options: HealthServerOptions): HealthServerHa
   });
 
   server.on("error", (error) => {
-    logger?.error("health_server_error", { error: error instanceof Error ? error.message : error });
+    logger?.error("health_server_error", {
+      error: error instanceof Error ? error.message : error,
+    });
   });
 
   const address = server.address() as AddressInfo | null;

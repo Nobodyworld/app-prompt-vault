@@ -148,7 +148,9 @@ export class AuthManager {
       }
 
       // Decode payload
-      const payload = JSON.parse(this.base64UrlDecode(encodedPayload)) as AuthPayload;
+      const payload = JSON.parse(
+        this.base64UrlDecode(encodedPayload),
+      ) as AuthPayload;
 
       // Check expiration
       const now = Math.floor(Date.now() / 1000);
@@ -257,7 +259,7 @@ export function createAuthRouter(options: {
       maxRequests: rateLimit.maxRequests,
       windowMs: rateLimit.windowMs,
       logger,
-    })
+    }),
   );
 
   router.post("/token", async (request, response) => {
@@ -291,15 +293,17 @@ export function createAuthRouter(options: {
         userId: `api-key:${localKeyName}`,
         username: localKeyName,
         roles: ["api-key"],
-        scopes: ["prompt-vault:*"]
+        scopes: ["prompt-vault:*"],
       };
     } else {
       let authCtx: CoreDbAuthContext | null = null;
       try {
-        authCtx = await verifyCoreDbApiKey(apiKey, { scopes: ["prompt-vault:token"] });
+        authCtx = await verifyCoreDbApiKey(apiKey, {
+          scopes: ["prompt-vault:token"],
+        });
       } catch (error) {
         logger?.warn("core_db_api_key_verification_failed", {
-          message: error instanceof Error ? error.message : String(error)
+          message: error instanceof Error ? error.message : String(error),
         });
       }
 
@@ -359,7 +363,12 @@ export function createAuthMiddleware(options: {
   localhostOnly?: boolean;
   logger?: StructuredLogger;
 }) {
-  const { authManager, requireAuth = false, localhostOnly = false, logger } = options;
+  const {
+    authManager,
+    requireAuth = false,
+    localhostOnly = false,
+    logger,
+  } = options;
 
   return async (request: Request, response: Response, next: NextFunction) => {
     // Check localhost-only restriction
@@ -401,18 +410,26 @@ export function createAuthMiddleware(options: {
     // Note: route-level requireAuth() runs after this middleware.
     const routeRequiresAuth = requireAuth || isUnsafeMethod;
 
-    const requiredScopes = routeRequiresAuth ? [isUnsafeMethod ? "prompt-vault:write" : "prompt-vault:read"] : [];
+    const requiredScopes = routeRequiresAuth
+      ? [isUnsafeMethod ? "prompt-vault:write" : "prompt-vault:read"]
+      : [];
 
     const scopeAllows = (granted: string, required: string): boolean => {
       if (granted === "*" || granted === required) return true;
-      if (granted.endsWith("*")) return required.startsWith(granted.slice(0, -1));
+      if (granted.endsWith("*"))
+        return required.startsWith(granted.slice(0, -1));
       return false;
     };
 
-    const hasAllScopes = (grantedScopes: string[], required: string[]): boolean => {
+    const hasAllScopes = (
+      grantedScopes: string[],
+      required: string[],
+    ): boolean => {
       if (required.length === 0) return true;
       if (grantedScopes.length === 0) return false;
-      return required.every((req) => grantedScopes.some((g) => scopeAllows(g, req)));
+      return required.every((req) =>
+        grantedScopes.some((g) => scopeAllows(g, req)),
+      );
     };
 
     // Try Bearer token (Prompt Vault JWT) first, then Core DB fallbacks.
@@ -438,7 +455,9 @@ export function createAuthMiddleware(options: {
       if (!authenticated) {
         try {
           authCtx =
-            (await verifyCoreDbSessionToken(token, authManager.getJwtSecret(), { scopes: requiredScopes })) ??
+            (await verifyCoreDbSessionToken(token, authManager.getJwtSecret(), {
+              scopes: requiredScopes,
+            })) ??
             (await verifyCoreDbApiKey(token, { scopes: requiredScopes }));
           if (authCtx) {
             authenticated = true;
@@ -446,7 +465,7 @@ export function createAuthMiddleware(options: {
           }
         } catch (error) {
           logger?.warn("core_db_bearer_verification_failed", {
-            message: error instanceof Error ? error.message : String(error)
+            message: error instanceof Error ? error.message : String(error),
           });
         }
       }
@@ -463,18 +482,20 @@ export function createAuthMiddleware(options: {
           userId: `api-key:${localKeyName}`,
           displayName: localKeyName,
           roles: ["api-key"],
-          scopes: ["prompt-vault:*"]
+          scopes: ["prompt-vault:*"],
         };
       } else {
         try {
-          authCtx = await verifyCoreDbApiKey(apiKeyHeader, { scopes: requiredScopes });
+          authCtx = await verifyCoreDbApiKey(apiKeyHeader, {
+            scopes: requiredScopes,
+          });
           if (authCtx) {
             authenticated = true;
             authMethod = authCtx.kind;
           }
         } catch (error) {
           logger?.warn("core_db_api_key_header_verification_failed", {
-            message: error instanceof Error ? error.message : String(error)
+            message: error instanceof Error ? error.message : String(error),
           });
         }
       }
@@ -490,7 +511,8 @@ export function createAuthMiddleware(options: {
 
       response.status(401).json({
         error: "Unauthorized",
-        message: "Authentication required. Provide a valid Bearer token or X-API-Key header.",
+        message:
+          "Authentication required. Provide a valid Bearer token or X-API-Key header.",
       });
       return;
     }
@@ -524,7 +546,9 @@ export function createAuthMiddleware(options: {
  * router.delete("/prompts/:id", requireAuth({ roles: ["admin"] }), handler);
  * ```
  */
-export function requireAuth(options: { roles?: string[]; scopes?: string[] } = {}) {
+export function requireAuth(
+  options: { roles?: string[]; scopes?: string[] } = {},
+) {
   return (request: Request, response: Response, next: NextFunction) => {
     response.locals.requireAuth = true;
 
@@ -539,7 +563,9 @@ export function requireAuth(options: { roles?: string[]; scopes?: string[] } = {
     // Check role requirements
     if (options.roles && options.roles.length > 0) {
       const userRoles = (response.locals.userRoles as string[]) || [];
-      const hasRequiredRole = options.roles.some((role) => userRoles.includes(role));
+      const hasRequiredRole = options.roles.some((role) =>
+        userRoles.includes(role),
+      );
 
       if (!hasRequiredRole) {
         response.status(403).json({
@@ -554,10 +580,13 @@ export function requireAuth(options: { roles?: string[]; scopes?: string[] } = {
       const userScopes = (response.locals.userScopes as string[]) || [];
       const scopeAllows = (granted: string, required: string): boolean => {
         if (granted === "*" || granted === required) return true;
-        if (granted.endsWith("*")) return required.startsWith(granted.slice(0, -1));
+        if (granted.endsWith("*"))
+          return required.startsWith(granted.slice(0, -1));
         return false;
       };
-      const hasAll = options.scopes.every((req) => userScopes.some((g) => scopeAllows(g, req)));
+      const hasAll = options.scopes.every((req) =>
+        userScopes.some((g) => scopeAllows(g, req)),
+      );
       if (!hasAll) {
         response.status(403).json({
           error: "Forbidden",

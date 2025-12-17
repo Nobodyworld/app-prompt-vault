@@ -4,8 +4,12 @@
  * Registers tools that allow the Hub/LLM to interact with Prompt Vault.
  */
 
-import { registerTool } from '../lib/platform-orchestrator.js';
-import type { ToolDefinition, ToolHandler, ToolResult } from '../lib/platform-orchestrator.js';
+import { registerTool } from "../lib/platform-orchestrator.js";
+import type {
+  ToolDefinition,
+  ToolHandler,
+  ToolResult,
+} from "../lib/platform-orchestrator.js";
 import * as promptService from "../lib/promptService.js";
 import type { PromptImportItem } from "../lib/promptService.js";
 import type { PlannerBucketDraft } from "../domain/interop.js";
@@ -14,330 +18,349 @@ import type { PlannerBucketDraft } from "../domain/interop.js";
 // =============================================================================
 
 export const pvSearchPromptsDefinition: ToolDefinition = {
-  name: 'pv_search_prompts',
-  description: 'Search prompts by query string, tags, or folder. Returns matching prompts with content preview.',
+  name: "pv_search_prompts",
+  description:
+    "Search prompts by query string, tags, or folder. Returns matching prompts with content preview.",
   parameters: [
     {
-      name: 'query',
-      type: 'string',
-      description: 'Search query to match against prompt title and content',
+      name: "query",
+      type: "string",
+      description: "Search query to match against prompt title and content",
       required: false,
     },
     {
-      name: 'tags',
-      type: 'array',
-      description: 'Array of tag names to filter by',
+      name: "tags",
+      type: "array",
+      description: "Array of tag names to filter by",
       required: false,
     },
     {
-      name: 'folder',
-      type: 'string',
-      description: 'Folder path to search within',
+      name: "folder",
+      type: "string",
+      description: "Folder path to search within",
       required: false,
     },
     {
-      name: 'limit',
-      type: 'number',
-      description: 'Maximum number of results to return (default: 20)',
+      name: "limit",
+      type: "number",
+      description: "Maximum number of results to return (default: 20)",
       required: false,
       default: 20,
     },
   ],
   returns: {
-    type: 'array',
-    description: 'Array of prompt objects with id, title, preview, tags, and folder',
+    type: "array",
+    description:
+      "Array of prompt objects with id, title, preview, tags, and folder",
   },
-  category: 'prompts',
-  source: 'prompt-vault',
+  category: "prompts",
+  source: "prompt-vault",
 };
 
 export const pvListPromptsDefinition = pvSearchPromptsDefinition;
 
 export const pvGetPromptDefinition: ToolDefinition = {
-  name: 'pv_get_prompt',
-  description: 'Retrieve a single prompt by ID with full content and metadata.',
+  name: "pv_get_prompt",
+  description: "Retrieve a single prompt by ID with full content and metadata.",
   parameters: [
     {
-      name: 'id',
-      type: 'string',
-      description: 'The unique identifier of the prompt',
+      name: "id",
+      type: "string",
+      description: "The unique identifier of the prompt",
       required: true,
     },
   ],
   returns: {
-    type: 'object',
-    description: 'Full prompt object with id, title, content, tags, folder, variables, metadata',
+    type: "object",
+    description:
+      "Full prompt object with id, title, content, tags, folder, variables, metadata",
   },
-  category: 'prompts',
-  source: 'prompt-vault',
+  category: "prompts",
+  source: "prompt-vault",
 };
 
 export const pvCreatePromptDefinition: ToolDefinition = {
-  name: 'pv_create_prompt',
-  description: 'Create a new prompt with title, content, and optional tags/folder.',
+  name: "pv_create_prompt",
+  description:
+    "Create a new prompt with title, content, and optional tags/folder.",
   parameters: [
     {
-      name: 'title',
-      type: 'string',
-      description: 'Title of the prompt',
+      name: "title",
+      type: "string",
+      description: "Title of the prompt",
       required: true,
     },
     {
-      name: 'content',
-      type: 'string',
-      description: 'The prompt content/template text',
+      name: "content",
+      type: "string",
+      description: "The prompt content/template text",
       required: true,
     },
     {
-      name: 'tags',
-      type: 'array',
-      description: 'Array of tag names to apply',
+      name: "tags",
+      type: "array",
+      description: "Array of tag names to apply",
       required: false,
     },
     {
-      name: 'folder',
-      type: 'string',
-      description: 'Folder path to store the prompt in',
+      name: "folder",
+      type: "string",
+      description: "Folder path to store the prompt in",
       required: false,
     },
   ],
   returns: {
-    type: 'object',
-    description: 'The created prompt object with assigned ID',
+    type: "object",
+    description: "The created prompt object with assigned ID",
   },
   requiresConfirmation: true,
-  category: 'prompts',
-  source: 'prompt-vault',
+  category: "prompts",
+  source: "prompt-vault",
 };
 
 export const pvGetStatsDefinition: ToolDefinition = {
-  name: 'pv_get_stats',
-  description: 'Get prompt library statistics (optionally scoped to the current Hub project).',
+  name: "pv_get_stats",
+  description:
+    "Get prompt library statistics (optionally scoped to the current Hub project).",
   parameters: [
     {
-      name: 'projectTagId',
-      type: 'string',
-      description: 'Optional project tag ID to scope stats; defaults to Hub context projectTagId when provided.',
+      name: "projectTagId",
+      type: "string",
+      description:
+        "Optional project tag ID to scope stats; defaults to Hub context projectTagId when provided.",
       required: false,
     },
   ],
   returns: {
-    type: 'object',
-    description: 'Stats object with totals, activity, and top tags.',
+    type: "object",
+    description: "Stats object with totals, activity, and top tags.",
   },
-  category: 'prompts',
-  source: 'prompt-vault',
+  category: "prompts",
+  source: "prompt-vault",
 };
 
 export const pvUpdatePromptDefinition: ToolDefinition = {
-  name: 'pv_update_prompt',
-  description: 'Update an existing prompt\'s content, title, tags, or folder.',
+  name: "pv_update_prompt",
+  description: "Update an existing prompt's content, title, tags, or folder.",
   parameters: [
     {
-      name: 'id',
-      type: 'string',
-      description: 'The unique identifier of the prompt to update',
+      name: "id",
+      type: "string",
+      description: "The unique identifier of the prompt to update",
       required: true,
     },
     {
-      name: 'title',
-      type: 'string',
-      description: 'New title (optional)',
+      name: "title",
+      type: "string",
+      description: "New title (optional)",
       required: false,
     },
     {
-      name: 'content',
-      type: 'string',
-      description: 'New content (optional)',
+      name: "content",
+      type: "string",
+      description: "New content (optional)",
       required: false,
     },
     {
-      name: 'tags',
-      type: 'array',
-      description: 'New tags array (replaces existing)',
+      name: "tags",
+      type: "array",
+      description: "New tags array (replaces existing)",
       required: false,
     },
     {
-      name: 'folder',
-      type: 'string',
-      description: 'New folder path (optional)',
+      name: "folder",
+      type: "string",
+      description: "New folder path (optional)",
       required: false,
     },
   ],
   returns: {
-    type: 'object',
-    description: 'The updated prompt object',
+    type: "object",
+    description: "The updated prompt object",
   },
   requiresConfirmation: true,
-  category: 'prompts',
-  source: 'prompt-vault',
+  category: "prompts",
+  source: "prompt-vault",
 };
 
 export const pvDeletePromptDefinition: ToolDefinition = {
-  name: 'pv_delete_prompt',
-  description: 'Delete a prompt by ID.',
+  name: "pv_delete_prompt",
+  description: "Delete a prompt by ID.",
   parameters: [
     {
-      name: 'id',
-      type: 'string',
-      description: 'The unique identifier of the prompt to delete',
+      name: "id",
+      type: "string",
+      description: "The unique identifier of the prompt to delete",
       required: true,
     },
   ],
   returns: {
-    type: 'boolean',
-    description: 'True if successfully deleted',
+    type: "boolean",
+    description: "True if successfully deleted",
   },
   requiresConfirmation: true,
-  category: 'prompts',
-  source: 'prompt-vault',
+  category: "prompts",
+  source: "prompt-vault",
 };
 
 export const pvExecutePromptDefinition: ToolDefinition = {
-  name: 'pv_execute_prompt',
-  description: 'Execute a prompt template with variable substitution.',
+  name: "pv_execute_prompt",
+  description: "Execute a prompt template with variable substitution.",
   parameters: [
     {
-      name: 'id',
-      type: 'string',
-      description: 'The unique identifier of the prompt to execute',
+      name: "id",
+      type: "string",
+      description: "The unique identifier of the prompt to execute",
       required: true,
     },
     {
-      name: 'variables',
-      type: 'object',
-      description: 'Key-value pairs for variable substitution in the template',
+      name: "variables",
+      type: "object",
+      description: "Key-value pairs for variable substitution in the template",
       required: false,
     },
   ],
   returns: {
-    type: 'string',
-    description: 'The prompt content with variables replaced',
+    type: "string",
+    description: "The prompt content with variables replaced",
   },
-  category: 'prompts',
-  source: 'prompt-vault',
+  category: "prompts",
+  source: "prompt-vault",
 };
 
 export const pvListFoldersDefinition: ToolDefinition = {
-  name: 'pv_list_folders',
-  description: 'List all prompt folders/categories.',
+  name: "pv_list_folders",
+  description: "List all prompt folders/categories.",
   parameters: [],
   returns: {
-    type: 'array',
-    description: 'Array of folder paths',
+    type: "array",
+    description: "Array of folder paths",
   },
-  category: 'prompts',
-  source: 'prompt-vault',
+  category: "prompts",
+  source: "prompt-vault",
 };
 
 export const pvListTagsDefinition: ToolDefinition = {
-  name: 'pv_list_tags',
-  description: 'List all tags with usage counts.',
+  name: "pv_list_tags",
+  description: "List all tags with usage counts.",
   parameters: [],
   returns: {
-    type: 'array',
-    description: 'Array of {name, count} objects',
+    type: "array",
+    description: "Array of {name, count} objects",
   },
-  category: 'prompts',
-  source: 'prompt-vault',
+  category: "prompts",
+  source: "prompt-vault",
 };
 
 export const pvExportPlannerBucketDefinition: ToolDefinition = {
-  name: 'pv_export_planner_bucket',
-  description: 'Export prompts as a Planner AiDo bucket draft for import.',
+  name: "pv_export_planner_bucket",
+  description: "Export prompts as a Planner AiDo bucket draft for import.",
   parameters: [
     {
-      name: 'limit',
-      type: 'number',
-      description: 'Maximum tasks to include (default: 10)',
+      name: "limit",
+      type: "number",
+      description: "Maximum tasks to include (default: 10)",
       required: false,
       default: 10,
     },
     {
-      name: 'query',
-      type: 'string',
-      description: 'Optional text search',
+      name: "query",
+      type: "string",
+      description: "Optional text search",
       required: false,
     },
     {
-      name: 'tags',
-      type: 'array',
-      description: 'Filter by tag labels',
+      name: "tags",
+      type: "array",
+      description: "Filter by tag labels",
       required: false,
     },
     {
-      name: 'projectSlug',
-      type: 'string',
-      description: 'Filter by project slug (maps to shared tag)',
+      name: "projectSlug",
+      type: "string",
+      description: "Filter by project slug (maps to shared tag)",
       required: false,
     },
   ],
   returns: {
-    type: 'object',
-    description: 'Planner bucket draft payload with tasks derived from prompts',
+    type: "object",
+    description: "Planner bucket draft payload with tasks derived from prompts",
   },
-  category: 'interop',
-  source: 'prompt-vault',
+  category: "interop",
+  source: "prompt-vault",
 };
 
 export const pvImportPromptsDefinition: ToolDefinition = {
-  name: 'pv_import_prompts',
-  description: 'Bulk import prompts into Prompt Vault (e.g., from Planner AiDo exports).',
+  name: "pv_import_prompts",
+  description:
+    "Bulk import prompts into Prompt Vault (e.g., from Planner AiDo exports).",
   parameters: [
     {
-      name: 'items',
-      type: 'array',
-      description: 'Array of prompt objects with title, content, optional tags and projectSlug',
+      name: "items",
+      type: "array",
+      description:
+        "Array of prompt objects with title, content, optional tags and projectSlug",
       required: true,
     },
   ],
   returns: {
-    type: 'object',
-    description: 'Summary of created prompts and any failures',
+    type: "object",
+    description: "Summary of created prompts and any failures",
   },
   requiresConfirmation: true,
-  category: 'interop',
-  source: 'prompt-vault',
+  category: "interop",
+  source: "prompt-vault",
 };
 
 export const pvImportPlannerBucketDefinition: ToolDefinition = {
-  name: 'pv_import_planner_bucket',
-  description: 'Import a Planner AiDo bucket draft into Prompt Vault as prompts.',
+  name: "pv_import_planner_bucket",
+  description:
+    "Import a Planner AiDo bucket draft into Prompt Vault as prompts.",
   parameters: [
     {
-      name: 'draft',
-      type: 'object',
-      description: 'Planner bucket draft payload (name/source/tags/tasks) to import',
+      name: "draft",
+      type: "object",
+      description:
+        "Planner bucket draft payload (name/source/tags/tasks) to import",
       required: true,
     },
     {
-      name: 'projectSlug',
-      type: 'string',
-      description: 'Optional project slug to apply as shared project tag to imported prompts',
+      name: "projectSlug",
+      type: "string",
+      description:
+        "Optional project slug to apply as shared project tag to imported prompts",
       required: false,
     },
     {
-      name: 'defaultTags',
-      type: 'array',
-      description: 'Optional tags to apply to every imported prompt',
+      name: "defaultTags",
+      type: "array",
+      description: "Optional tags to apply to every imported prompt",
       required: false,
     },
   ],
   returns: {
-    type: 'object',
-    description: 'Summary of created prompts and any failures',
+    type: "object",
+    description: "Summary of created prompts and any failures",
   },
   requiresConfirmation: true,
-  category: 'interop',
-  source: 'prompt-vault',
+  category: "interop",
+  source: "prompt-vault",
 };
 
 // =============================================================================
 // Tool Handlers (placeholders - connect to actual prompt-vault logic)
 // =============================================================================
 
-export const pvSearchPromptsHandler: ToolHandler = async (args, ctx): Promise<ToolResult> => {
-  const { query, tags, limit = 20, projectTagId } = args as {
+export const pvSearchPromptsHandler: ToolHandler = async (
+  args,
+  ctx,
+): Promise<ToolResult> => {
+  const {
+    query,
+    tags,
+    limit = 20,
+    projectTagId,
+  } = args as {
     query?: string;
     tags?: string[];
     limit?: number;
@@ -346,7 +369,8 @@ export const pvSearchPromptsHandler: ToolHandler = async (args, ctx): Promise<To
 
   // folder is currently ignored; preserved in definition for future filtering
   try {
-    const ctxProjectTagId = (ctx.projectTagId as string | undefined | null) ?? undefined;
+    const ctxProjectTagId =
+      (ctx.projectTagId as string | undefined | null) ?? undefined;
     const resolvedProjectTagId = projectTagId ?? ctxProjectTagId;
     const prompts = await promptService.listPrompts({
       query,
@@ -361,10 +385,14 @@ export const pvSearchPromptsHandler: ToolHandler = async (args, ctx): Promise<To
   }
 };
 
-export const pvGetPromptHandler: ToolHandler = async (args, ctx): Promise<ToolResult> => {
+export const pvGetPromptHandler: ToolHandler = async (
+  args,
+  ctx,
+): Promise<ToolResult> => {
   const { id } = args as { id: string };
 
-  const ctxProjectTagId = (ctx.projectTagId as string | undefined | null) ?? undefined;
+  const ctxProjectTagId =
+    (ctx.projectTagId as string | undefined | null) ?? undefined;
 
   try {
     const prompt = await promptService.getPrompt(id);
@@ -375,7 +403,9 @@ export const pvGetPromptHandler: ToolHandler = async (args, ctx): Promise<ToolRe
     // If Hub provides a project context, enforce that the prompt is tagged with it.
     if (ctxProjectTagId) {
       const ctxId = String(ctxProjectTagId);
-      const hasProjectTag = (prompt.tags ?? []).some((t) => String(t.id) === ctxId);
+      const hasProjectTag = (prompt.tags ?? []).some(
+        (t) => String(t.id) === ctxId,
+      );
       if (!hasProjectTag) {
         return { success: false, error: "Prompt not found" };
       }
@@ -388,15 +418,20 @@ export const pvGetPromptHandler: ToolHandler = async (args, ctx): Promise<ToolRe
   }
 };
 
-export const pvCreatePromptHandler: ToolHandler = async (args, ctx): Promise<ToolResult> => {
+export const pvCreatePromptHandler: ToolHandler = async (
+  args,
+  ctx,
+): Promise<ToolResult> => {
   const { title, content, tags } = args as {
     title: string;
     content: string;
     tags?: string[];
   };
 
-  const ctxProjectTagId = (ctx.projectTagId as string | undefined | null) ?? undefined;
-  const projectSlug = (ctx.projectSlug as string | undefined | null) ?? undefined;
+  const ctxProjectTagId =
+    (ctx.projectTagId as string | undefined | null) ?? undefined;
+  const projectSlug =
+    (ctx.projectSlug as string | undefined | null) ?? undefined;
 
   try {
     const created = await promptService.createPrompt({
@@ -413,13 +448,19 @@ export const pvCreatePromptHandler: ToolHandler = async (args, ctx): Promise<Too
   }
 };
 
-export const pvGetStatsHandler: ToolHandler = async (args, ctx): Promise<ToolResult> => {
+export const pvGetStatsHandler: ToolHandler = async (
+  args,
+  ctx,
+): Promise<ToolResult> => {
   const { projectTagId } = args as { projectTagId?: string };
-  const ctxProjectTagId = (ctx.projectTagId as string | undefined | null) ?? undefined;
+  const ctxProjectTagId =
+    (ctx.projectTagId as string | undefined | null) ?? undefined;
   const resolvedProjectTagId = projectTagId ?? ctxProjectTagId;
 
   try {
-    const stats = await promptService.getLibraryStats({ projectTagId: resolvedProjectTagId });
+    const stats = await promptService.getLibraryStats({
+      projectTagId: resolvedProjectTagId,
+    });
     return { success: true, data: stats };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -427,7 +468,9 @@ export const pvGetStatsHandler: ToolHandler = async (args, ctx): Promise<ToolRes
   }
 };
 
-export const pvUpdatePromptHandler: ToolHandler = async (args): Promise<ToolResult> => {
+export const pvUpdatePromptHandler: ToolHandler = async (
+  args,
+): Promise<ToolResult> => {
   const { id, title, content, tags } = args as {
     id: string;
     title?: string;
@@ -451,11 +494,17 @@ export const pvUpdatePromptHandler: ToolHandler = async (args): Promise<ToolResu
   }
 };
 
-export const pvDeletePromptHandler: ToolHandler = async (args): Promise<ToolResult> => {
+export const pvDeletePromptHandler: ToolHandler = async (
+  args,
+): Promise<ToolResult> => {
   const { id } = args as { id?: string };
 
   if (!id) {
-    return { success: false, error: "id is required", code: "VALIDATION_ERROR" };
+    return {
+      success: false,
+      error: "id is required",
+      code: "VALIDATION_ERROR",
+    };
   }
 
   try {
@@ -472,8 +521,13 @@ export const pvDeletePromptHandler: ToolHandler = async (args): Promise<ToolResu
   }
 };
 
-export const pvExecutePromptHandler: ToolHandler = async (args): Promise<ToolResult> => {
-  const { id, variables } = args as { id: string; variables?: Record<string, unknown> };
+export const pvExecutePromptHandler: ToolHandler = async (
+  args,
+): Promise<ToolResult> => {
+  const { id, variables } = args as {
+    id: string;
+    variables?: Record<string, unknown>;
+  };
 
   try {
     const prompt = await promptService.getPrompt(id);
@@ -482,7 +536,7 @@ export const pvExecutePromptHandler: ToolHandler = async (args): Promise<ToolRes
     }
     const { rendered, missingVariables } = promptService.executePromptTemplate(
       prompt.latestVersion.body,
-      variables ?? {}
+      variables ?? {},
     );
     if (missingVariables.length > 0) {
       return {
@@ -498,18 +552,26 @@ export const pvExecutePromptHandler: ToolHandler = async (args): Promise<ToolRes
   }
 };
 
-export const pvListFoldersHandler: ToolHandler = async (): Promise<ToolResult> => {
-  // Folder/category support is not yet integrated with the shared tags/projects system.
-  return { success: true, data: [] };
-};
+export const pvListFoldersHandler: ToolHandler =
+  async (): Promise<ToolResult> => {
+    // Folder/category support is not yet integrated with the shared tags/projects system.
+    return { success: true, data: [] };
+  };
 
 export const pvListTagsHandler: ToolHandler = async (): Promise<ToolResult> => {
   // Tag listing via tags-projects would be implemented in a future Tags/Projects task.
   return { success: true, data: [] };
 };
 
-export const pvExportPlannerBucketHandler: ToolHandler = async (args): Promise<ToolResult> => {
-  const { limit = 10, query, tags, projectSlug } = args as {
+export const pvExportPlannerBucketHandler: ToolHandler = async (
+  args,
+): Promise<ToolResult> => {
+  const {
+    limit = 10,
+    query,
+    tags,
+    projectSlug,
+  } = args as {
     limit?: number;
     query?: string;
     tags?: string[];
@@ -517,7 +579,10 @@ export const pvExportPlannerBucketHandler: ToolHandler = async (args): Promise<T
   };
 
   try {
-    const draft = await promptService.exportPlannerDraft({ query, tags, projectSlug }, limit);
+    const draft = await promptService.exportPlannerDraft(
+      { query, tags, projectSlug },
+      limit,
+    );
     if (!draft) {
       return { success: false, error: "No prompts available to export" };
     }
@@ -528,7 +593,9 @@ export const pvExportPlannerBucketHandler: ToolHandler = async (args): Promise<T
   }
 };
 
-export const pvImportPromptsHandler: ToolHandler = async (args): Promise<ToolResult> => {
+export const pvImportPromptsHandler: ToolHandler = async (
+  args,
+): Promise<ToolResult> => {
   const { items } = args as { items?: PromptImportItem[] };
   if (!Array.isArray(items) || items.length === 0) {
     return { success: false, error: "items array is required" };
@@ -539,7 +606,11 @@ export const pvImportPromptsHandler: ToolHandler = async (args): Promise<ToolRes
     return {
       success: true,
       data: {
-        created: result.created.map((prompt) => ({ id: prompt.id, slug: prompt.slug, title: prompt.title })),
+        created: result.created.map((prompt) => ({
+          id: prompt.id,
+          slug: prompt.slug,
+          title: prompt.title,
+        })),
         failed: result.failed,
       },
     };
@@ -549,7 +620,10 @@ export const pvImportPromptsHandler: ToolHandler = async (args): Promise<ToolRes
   }
 };
 
-export const pvImportPlannerBucketHandler: ToolHandler = async (args, ctx): Promise<ToolResult> => {
+export const pvImportPlannerBucketHandler: ToolHandler = async (
+  args,
+  ctx,
+): Promise<ToolResult> => {
   const { draft, projectSlug, defaultTags } = args as {
     draft?: unknown;
     projectSlug?: string;
@@ -572,17 +646,25 @@ export const pvImportPlannerBucketHandler: ToolHandler = async (args, ctx): Prom
     return { success: false, error: "draft.tasks array is required" };
   }
 
-  const resolvedProjectSlug = projectSlug ?? ((ctx.projectSlug as string | undefined | null) ?? undefined);
+  const resolvedProjectSlug =
+    projectSlug ?? (ctx.projectSlug as string | undefined | null) ?? undefined;
 
   try {
-    const result = await promptService.importPlannerBucketDraft(parsedDraft as PlannerBucketDraft, {
-      projectSlug: resolvedProjectSlug,
-      defaultTags: Array.isArray(defaultTags) ? defaultTags : undefined,
-    });
+    const result = await promptService.importPlannerBucketDraft(
+      parsedDraft as PlannerBucketDraft,
+      {
+        projectSlug: resolvedProjectSlug,
+        defaultTags: Array.isArray(defaultTags) ? defaultTags : undefined,
+      },
+    );
     return {
       success: true,
       data: {
-        created: result.created.map((prompt) => ({ id: prompt.id, slug: prompt.slug, title: prompt.title })),
+        created: result.created.map((prompt) => ({
+          id: prompt.id,
+          slug: prompt.slug,
+          title: prompt.title,
+        })),
         failed: result.failed,
       },
     };

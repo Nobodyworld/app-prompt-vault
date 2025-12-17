@@ -33,14 +33,22 @@ export function PromptList({
           const isSelected = Boolean(selectedPromptIds?.has(prompt.id));
 
           return (
-            <div key={prompt.id} className={`prompt-row${isCopied ? " prompt-row--copied" : ""}`}>
+            <div
+              key={prompt.id}
+              className={`prompt-row${isCopied ? " prompt-row--copied" : ""}`}
+            >
               {isSelectable && (
-                <label className="prompt-row__select" aria-label={`Select prompt ${prompt.title || "Untitled Prompt"}`}>
+                <label
+                  className="prompt-row__select"
+                  aria-label={`Select prompt ${prompt.title || "Untitled Prompt"}`}
+                >
                   <input
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => onToggleSelected?.(prompt.id)}
-                    onClick={(event: React.MouseEvent<HTMLInputElement>) => event.stopPropagation()}
+                    onClick={(event: React.MouseEvent<HTMLInputElement>) =>
+                      event.stopPropagation()
+                    }
                   />
                 </label>
               )}
@@ -63,8 +71,16 @@ export function PromptList({
                     {prompt.isFavorite ? "★ " : ""}
                     {prompt.title || "Untitled Prompt"}
                   </span>
-                  {prompt.category && <span className="prompt-row__category">{prompt.category}</span>}
-                  {prompt.rating != null && <span className="prompt-row__category">Rating: {prompt.rating}</span>}
+                  {prompt.category && (
+                    <span className="prompt-row__category">
+                      {prompt.category}
+                    </span>
+                  )}
+                  {prompt.rating != null && (
+                    <span className="prompt-row__category">
+                      Rating: {prompt.rating}
+                    </span>
+                  )}
                   {hasTags && (
                     <div className="prompt-row__tags">
                       {tagsDisplay.map((tag) => (
@@ -75,7 +91,9 @@ export function PromptList({
                     </div>
                   )}
                   <span className="prompt-row__hint">Tap to copy</span>
-                  {isCopied && <span className="prompt-row__feedback">Copied!</span>}
+                  {isCopied && (
+                    <span className="prompt-row__feedback">Copied!</span>
+                  )}
                 </div>
               </div>
 

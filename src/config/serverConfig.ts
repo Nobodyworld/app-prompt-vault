@@ -81,7 +81,8 @@ const booleanSchema = z
 const portSchema = z
   .union([z.string(), z.number()])
   .transform((value) => {
-    const parsed = typeof value === "number" ? value : Number.parseInt(String(value), 10);
+    const parsed =
+      typeof value === "number" ? value : Number.parseInt(String(value), 10);
     if (!Number.isFinite(parsed)) {
       throw new Error("Invalid port number");
     }
@@ -105,7 +106,7 @@ function normalizeDatabasePath(path: string): string {
  */
 function normalizeAllowedOrigins(
   value: string | undefined,
-  defaults: readonly string[] | null | undefined
+  defaults: readonly string[] | null | undefined,
 ): { origins: string[] | null; warnings: string[] } {
   if (value === undefined || value.trim().length === 0) {
     if (defaults == null || defaults.length === 0) {
@@ -136,7 +137,9 @@ function normalizeAllowedOrigins(
       seen.add(canonical);
       origins.push(canonical);
     } catch (error) {
-      throw new Error(`Invalid allowed origin "${origin}": ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Invalid allowed origin "${origin}": ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -148,7 +151,10 @@ function normalizeAllowedOrigins(
 }
 
 /** Resolves the static asset directory to an absolute path or returns undefined when no assets should be served. */
-function normalizeStaticDirectory(value: string | undefined, defaults: string | null | undefined): string | undefined {
+function normalizeStaticDirectory(
+  value: string | undefined,
+  defaults: string | null | undefined,
+): string | undefined {
   const candidate = value ?? defaults ?? undefined;
   if (candidate == null) {
     return undefined;
@@ -164,7 +170,9 @@ function normalizeStaticDirectory(value: string | undefined, defaults: string | 
  * Loads and validates server configuration from environment variables while applying optional defaults. Any validation
  * failure results in a {@link ConfigurationError} so the HTTP bootstrap can abort start-up with a clear error message.
  */
-export function loadServerConfig(options: ServerConfigOptions = {}): LoadConfigResult {
+export function loadServerConfig(
+  options: ServerConfigOptions = {},
+): LoadConfigResult {
   const env = options.env ?? process.env;
   const issues: string[] = [];
   const warnings: string[] = [];
@@ -174,27 +182,37 @@ export function loadServerConfig(options: ServerConfigOptions = {}): LoadConfigR
     try {
       return portSchema.parse(raw);
     } catch (error) {
-      issues.push(`PORT: ${error instanceof Error ? error.message : String(error)}`);
+      issues.push(
+        `PORT: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return 3001;
     }
   })();
 
   const databasePathResult = (() => {
-    const raw = env.PROMPT_VAULT_DB_PATH ?? options.defaults?.databasePath ?? "prompt-vault.db";
+    const raw =
+      env.PROMPT_VAULT_DB_PATH ??
+      options.defaults?.databasePath ??
+      "prompt-vault.db";
     try {
       return normalizeDatabasePath(raw);
     } catch (error) {
-      issues.push(`PROMPT_VAULT_DB_PATH: ${error instanceof Error ? error.message : String(error)}`);
+      issues.push(
+        `PROMPT_VAULT_DB_PATH: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return normalizeDatabasePath("prompt-vault.db");
     }
   })();
 
   const metricsEnabledResult = (() => {
-    const raw = env.PROMPT_VAULT_METRICS ?? options.defaults?.metricsEnabled ?? false;
+    const raw =
+      env.PROMPT_VAULT_METRICS ?? options.defaults?.metricsEnabled ?? false;
     try {
       return booleanSchema.parse(raw);
     } catch (error) {
-      issues.push(`PROMPT_VAULT_METRICS: ${error instanceof Error ? error.message : String(error)}`);
+      issues.push(
+        `PROMPT_VAULT_METRICS: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return false;
     }
   })();
@@ -207,54 +225,78 @@ export function loadServerConfig(options: ServerConfigOptions = {}): LoadConfigR
     try {
       return portSchema.parse(raw);
     } catch (error) {
-      issues.push(`PROMPT_VAULT_METRICS_PORT: ${error instanceof Error ? error.message : String(error)}`);
+      issues.push(
+        `PROMPT_VAULT_METRICS_PORT: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return undefined;
     }
   })();
 
   const allowedOriginsResult = (() => {
-      try {
-        return normalizeAllowedOrigins(env.PROMPT_VAULT_ALLOWED_ORIGINS, options.defaults?.allowedOrigins ?? null);
-      } catch (error) {
-        issues.push(`PROMPT_VAULT_ALLOWED_ORIGINS: ${error instanceof Error ? error.message : String(error)}`);
-        return { origins: null, warnings: [] };
-      }
+    try {
+      return normalizeAllowedOrigins(
+        env.PROMPT_VAULT_ALLOWED_ORIGINS,
+        options.defaults?.allowedOrigins ?? null,
+      );
+    } catch (error) {
+      issues.push(
+        `PROMPT_VAULT_ALLOWED_ORIGINS: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { origins: null, warnings: [] };
+    }
   })();
 
   warnings.push(...allowedOriginsResult.warnings);
 
-  const staticDirectory = normalizeStaticDirectory(env.PROMPT_VAULT_STATIC_DIR, options.defaults?.staticDirectory ?? undefined);
+  const staticDirectory = normalizeStaticDirectory(
+    env.PROMPT_VAULT_STATIC_DIR,
+    options.defaults?.staticDirectory ?? undefined,
+  );
 
   const maxFileSizeBytesResult = (() => {
-    const raw = env.PROMPT_VAULT_MAX_FILE_SIZE_BYTES ?? options.defaults?.maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
+    const raw =
+      env.PROMPT_VAULT_MAX_FILE_SIZE_BYTES ??
+      options.defaults?.maxFileSizeBytes ??
+      DEFAULT_MAX_FILE_SIZE_BYTES;
     try {
-      const parsed = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
+      const parsed =
+        typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
       if (!Number.isFinite(parsed) || parsed <= 0) {
         throw new Error("Must be a positive number");
       }
       return parsed;
     } catch (error) {
-      issues.push(`PROMPT_VAULT_MAX_FILE_SIZE_BYTES: ${error instanceof Error ? error.message : String(error)}`);
+      issues.push(
+        `PROMPT_VAULT_MAX_FILE_SIZE_BYTES: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return DEFAULT_MAX_FILE_SIZE_BYTES;
     }
   })();
 
   const maxPromptContentLengthResult = (() => {
-    const raw = env.PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH ?? options.defaults?.maxPromptContentLength ?? DEFAULT_MAX_PROMPT_CONTENT_LENGTH;
+    const raw =
+      env.PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH ??
+      options.defaults?.maxPromptContentLength ??
+      DEFAULT_MAX_PROMPT_CONTENT_LENGTH;
     try {
-      const parsed = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
+      const parsed =
+        typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
       if (!Number.isFinite(parsed) || parsed <= 0) {
         throw new Error("Must be a positive number");
       }
       return parsed;
     } catch (error) {
-      issues.push(`PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH: ${error instanceof Error ? error.message : String(error)}`);
+      issues.push(
+        `PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return DEFAULT_MAX_PROMPT_CONTENT_LENGTH;
     }
   })();
 
   if (!metricsEnabledResult && metricsPortResult !== undefined) {
-    warnings.push("PROMPT_VAULT_METRICS_PORT is set but PROMPT_VAULT_METRICS is disabled. Metrics will remain disabled.");
+    warnings.push(
+      "PROMPT_VAULT_METRICS_PORT is set but PROMPT_VAULT_METRICS is disabled. Metrics will remain disabled.",
+    );
   }
 
   if (issues.length > 0) {

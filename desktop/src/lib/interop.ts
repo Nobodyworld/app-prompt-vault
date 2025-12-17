@@ -25,7 +25,12 @@ export interface ButtonsSwitchboardPayload {
   switchboard: {
     tileSize: "xs" | "sm" | "md" | "lg";
     allowSearch?: boolean;
-    phrases: Array<{ id: string; label: string; value: string; valueType?: "text" | "pv_prompt_id" }>;
+    phrases: Array<{
+      id: string;
+      label: string;
+      value: string;
+      valueType?: "text" | "pv_prompt_id";
+    }>;
   };
 }
 
@@ -45,7 +50,7 @@ export interface PlannerBucketDraft {
 
 export function buildButtonsSwitchboardPayload(
   prompts: PromptSummary[],
-  limit = 8
+  limit = 8,
 ): ButtonsSwitchboardPayload | null {
   const phrases = prompts
     .filter((p) => Boolean(p.id) && Boolean(p.latestVersion?.body))
@@ -62,7 +67,8 @@ export function buildButtonsSwitchboardPayload(
   return {
     id: `pv-switchboard-${Date.now()}`,
     title: "Prompt Vault x Buttons",
-    description: "Quick-phrase switchboard generated from Prompt Vault search results.",
+    description:
+      "Quick-phrase switchboard generated from Prompt Vault search results.",
     icon: "keyboard",
     context: { type: "global" },
     triggers: [{ type: "palette" }],
@@ -86,7 +92,7 @@ export function buildButtonsSwitchboardPayload(
 
 export function buildPlannerBucketDraft(
   prompts: PromptSummary[],
-  limit = 6
+  limit = 6,
 ): PlannerBucketDraft | null {
   const tasks = prompts.slice(0, limit).map((p) => ({
     title: `Use: ${p.title}`,

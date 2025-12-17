@@ -13,16 +13,28 @@ function candidateTelemetryDirs(): string[] {
     const local = process.env.LOCALAPPDATA;
     if (local) dirs.push(path.join(local, "prompt-vault-telemetry"));
   } else if (process.platform === "darwin") {
-    dirs.push(path.join(process.env.HOME ?? "", "Library", "Application Support", "prompt-vault-telemetry"));
+    dirs.push(
+      path.join(
+        process.env.HOME ?? "",
+        "Library",
+        "Application Support",
+        "prompt-vault-telemetry",
+      ),
+    );
   } else {
     // linux / other
-    const xdg = process.env.XDG_DATA_HOME ?? path.join(process.env.HOME ?? "", ".local", "share");
+    const xdg =
+      process.env.XDG_DATA_HOME ??
+      path.join(process.env.HOME ?? "", ".local", "share");
     dirs.push(path.join(xdg, "prompt-vault-telemetry"));
   }
   return dirs;
 }
 
-export function startTelemetryMetricsWatcher(registry: MetricRegistry, intervalMs = 10_000): { stop: () => void } {
+export function startTelemetryMetricsWatcher(
+  registry: MetricRegistry,
+  intervalMs = 10_000,
+): { stop: () => void } {
   const last: LastCounts = new Map();
 
   let stopped = false;
@@ -42,7 +54,11 @@ export function startTelemetryMetricsWatcher(registry: MetricRegistry, intervalM
           const prev = last.get(eventName) ?? 0;
           const delta = Math.max(0, value - prev);
           if (delta > 0) {
-            const counter = registry.getOrCreateCounter("renderer_event_count", "Counts of renderer telemetry events", ["event_name"]);
+            const counter = registry.getOrCreateCounter(
+              "renderer_event_count",
+              "Counts of renderer telemetry events",
+              ["event_name"],
+            );
             counter.increment({ event_name: eventName }, delta);
             last.set(eventName, value);
           }
@@ -50,7 +66,7 @@ export function startTelemetryMetricsWatcher(registry: MetricRegistry, intervalM
         return; // read first available dir
       } catch (err) {
         // keep debug trace but continue to next dir
-        console.debug('tryRead telemetry dir failed', err);
+        console.debug("tryRead telemetry dir failed", err);
       }
     }
   }
@@ -58,14 +74,22 @@ export function startTelemetryMetricsWatcher(registry: MetricRegistry, intervalM
   const timer = setInterval(() => {
     if (stopped) return;
     tryRead().catch((err) => {
-      console.debug('startTelemetryMetricsWatcher periodic tryRead failed', err);
+      console.debug(
+        "startTelemetryMetricsWatcher periodic tryRead failed",
+        err,
+      );
     });
   }, intervalMs);
 
   // run immediately once
   tryRead().catch((err) => {
-    console.debug('startTelemetryMetricsWatcher initial tryRead failed', err);
+    console.debug("startTelemetryMetricsWatcher initial tryRead failed", err);
   });
 
-  return { stop: () => { stopped = true; clearInterval(timer); } };
+  return {
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+    },
+  };
 }

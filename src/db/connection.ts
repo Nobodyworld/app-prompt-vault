@@ -28,8 +28,13 @@ export class ConnectionFactory {
     });
 
     database.pragma("foreign_keys = ON");
-    const busyTimeout = Number.parseInt(process.env.PROMPT_VAULT_BUSY_TIMEOUT ?? "5000", 10);
-    database.pragma(`busy_timeout = ${Number.isFinite(busyTimeout) ? busyTimeout : 5000}`);
+    const busyTimeout = Number.parseInt(
+      process.env.PROMPT_VAULT_BUSY_TIMEOUT ?? "5000",
+      10,
+    );
+    database.pragma(
+      `busy_timeout = ${Number.isFinite(busyTimeout) ? busyTimeout : 5000}`,
+    );
 
     if (!(options.readonly ?? false)) {
       database.pragma("journal_mode = WAL");

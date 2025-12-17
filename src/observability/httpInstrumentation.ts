@@ -25,17 +25,19 @@ function getRouteLabel(request: Request): string {
  * Express middleware that records Prometheus-compatible request counters and latency histograms.
  * The middleware is intentionally dependency-light so it can operate in air-gapped environments.
  */
-export function createHttpMetricsMiddleware(options: HttpInstrumentationOptions): RequestHandler {
+export function createHttpMetricsMiddleware(
+  options: HttpInstrumentationOptions,
+): RequestHandler {
   const requestCounter = options.telemetry.registry.getOrCreateCounter(
     "prompt_vault_http_requests_total",
     "Total number of HTTP requests",
-    ["method", "status", "route"]
+    ["method", "status", "route"],
   );
   const latencyHistogram = options.telemetry.registry.getOrCreateHistogram(
     "prompt_vault_http_request_duration_seconds",
     "HTTP request duration in seconds",
     ["method", "status", "route"],
-    [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10]
+    [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
   );
 
   return (request, response, next) => {
@@ -49,7 +51,8 @@ export function createHttpMetricsMiddleware(options: HttpInstrumentationOptions)
       finished = true;
       try {
         const statusCode = res.statusCode || 0;
-        const durationSeconds = Number(process.hrtime.bigint() - start) / 1_000_000_000;
+        const durationSeconds =
+          Number(process.hrtime.bigint() - start) / 1_000_000_000;
         const route = getRouteLabel(request);
         const labels = options.telemetry.registry.withDefaultLabels({
           method: request.method,

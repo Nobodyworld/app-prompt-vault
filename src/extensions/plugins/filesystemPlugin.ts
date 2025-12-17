@@ -1,6 +1,10 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { PromptVaultConnector, PromptVaultPlugin, PromptVaultPluginContext } from "../types.js";
+import type {
+  PromptVaultConnector,
+  PromptVaultPlugin,
+  PromptVaultPluginContext,
+} from "../types.js";
 
 interface FilesystemConnectorOptions {
   readonly baseDir: string;
@@ -38,7 +42,9 @@ class FilesystemConnector implements PromptVaultConnector {
     }
 
     if (!existsSync(this.baseDir)) {
-      throw new Error(`Filesystem connector directory does not exist: ${this.baseDir}`);
+      throw new Error(
+        `Filesystem connector directory does not exist: ${this.baseDir}`,
+      );
     }
 
     this.context?.logger.info("filesystem_connector_connected", {
@@ -79,7 +85,9 @@ class FilesystemConnector implements PromptVaultConnector {
   }
 }
 
-export function createFilesystemPlugin(options: FilesystemConnectorOptions): PromptVaultPlugin {
+export function createFilesystemPlugin(
+  options: FilesystemConnectorOptions,
+): PromptVaultPlugin {
   const connector = new FilesystemConnector(options);
 
   return {

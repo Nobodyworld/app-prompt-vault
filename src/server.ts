@@ -4,10 +4,18 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import cors from "cors";
-import express, { type ErrorRequestHandler, type NextFunction, type Request, type Response } from "express";
+import express, {
+  type ErrorRequestHandler,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import { z } from "zod";
 import { PromptVaultService } from "./services/PromptVaultService.js";
-import { createAuditTrailPlugin, createOperationalTelemetryPlugin } from "./extensions/index.js";
+import {
+  createAuditTrailPlugin,
+  createOperationalTelemetryPlugin,
+} from "./extensions/index.js";
 import { createPromptVaultRouter } from "./web/createPromptVaultRouter.js";
 import { createLogger, getRecentLogs, type LogLevel } from "@nw/logging";
 import { bootstrapCoreDbAuthFromApiKeys } from "@nw/core-db";
@@ -18,12 +26,26 @@ import {
 } from "./observability/index.js";
 import { createObservabilityRouter } from "./web/createObservabilityRouter.js";
 import { registerPromptVaultTools } from "./tools/index.js";
-import { ConfigurationError, loadServerConfig, type LoadConfigResult } from "./config/serverConfig.js";
-import { AuthManager, createAuthMiddleware, createAuthRouter } from "./web/auth.js";
-import { InMemoryAuditLogger, createAuditMiddleware, createAutoAuditMiddleware } from "./web/audit.js";
+import {
+  ConfigurationError,
+  loadServerConfig,
+  type LoadConfigResult,
+} from "./config/serverConfig.js";
+import {
+  AuthManager,
+  createAuthMiddleware,
+  createAuthRouter,
+} from "./web/auth.js";
+import {
+  InMemoryAuditLogger,
+  createAuditMiddleware,
+  createAutoAuditMiddleware,
+} from "./web/audit.js";
 import { createRateLimitMiddleware } from "./web/rate-limit.js";
 
-const envLogLevel = parseLogLevel(process.env.LOG_LEVEL || process.env.PROMPT_VAULT_LOG_LEVEL);
+const envLogLevel = parseLogLevel(
+  process.env.LOG_LEVEL || process.env.PROMPT_VAULT_LOG_LEVEL,
+);
 const bootstrapLogger = createLogger({
   context: { app: "prompt-vault", module: "server" },
   level: envLogLevel ?? "info",
@@ -32,13 +54,21 @@ const bootstrapLogger = createLogger({
 function parseLogLevel(value: string | undefined): LogLevel | undefined {
   if (!value) return undefined;
   const normalized = value.toLowerCase();
-  if (normalized === "debug" || normalized === "info" || normalized === "warn" || normalized === "error") {
+  if (
+    normalized === "debug" ||
+    normalized === "info" ||
+    normalized === "warn" ||
+    normalized === "error"
+  ) {
     return normalized;
   }
   return undefined;
 }
 
-function parseLevelFilter(raw: unknown): { levels?: LogLevel | LogLevel[]; error?: string } {
+function parseLevelFilter(raw: unknown): {
+  levels?: LogLevel | LogLevel[];
+  error?: string;
+} {
   if (raw === undefined) return {};
   const parts = String(raw)
     .split(",")
@@ -61,7 +91,8 @@ function parseLevelFilter(raw: unknown): { levels?: LogLevel | LogLevel[]; error
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const defaultDbPath = process.env.PROMPT_VAULT_DB_PATH ?? resolve(__dirname, "prompt-vault.db");
+const defaultDbPath =
+  process.env.PROMPT_VAULT_DB_PATH ?? resolve(__dirname, "prompt-vault.db");
 const defaultStaticDir = resolve(__dirname, "desktop", "dist");
 
 let loadedConfig: LoadConfigResult;
@@ -75,7 +106,9 @@ try {
   });
 } catch (error) {
   if (error instanceof ConfigurationError) {
-    bootstrapLogger.error("Failed to load server configuration", { issues: error.issues.join("; ") });
+    bootstrapLogger.error("Failed to load server configuration", {
+      issues: error.issues.join("; "),
+    });
     process.exit(1);
   }
   throw error;
@@ -99,10 +132,22 @@ if (loadedConfig.warnings.length > 0) {
 const requireAuth = process.env.REQUIRE_AUTH === "true";
 const localhostOnly = process.env.LOCALHOST_ONLY === "true";
 const rateLimitEnabled = process.env.RATE_LIMIT_ENABLED !== "false";
-const rateLimitMaxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "100", 10);
-const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10);
-const authRateLimitMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS || "20", 10);
-const authRateLimitWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS || "60000", 10);
+const rateLimitMaxRequests = parseInt(
+  process.env.RATE_LIMIT_MAX_REQUESTS || "100",
+  10,
+);
+const rateLimitWindowMs = parseInt(
+  process.env.RATE_LIMIT_WINDOW_MS || "60000",
+  10,
+);
+const authRateLimitMaxRequests = parseInt(
+  process.env.RATE_LIMIT_AUTH_MAX_REQUESTS || "20",
+  10,
+);
+const authRateLimitWindowMs = parseInt(
+  process.env.RATE_LIMIT_AUTH_WINDOW_MS || "60000",
+  10,
+);
 
 logger.info("configuration_loaded", {
   port: config.port,
@@ -121,7 +166,10 @@ logger.info("configuration_loaded", {
 });
 
 observability.indicator.setLiveness({ status: "ok" });
-observability.indicator.setReadiness({ status: "degraded", details: { reason: "initialising" } });
+observability.indicator.setReadiness({
+  status: "degraded",
+  details: { reason: "initialising" },
+});
 
 const database = new Database(config.databasePath);
 const service = new PromptVaultService(database, {
@@ -138,7 +186,7 @@ app.use(
   createHttpTracingMiddleware({
     telemetry: observability.telemetry,
     logger: logger.child({ subcomponent: "tracing" }),
-  })
+  }),
 );
 
 if (config.allowedOrigins && config.allowedOrigins.length > 0) {
@@ -155,10 +203,16 @@ app.use((request, response, next) => {
   response.setHeader("X-Permitted-Cross-Domain-Policies", "none");
   response.setHeader(
     "Permissions-Policy",
-    "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
+    "geolocation=(), microphone=(), camera=(), payment=(), usb=()",
   );
-  if (request.protocol === "https" || request.headers["x-forwarded-proto"] === "https") {
-    response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  if (
+    request.protocol === "https" ||
+    request.headers["x-forwarded-proto"] === "https"
+  ) {
+    response.setHeader(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    );
   }
   next();
 });
@@ -178,7 +232,7 @@ function extractApiKeys(env: NodeJS.ProcessEnv): Record<string, string> {
 // Seed Core DB RBAC with any env-provided API keys so services can enforce scopes/roles.
 await bootstrapCoreDbAuthFromApiKeys(extractApiKeys(process.env), {
   idPrefix: "prompt-vault",
-  scopes: ["prompt-vault:*"]
+  scopes: ["prompt-vault:*"],
 });
 
 // Initialize security features
@@ -190,7 +244,7 @@ const authManager = new AuthManager(
     localhostOnly,
     apiKeys: extractApiKeys(process.env),
   },
-  logger.child({ component: "auth" })
+  logger.child({ component: "auth" }),
 );
 
 // Initialize auth manager (loads/stores JWT secret)
@@ -204,7 +258,8 @@ const auditLogger = new InMemoryAuditLogger({
 app.use((request, response, next) => {
   const incomingRequestId = request.header("x-request-id");
   // Only allow simple request identifiers to avoid header-based log injection.
-  const sanitized = incomingRequestId && /^[A-Za-z0-9-_.]{8,128}$/.test(incomingRequestId);
+  const sanitized =
+    incomingRequestId && /^[A-Za-z0-9-_.]{8,128}$/.test(incomingRequestId);
   const requestId = sanitized ? incomingRequestId : randomUUID();
   response.locals.requestId = requestId;
   response.setHeader("x-request-id", requestId);
@@ -232,22 +287,29 @@ app.use(
   createHttpMetricsMiddleware({
     telemetry: observability.telemetry,
     logger: logger.child({ component: "http-metrics" }),
-  })
+  }),
 );
 
 app.use(express.json({ limit: "1mb" }));
-app.use((error: unknown, request: Request, response: Response, next: NextFunction) => {
-  if (error instanceof SyntaxError) {
-    logger.warn("malformed_json", {
-      path: request.path,
-      requestId: response.locals.requestId,
-      traceId: response.locals.traceId,
-    });
-    response.status(400).json({ error: "Malformed JSON payload" });
-    return;
-  }
-  next(error);
-});
+app.use(
+  (
+    error: unknown,
+    request: Request,
+    response: Response,
+    next: NextFunction,
+  ) => {
+    if (error instanceof SyntaxError) {
+      logger.warn("malformed_json", {
+        path: request.path,
+        requestId: response.locals.requestId,
+        traceId: response.locals.traceId,
+      });
+      response.status(400).json({ error: "Malformed JSON payload" });
+      return;
+    }
+    next(error);
+  },
+);
 
 const apiRouter = express.Router();
 
@@ -257,7 +319,7 @@ if (rateLimitEnabled) {
       maxRequests: rateLimitMaxRequests,
       windowMs: rateLimitWindowMs,
       logger: logger.child({ component: "rate-limit" }),
-    })
+    }),
   );
 }
 
@@ -267,16 +329,21 @@ apiRouter.use(
     requireAuth,
     localhostOnly,
     logger: logger.child({ component: "auth-middleware" }),
-  })
+  }),
 );
 
-apiRouter.use(createAuditMiddleware({ auditLogger, logger: logger.child({ component: "audit-middleware" }) }));
+apiRouter.use(
+  createAuditMiddleware({
+    auditLogger,
+    logger: logger.child({ component: "audit-middleware" }),
+  }),
+);
 apiRouter.use(createAutoAuditMiddleware());
 
 apiRouter.use(
   createPromptVaultRouter(service, logger.child({ component: "router" }), {
     telemetry: observability.telemetry,
-  })
+  }),
 );
 
 app.use(
@@ -288,7 +355,7 @@ app.use(
       maxRequests: authRateLimitMaxRequests,
       windowMs: authRateLimitWindowMs,
     },
-  })
+  }),
 );
 
 app.use("/api", apiRouter);
@@ -300,7 +367,7 @@ app.use(
     registry: observability.telemetry.registry,
     logger: logger.child({ component: "observability-router" }),
     service,
-  })
+  }),
 );
 
 // Minimal log aggregation feed (in-memory, best-effort)
@@ -313,7 +380,7 @@ logsRouter.use(
     requireAuth: true,
     localhostOnly,
     logger: logger.child({ component: "logs-auth" }),
-  })
+  }),
 );
 
 if (rateLimitEnabled) {
@@ -322,7 +389,7 @@ if (rateLimitEnabled) {
       maxRequests: rateLimitMaxRequests,
       windowMs: rateLimitWindowMs,
       logger: logger.child({ component: "logs-rate-limit" }),
-    })
+    }),
   );
 }
 
@@ -335,7 +402,12 @@ logsRouter.get("/", (request, response) => {
     .safeParse(request.query);
 
   if (!parsed.success) {
-    response.status(400).json({ error: "Request validation failed", details: parsed.error.issues.map((i) => i.message) });
+    response
+      .status(400)
+      .json({
+        error: "Request validation failed",
+        details: parsed.error.issues.map((i) => i.message),
+      });
     return;
   }
 
@@ -365,25 +437,34 @@ const errorHandler: ErrorRequestHandler = (error, request, response, _next) => {
   logger.error("unhandled_error", {
     method: request.method,
     path: request.path,
-    error: error instanceof Error ? error.stack ?? error.message : error,
+    error: error instanceof Error ? (error.stack ?? error.message) : error,
     requestId: response.locals.requestId,
     traceId: response.locals.traceId,
   });
   response
     .status(500)
-    .json({ error: "Internal Server Error", requestId: response.locals.requestId, traceId: response.locals.traceId });
+    .json({
+      error: "Internal Server Error",
+      requestId: response.locals.requestId,
+      traceId: response.locals.traceId,
+    });
 };
 
 app.use(errorHandler);
 
 const server = app.listen(config.port, () => {
-  logger.info("server_started", { port: config.port, dbPath: config.databasePath });
+  logger.info("server_started", {
+    port: config.port,
+    dbPath: config.databasePath,
+  });
   observability.indicator.setReadiness({ status: "ok" });
   // Register Prompt Vault orchestrator tools so other apps can discover them
   try {
     registerPromptVaultTools();
   } catch (err) {
-    logger.warn("register_prompt_vault_tools_failed", { error: err instanceof Error ? err.message : String(err) });
+    logger.warn("register_prompt_vault_tools_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 });
 
@@ -394,7 +475,10 @@ async function shutdown(exitCode = 0): Promise<void> {
     return;
   }
   shuttingDown = true;
-  observability.indicator.setReadiness({ status: "degraded", details: { reason: "shutdown" } });
+  observability.indicator.setReadiness({
+    status: "degraded",
+    details: { reason: "shutdown" },
+  });
   await new Promise<void>((resolvePromise) => {
     server.close(() => resolvePromise());
   });
@@ -414,12 +498,16 @@ process.once("SIGTERM", () => {
 });
 
 process.on("uncaughtException", (error) => {
-  logger.error("uncaught_exception", { error: error instanceof Error ? error.stack ?? error.message : error });
+  logger.error("uncaught_exception", {
+    error: error instanceof Error ? (error.stack ?? error.message) : error,
+  });
   void shutdown(1);
 });
 
 process.on("unhandledRejection", (reason) => {
-  logger.error("unhandled_rejection", { reason: reason instanceof Error ? reason.stack ?? reason.message : reason });
+  logger.error("unhandled_rejection", {
+    reason: reason instanceof Error ? (reason.stack ?? reason.message) : reason,
+  });
   void shutdown(1);
 });
 

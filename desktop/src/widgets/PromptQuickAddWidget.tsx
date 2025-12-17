@@ -70,7 +70,9 @@ export function PromptQuickAddWidget({
       </div>
       <form onSubmit={handleSubmit} className="pv-quick-add-form">
         {error && <div className="pv-error">{error}</div>}
-        {success && <div className="pv-success">Prompt created successfully!</div>}
+        {success && (
+          <div className="pv-success">Prompt created successfully!</div>
+        )}
         <input
           type="text"
           placeholder="Prompt title..."

@@ -41,7 +41,7 @@ export type PromptVersionId = string;
  * // Valid values: "markdown" | "yaml" | "json"
  * ```
  */
-export type PromptFormat = 'markdown' | 'yaml' | 'json';
+export type PromptFormat = "markdown" | "yaml" | "json";
 
 /**
  * Represents a tag that can be attached to prompts for filtering and grouping.

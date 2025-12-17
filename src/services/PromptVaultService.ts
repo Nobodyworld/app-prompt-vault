@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { Database as BetterSqlite3Database } from "better-sqlite3";
 import { z, type ZodIssue } from "zod";
-import type { Prompt, PromptId, PromptSearchResult, PromptVersion, Tag, PromptFormat, AdvancedPromptSearchResult } from "../domain/models.js";
+import type {
+  Prompt,
+  PromptId,
+  PromptSearchResult,
+  PromptVersion,
+  Tag,
+  PromptFormat,
+  AdvancedPromptSearchResult,
+} from "../domain/models.js";
 import { ValidationError } from "../domain/errors.js";
 import { promptInputSchema, searchQuerySchema } from "../domain/validation.js";
 import { PromptRepository } from "../repositories/PromptRepository.js";
@@ -11,9 +19,18 @@ import type { StructuredLogger } from "../observability/logger.js";
 import { createLoggerFromEnv } from "../observability/logger.js";
 import { PluginHost } from "../extensions/PluginHost.js";
 import type { PromptVaultPlugin } from "../extensions/types.js";
-import { convertPromptContent, validatePromptContent, detectPromptFormat } from "../domain/conversion.js";
+import {
+  convertPromptContent,
+  validatePromptContent,
+  detectPromptFormat,
+} from "../domain/conversion.js";
 import { SnapshotManager } from "../domain/snapshot.js";
-import { buildButtonsSwitchboardPayload, buildPlannerBucketDraft, type ButtonsSwitchboardPayload, type PlannerBucketDraft } from "../domain/interop.js";
+import {
+  buildButtonsSwitchboardPayload,
+  buildPlannerBucketDraft,
+  type ButtonsSwitchboardPayload,
+  type PlannerBucketDraft,
+} from "../domain/interop.js";
 import fs from "fs";
 import os from "node:os";
 import path from "path";
@@ -67,17 +84,28 @@ export class PromptVaultService {
 
   private coreDbReady: Promise<void> | null = null;
 
-  public constructor(database: BetterSqlite3Database, options: PromptVaultServiceOptions = {}) {
+  public constructor(
+    database: BetterSqlite3Database,
+    options: PromptVaultServiceOptions = {},
+  ) {
     const dbPath = (database as { name?: string }).name;
     if (dbPath) {
       process.env.NW_CORE_DB_ALLOW_OVERRIDE = "1";
-      const coreDbPath = dbPath === ":memory:" ? path.join(os.tmpdir(), `nw-core-${randomUUID()}.db`) : `${dbPath}.core.db`;
+      const coreDbPath =
+        dbPath === ":memory:"
+          ? path.join(os.tmpdir(), `nw-core-${randomUUID()}.db`)
+          : `${dbPath}.core.db`;
       process.env.NW_CORE_DB_PATH = coreDbPath;
     }
 
     this.telemetry = options.telemetry ?? createNoopTelemetry();
-    this.logger = options.logger ?? createLoggerFromEnv({ serviceName: "prompt-vault-service" });
-    this.repository = new PromptRepository(database, { telemetry: this.telemetry, logger: this.logger });
+    this.logger =
+      options.logger ??
+      createLoggerFromEnv({ serviceName: "prompt-vault-service" });
+    this.repository = new PromptRepository(database, {
+      telemetry: this.telemetry,
+      logger: this.logger,
+    });
     this.pluginHost = new PluginHost({
       logger: this.logger.child({ component: "plugin-host" }),
       telemetry: this.telemetry,
@@ -108,7 +136,9 @@ export class PromptVaultService {
         .getAllPrompts()
         .filter((prompt) => !prompt.deletedAt);
 
-      return Promise.all(prompts.map((prompt) => this.enrichPromptWithTags(prompt)));
+      return Promise.all(
+        prompts.map((prompt) => this.enrichPromptWithTags(prompt)),
+      );
     });
   }
 
@@ -140,66 +170,97 @@ export class PromptVaultService {
    * });
    * ```
    */
-  public async createPrompt(input: z.input<typeof promptInputSchema>, context: PromptVaultOperationContext = {}): Promise<Prompt> {
-    return this.telemetry.withSpan("service.createPrompt", { slug: input.slug }, async () => {
-      const result = promptInputSchema.safeParse(input);
-      if (!result.success) {
-        throw new ValidationError(result.error.issues.map((error: ZodIssue) => error.message));
-      }
+  public async createPrompt(
+    input: z.input<typeof promptInputSchema>,
+    context: PromptVaultOperationContext = {},
+  ): Promise<Prompt> {
+    return this.telemetry.withSpan(
+      "service.createPrompt",
+      { slug: input.slug },
+      async () => {
+        const result = promptInputSchema.safeParse(input);
+        if (!result.success) {
+          throw new ValidationError(
+            result.error.issues.map((error: ZodIssue) => error.message),
+          );
+        }
 
-      const { id, slug, title, description, category, isFavorite, rating, body, semanticVersion, tags, projectTagId, changelog, format } =
-        result.data;
+        const {
+          id,
+          slug,
+          title,
+          description,
+          category,
+          isFavorite,
+          rating,
+          body,
+          semanticVersion,
+          tags,
+          projectTagId,
+          changelog,
+          format,
+        } = result.data;
 
-      validatePromptContent(body, format);
+        validatePromptContent(body, format);
 
-      if (projectTagId) {
-        await this.assertProjectTagExists(projectTagId);
-      }
+        if (projectTagId) {
+          await this.assertProjectTagExists(projectTagId);
+        }
 
-      const timestamp = new Date();
-      const prompt: Prompt = {
-        id,
-        slug,
-        title,
-        description,
-        category,
-        isFavorite,
-        rating,
-        tags: [],
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
+        const timestamp = new Date();
+        const prompt: Prompt = {
+          id,
+          slug,
+          title,
+          description,
+          category,
+          isFavorite,
+          rating,
+          tags: [],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
 
-      const version: PromptVersion = {
-        id: randomUUID(),
-        promptId: id,
-        semanticVersion,
-        body,
-        format,
-        changelog,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
+        const version: PromptVersion = {
+          id: randomUUID(),
+          promptId: id,
+          semanticVersion,
+          body,
+          format,
+          changelog,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
 
-      this.repository.createPrompt(prompt, version);
+        this.repository.createPrompt(prompt, version);
 
-      const sharedTags = await this.ensureSharedTags(tags ?? []);
-      await this.applyTagsToPrompt(id, sharedTags.map((tag) => tag.id));
+        const sharedTags = await this.ensureSharedTags(tags ?? []);
+        await this.applyTagsToPrompt(
+          id,
+          sharedTags.map((tag) => tag.id),
+        );
 
-      if (projectTagId) {
-        await tagSharedPrompt(id, projectTagId);
-      }
+        if (projectTagId) {
+          await tagSharedPrompt(id, projectTagId);
+        }
 
-      const persisted = await this.enrichPromptWithTags(this.repository.getPromptById(id));
-      this.logger.info("prompt_created", { promptId: persisted.id, slug });
-      this.pluginHost.emit("onPromptCreated", { prompt: persisted, version, actor: context.actor });
-      emitPromptEvent("pv:prompt_created", {
-        promptId: persisted.id,
-        actorUserId: context.actor?.userId,
-        requestId: context.actor?.requestId,
-      });
-      return persisted;
-    });
+        const persisted = await this.enrichPromptWithTags(
+          this.repository.getPromptById(id),
+        );
+        this.logger.info("prompt_created", { promptId: persisted.id, slug });
+        this.pluginHost.emit("onPromptCreated", {
+          prompt: persisted,
+          version,
+          actor: context.actor,
+        });
+        emitPromptEvent("pv:prompt_created", {
+          promptId: persisted.id,
+          actorUserId: context.actor?.userId,
+          requestId: context.actor?.requestId,
+        });
+        return persisted;
+      },
+    );
   }
 
   /**
@@ -255,57 +316,77 @@ export class PromptVaultService {
       tags?: readonly string[];
       projectTagId?: string;
     },
-    context: PromptVaultOperationContext = {}
+    context: PromptVaultOperationContext = {},
   ): Promise<Prompt> {
-    return this.telemetry.withSpan("service.updatePrompt", { promptId }, async () => {
-      const metadataUpdates: { title?: string; description?: string; category?: string; isFavorite?: boolean; rating?: number | null } = {};
-      if (data.title !== undefined) metadataUpdates.title = data.title;
-      if (data.description !== undefined) metadataUpdates.description = data.description;
-      if (data.category !== undefined) metadataUpdates.category = data.category;
-      if (data.isFavorite !== undefined) metadataUpdates.isFavorite = data.isFavorite;
-      if (data.rating !== undefined) metadataUpdates.rating = data.rating;
+    return this.telemetry.withSpan(
+      "service.updatePrompt",
+      { promptId },
+      async () => {
+        const metadataUpdates: {
+          title?: string;
+          description?: string;
+          category?: string;
+          isFavorite?: boolean;
+          rating?: number | null;
+        } = {};
+        if (data.title !== undefined) metadataUpdates.title = data.title;
+        if (data.description !== undefined)
+          metadataUpdates.description = data.description;
+        if (data.category !== undefined)
+          metadataUpdates.category = data.category;
+        if (data.isFavorite !== undefined)
+          metadataUpdates.isFavorite = data.isFavorite;
+        if (data.rating !== undefined) metadataUpdates.rating = data.rating;
 
-      if (Object.keys(metadataUpdates).length > 0) {
-        this.repository.updatePromptMetadata(promptId, metadataUpdates);
-      }
-
-      if (data.tags !== undefined) {
-        const desiredTags = await this.ensureSharedTags(data.tags);
-        const current = await listSharedTagsForEntity({ entityType: "prompts", entityId: promptId });
-        const currentIds = new Set(current.map((tag) => tag.id));
-        const desiredIds = new Set(desiredTags.map((tag) => tag.id));
-
-        const toAdd = [...desiredIds].filter((id) => !currentIds.has(id));
-        const toRemove = [...currentIds].filter((id) => !desiredIds.has(id));
-
-        for (const tagId of toAdd) {
-          await tagSharedPrompt(promptId, tagId);
+        if (Object.keys(metadataUpdates).length > 0) {
+          this.repository.updatePromptMetadata(promptId, metadataUpdates);
         }
 
-        for (const tagId of toRemove) {
-          await untagSharedPrompt(promptId, tagId);
+        if (data.tags !== undefined) {
+          const desiredTags = await this.ensureSharedTags(data.tags);
+          const current = await listSharedTagsForEntity({
+            entityType: "prompts",
+            entityId: promptId,
+          });
+          const currentIds = new Set(current.map((tag) => tag.id));
+          const desiredIds = new Set(desiredTags.map((tag) => tag.id));
+
+          const toAdd = [...desiredIds].filter((id) => !currentIds.has(id));
+          const toRemove = [...currentIds].filter((id) => !desiredIds.has(id));
+
+          for (const tagId of toAdd) {
+            await tagSharedPrompt(promptId, tagId);
+          }
+
+          for (const tagId of toRemove) {
+            await untagSharedPrompt(promptId, tagId);
+          }
         }
-      }
 
-      if (data.projectTagId) {
-        await this.assertProjectTagExists(data.projectTagId);
-        await tagSharedPrompt(promptId, data.projectTagId);
-      }
+        if (data.projectTagId) {
+          await this.assertProjectTagExists(data.projectTagId);
+          await tagSharedPrompt(promptId, data.projectTagId);
+        }
 
-      const updatedPrompt = await this.getPrompt(promptId);
-      const updatedFields = Object.entries(data)
-        .filter(([, value]) => value !== undefined)
-        .map(([key]) => key);
+        const updatedPrompt = await this.getPrompt(promptId);
+        const updatedFields = Object.entries(data)
+          .filter(([, value]) => value !== undefined)
+          .map(([key]) => key);
 
-      this.logger.info("prompt_updated", { promptId, fields: updatedFields });
-      this.pluginHost.emit("onPromptUpdated", { prompt: updatedPrompt, updatedFields, actor: context.actor });
-      emitPromptEvent("pv:prompt_updated", {
-        promptId,
-        actorUserId: context.actor?.userId,
-        requestId: context.actor?.requestId,
-      });
-      return updatedPrompt;
-    });
+        this.logger.info("prompt_updated", { promptId, fields: updatedFields });
+        this.pluginHost.emit("onPromptUpdated", {
+          prompt: updatedPrompt,
+          updatedFields,
+          actor: context.actor,
+        });
+        emitPromptEvent("pv:prompt_updated", {
+          promptId,
+          actorUserId: context.actor?.userId,
+          requestId: context.actor?.requestId,
+        });
+        return updatedPrompt;
+      },
+    );
   }
 
   /**
@@ -340,7 +421,7 @@ export class PromptVaultService {
     body: string,
     semanticVersion: string,
     format: PromptFormat = "markdown",
-    changelog?: string
+    changelog?: string,
   ): PromptVersion {
     // Ensure the prompt exists; repository will throw PromptNotFoundError otherwise.
     return this.telemetry.withSpan("service.addVersion", { promptId }, () => {
@@ -348,7 +429,9 @@ export class PromptVaultService {
 
       // Check content length
       if (body.length > this.limits.maxPromptContentLength) {
-        throw new ValidationError([`Prompt content length ${body.length} characters exceeds maximum allowed length of ${this.limits.maxPromptContentLength} characters`]);
+        throw new ValidationError([
+          `Prompt content length ${body.length} characters exceeds maximum allowed length of ${this.limits.maxPromptContentLength} characters`,
+        ]);
       }
 
       // Validate content format
@@ -367,7 +450,10 @@ export class PromptVaultService {
       };
 
       this.repository.addVersion(version);
-      this.logger.info("prompt_version_added", { promptId, version: semanticVersion });
+      this.logger.info("prompt_version_added", {
+        promptId,
+        version: semanticVersion,
+      });
       this.pluginHost.emit("onVersionAdded", { promptId, version });
       emitPromptEvent("pv:prompt_updated", { promptId });
       return version;
@@ -378,9 +464,13 @@ export class PromptVaultService {
    * List all versions for a prompt (most recent first).
    */
   public listPromptVersions(promptId: PromptId): readonly PromptVersion[] {
-    return this.telemetry.withSpan("service.listPromptVersions", { promptId }, () => {
-      return this.repository.listPromptVersions(promptId);
-    });
+    return this.telemetry.withSpan(
+      "service.listPromptVersions",
+      { promptId },
+      () => {
+        return this.repository.listPromptVersions(promptId);
+      },
+    );
   }
 
   /**
@@ -389,22 +479,33 @@ export class PromptVaultService {
    * @param targetFormat - The desired output format.
    * @returns The converted content.
    */
-  public async convertPrompt(promptId: PromptId, targetFormat: PromptFormat): Promise<string> {
-    return this.telemetry.withSpan("service.convertPrompt", { promptId, targetFormat }, async () => {
-      const prompt = this.repository.getPromptById(promptId);
-      if (!prompt.latestVersion) {
-        throw new ValidationError(["Prompt has no versions to convert"]);
-      }
+  public async convertPrompt(
+    promptId: PromptId,
+    targetFormat: PromptFormat,
+  ): Promise<string> {
+    return this.telemetry.withSpan(
+      "service.convertPrompt",
+      { promptId, targetFormat },
+      async () => {
+        const prompt = this.repository.getPromptById(promptId);
+        if (!prompt.latestVersion) {
+          throw new ValidationError(["Prompt has no versions to convert"]);
+        }
 
-      const converted = convertPromptContent(
-        prompt.latestVersion.body,
-        prompt.latestVersion.format,
-        targetFormat
-      );
+        const converted = convertPromptContent(
+          prompt.latestVersion.body,
+          prompt.latestVersion.format,
+          targetFormat,
+        );
 
-      this.logger.info("prompt_converted", { promptId, from: prompt.latestVersion.format, to: targetFormat });
-      return converted;
-    });
+        this.logger.info("prompt_converted", {
+          promptId,
+          from: prompt.latestVersion.format,
+          to: targetFormat,
+        });
+        return converted;
+      },
+    );
   }
 
   /**
@@ -413,10 +514,17 @@ export class PromptVaultService {
    * @returns Promise that resolves when backup is complete.
    */
   public async createSnapshot(snapshotPath: string): Promise<void> {
-    return this.telemetry.withSpan("service.createSnapshot", { snapshotPath }, async () => {
-      await SnapshotManager.createSnapshot(this.repository.getDatabase(), snapshotPath);
-      this.logger.info("snapshot_created", { snapshotPath });
-    });
+    return this.telemetry.withSpan(
+      "service.createSnapshot",
+      { snapshotPath },
+      async () => {
+        await SnapshotManager.createSnapshot(
+          this.repository.getDatabase(),
+          snapshotPath,
+        );
+        this.logger.info("snapshot_created", { snapshotPath });
+      },
+    );
   }
 
   /**
@@ -425,10 +533,17 @@ export class PromptVaultService {
    * @returns Promise that resolves when restore is complete.
    */
   public async restoreSnapshot(snapshotPath: string): Promise<void> {
-    return this.telemetry.withSpan("service.restoreSnapshot", { snapshotPath }, async () => {
-      await SnapshotManager.restoreSnapshot(snapshotPath, this.repository.getDatabase());
-      this.logger.info("snapshot_restored", { snapshotPath });
-    });
+    return this.telemetry.withSpan(
+      "service.restoreSnapshot",
+      { snapshotPath },
+      async () => {
+        await SnapshotManager.restoreSnapshot(
+          snapshotPath,
+          this.repository.getDatabase(),
+        );
+        this.logger.info("snapshot_restored", { snapshotPath });
+      },
+    );
   }
 
   /**
@@ -474,86 +589,109 @@ export class PromptVaultService {
    * console.log(`Found ${results.prompts.length} prompts`);
    * ```
    */
-  public async searchPrompts(queryInput: z.input<typeof searchQuerySchema>): Promise<PromptSearchResult> {
-    return this.telemetry.withSpan("service.searchPrompts", {
-      hasText: Boolean(queryInput.text),
-      hasFormats: Boolean(queryInput.formats),
-      hasProjectTag: Boolean(queryInput.projectTagId)
-    }, async () => {
-      const query = searchQuerySchema.parse(queryInput);
-      this.logger.debug("prompt_search", {
-        hasText: Boolean(query.text),
-        tags: query.tags?.length ?? 0,
-        formats: query.formats?.length ?? 0,
-        category: query.category,
-        projectTagId: query.projectTagId,
-      });
-
-      const tagIds = query.tags ? await this.lookupTagIds(query.tags, { createIfMissing: false }) : undefined;
-      const filterSets: Array<Set<string>> = [];
-
-      if (tagIds && tagIds.length > 0) {
-        const ids = await listSharedEntitiesByTags({ entityType: "prompts", tagIds, match: "all" });
-        filterSets.push(new Set(ids));
-      }
-
-      if (query.projectTagId) {
-        const projectMatches = await listSharedEntitiesByTags({
-          entityType: "prompts",
-          tagIds: [query.projectTagId],
-          match: "all",
+  public async searchPrompts(
+    queryInput: z.input<typeof searchQuerySchema>,
+  ): Promise<PromptSearchResult> {
+    return this.telemetry.withSpan(
+      "service.searchPrompts",
+      {
+        hasText: Boolean(queryInput.text),
+        hasFormats: Boolean(queryInput.formats),
+        hasProjectTag: Boolean(queryInput.projectTagId),
+      },
+      async () => {
+        const query = searchQuerySchema.parse(queryInput);
+        this.logger.debug("prompt_search", {
+          hasText: Boolean(query.text),
+          tags: query.tags?.length ?? 0,
+          formats: query.formats?.length ?? 0,
+          category: query.category,
+          projectTagId: query.projectTagId,
         });
-        filterSets.push(new Set(projectMatches));
-      }
 
-      const allowedIds = filterSets.reduce<Set<string> | null>((acc, current) => {
-        if (!acc) return current;
-        return new Set([...acc].filter((id) => current.has(id)));
-      }, null);
+        const tagIds = query.tags
+          ? await this.lookupTagIds(query.tags, { createIfMissing: false })
+          : undefined;
+        const filterSets: Array<Set<string>> = [];
 
-      if (allowedIds && allowedIds.size === 0) {
-        return {
-          prompts: [],
+        if (tagIds && tagIds.length > 0) {
+          const ids = await listSharedEntitiesByTags({
+            entityType: "prompts",
+            tagIds,
+            match: "all",
+          });
+          filterSets.push(new Set(ids));
+        }
+
+        if (query.projectTagId) {
+          const projectMatches = await listSharedEntitiesByTags({
+            entityType: "prompts",
+            tagIds: [query.projectTagId],
+            match: "all",
+          });
+          filterSets.push(new Set(projectMatches));
+        }
+
+        const allowedIds = filterSets.reduce<Set<string> | null>(
+          (acc, current) => {
+            if (!acc) return current;
+            return new Set([...acc].filter((id) => current.has(id)));
+          },
+          null,
+        );
+
+        if (allowedIds && allowedIds.size === 0) {
+          return {
+            prompts: [],
+            page: query.page,
+            pageSize: query.pageSize,
+            total: 0,
+          };
+        }
+
+        const base = this.repository.searchPrompts({
+          text: query.text,
+          formats: query.formats,
           page: query.page,
           pageSize: query.pageSize,
-          total: 0,
+          category: query.category,
+        });
+
+        const promptsWithTags = await Promise.all(
+          base.prompts.map((prompt) => this.enrichPromptWithTags(prompt)),
+        );
+        const filteredPrompts = allowedIds
+          ? promptsWithTags.filter((prompt) => allowedIds.has(prompt.id))
+          : promptsWithTags;
+
+        return {
+          prompts: filteredPrompts,
+          page: query.page,
+          pageSize: query.pageSize,
+          total: allowedIds ? filteredPrompts.length : base.total,
         };
-      }
-
-      const base = this.repository.searchPrompts({
-        text: query.text,
-        formats: query.formats,
-        page: query.page,
-        pageSize: query.pageSize,
-        category: query.category,
-      });
-
-      const promptsWithTags = await Promise.all(base.prompts.map((prompt) => this.enrichPromptWithTags(prompt)));
-      const filteredPrompts = allowedIds
-        ? promptsWithTags.filter((prompt) => allowedIds.has(prompt.id))
-        : promptsWithTags;
-
-      return {
-        prompts: filteredPrompts,
-        page: query.page,
-        pageSize: query.pageSize,
-        total: allowedIds ? filteredPrompts.length : base.total,
-      };
-    });
+      },
+    );
   }
 
   /**
    * Export a Buttons switchboard payload from a set of prompts.
    * Intended to be copy/pasted into the Buttons app without coupling.
    */
-  public exportButtonsSwitchboard(prompts: readonly Prompt[], limit = 12): ButtonsSwitchboardPayload | null {
+  public exportButtonsSwitchboard(
+    prompts: readonly Prompt[],
+    limit = 12,
+  ): ButtonsSwitchboardPayload | null {
     return buildButtonsSwitchboardPayload(prompts, limit);
   }
 
   /**
    * Export a Planner bucket draft seeded with prompt bodies.
    */
-  public exportPlannerBucket(prompts: readonly Prompt[], limit = 10): PlannerBucketDraft | null {
+  public exportPlannerBucket(
+    prompts: readonly Prompt[],
+    limit = 10,
+  ): PlannerBucketDraft | null {
     return buildPlannerBucketDraft(prompts, limit);
   }
 
@@ -561,61 +699,80 @@ export class PromptVaultService {
     readonly format: "json" | "yaml";
     readonly promptIds?: readonly PromptId[];
     readonly includeMetadata?: boolean;
-  }): Promise<{ bundle: Record<string, unknown>; content: string; mimeType: string }> {
-    return this.telemetry.withSpan("service.exportPromptBundle", { format: options.format }, async () => {
-      const prompts = await this.listAllPrompts();
-      const selected = options.promptIds && options.promptIds.length > 0
-        ? prompts.filter((prompt) => options.promptIds?.includes(prompt.id))
-        : prompts;
+  }): Promise<{
+    bundle: Record<string, unknown>;
+    content: string;
+    mimeType: string;
+  }> {
+    return this.telemetry.withSpan(
+      "service.exportPromptBundle",
+      { format: options.format },
+      async () => {
+        const prompts = await this.listAllPrompts();
+        const selected =
+          options.promptIds && options.promptIds.length > 0
+            ? prompts.filter((prompt) => options.promptIds?.includes(prompt.id))
+            : prompts;
 
-      await this.ensureCoreDb();
-      const exportedPrompts = await Promise.all(
-        selected.filter((prompt) => prompt.latestVersion).map(async (prompt) => {
-          const sharedTags = await listSharedTagsForEntity({ entityType: "prompts", entityId: prompt.id });
-          const projectTag = sharedTags.find((tag) => tag.kind === "project");
-          const labelTags = sharedTags.filter((tag) => tag.kind !== "project").map((tag) => tag.name);
+        await this.ensureCoreDb();
+        const exportedPrompts = await Promise.all(
+          selected
+            .filter((prompt) => prompt.latestVersion)
+            .map(async (prompt) => {
+              const sharedTags = await listSharedTagsForEntity({
+                entityType: "prompts",
+                entityId: prompt.id,
+              });
+              const projectTag = sharedTags.find(
+                (tag) => tag.kind === "project",
+              );
+              const labelTags = sharedTags
+                .filter((tag) => tag.kind !== "project")
+                .map((tag) => tag.name);
 
+              return {
+                slug: prompt.slug,
+                title: prompt.title,
+                description: prompt.description ?? undefined,
+                category: prompt.category ?? undefined,
+                body: prompt.latestVersion?.body ?? "",
+                format: prompt.latestVersion?.format ?? "markdown",
+                semanticVersion:
+                  prompt.latestVersion?.semanticVersion ?? "1.0.0",
+                tags: labelTags,
+                projectTagId: projectTag?.id ?? undefined,
+              };
+            }),
+        );
+
+        const bundle = {
+          schemaVersion: 1,
+          exportedAt: new Date().toISOString(),
+          prompts: exportedPrompts,
+          ...(options.includeMetadata
+            ? {
+                metadata: {
+                  source: "prompt-vault",
+                },
+              }
+            : {}),
+        } as const;
+
+        if (options.format === "yaml") {
           return {
-            slug: prompt.slug,
-            title: prompt.title,
-            description: prompt.description ?? undefined,
-            category: prompt.category ?? undefined,
-            body: prompt.latestVersion?.body ?? "",
-            format: prompt.latestVersion?.format ?? "markdown",
-            semanticVersion: prompt.latestVersion?.semanticVersion ?? "1.0.0",
-            tags: labelTags,
-            projectTagId: projectTag?.id ?? undefined,
+            bundle: bundle as unknown as Record<string, unknown>,
+            content: yaml.stringify(bundle),
+            mimeType: "text/yaml",
           };
-        })
-      );
+        }
 
-      const bundle = {
-        schemaVersion: 1,
-        exportedAt: new Date().toISOString(),
-        prompts: exportedPrompts,
-        ...(options.includeMetadata
-          ? {
-            metadata: {
-              source: "prompt-vault",
-            },
-          }
-          : {}),
-      } as const;
-
-      if (options.format === "yaml") {
         return {
           bundle: bundle as unknown as Record<string, unknown>,
-          content: yaml.stringify(bundle),
-          mimeType: "text/yaml",
+          content: JSON.stringify(bundle, null, 2),
+          mimeType: "application/json",
         };
-      }
-
-      return {
-        bundle: bundle as unknown as Record<string, unknown>,
-        content: JSON.stringify(bundle, null, 2),
-        mimeType: "application/json",
-      };
-    });
+      },
+    );
   }
 
   public async exportPromptBundleToFile(
@@ -624,17 +781,24 @@ export class PromptVaultService {
       readonly format: "json" | "yaml";
       readonly promptIds?: readonly PromptId[];
       readonly includeMetadata?: boolean;
-    }
+    },
   ): Promise<void> {
-    return this.telemetry.withSpan("service.exportPromptBundleToFile", { filePath, format: options.format }, async () => {
-      const { content } = await this.exportPromptBundle(options);
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(filePath, content, "utf-8");
-      this.logger.info("prompt_bundle_exported", { filePath, format: options.format });
-    });
+    return this.telemetry.withSpan(
+      "service.exportPromptBundleToFile",
+      { filePath, format: options.format },
+      async () => {
+        const { content } = await this.exportPromptBundle(options);
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(filePath, content, "utf-8");
+        this.logger.info("prompt_bundle_exported", {
+          filePath,
+          format: options.format,
+        });
+      },
+    );
   }
 
   public async importPromptBundle(input: {
@@ -645,7 +809,10 @@ export class PromptVaultService {
   }): Promise<{ created: number; updated: number; skipped: number }> {
     return this.telemetry.withSpan(
       "service.importPromptBundle",
-      { format: input.format, conflictStrategy: input.conflictStrategy ?? "addVersion" },
+      {
+        format: input.format,
+        conflictStrategy: input.conflictStrategy ?? "addVersion",
+      },
       async () => {
         const bundleSchema = z.object({
           schemaVersion: z.number().int().optional(),
@@ -658,17 +825,23 @@ export class PromptVaultService {
               category: z.string().optional(),
               body: z.string().min(1),
               format: z.enum(["markdown", "yaml", "json"]).default("markdown"),
-              semanticVersion: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/).default("1.0.0"),
+              semanticVersion: z
+                .string()
+                .regex(/^[0-9]+\.[0-9]+\.[0-9]+$/)
+                .default("1.0.0"),
               tags: z.array(z.string()).default([]),
               projectTagId: z.string().uuid().optional(),
-            })
+            }),
           ),
           metadata: z.record(z.string(), z.unknown()).optional(),
         });
 
         let parsed: unknown;
         try {
-          parsed = input.format === "yaml" ? yaml.parse(input.content) : JSON.parse(input.content);
+          parsed =
+            input.format === "yaml"
+              ? yaml.parse(input.content)
+              : JSON.parse(input.content);
         } catch (error: unknown) {
           throw new ValidationError([
             `Unable to parse ${input.format.toUpperCase()} prompt bundle: ${error instanceof Error ? error.message : String(error)}`,
@@ -677,7 +850,9 @@ export class PromptVaultService {
 
         const bundle = bundleSchema.parse(parsed);
         const conflictStrategy = input.conflictStrategy ?? "addVersion";
-        const projectTagId = input.projectTagId?.trim() ? input.projectTagId.trim() : undefined;
+        const projectTagId = input.projectTagId?.trim()
+          ? input.projectTagId.trim()
+          : undefined;
         if (projectTagId) {
           await this.assertProjectTagExists(projectTagId);
         }
@@ -720,12 +895,18 @@ export class PromptVaultService {
             projectTagId: resolvedProjectTagId,
           });
 
-          this.addVersion(existingId, prompt.body, prompt.semanticVersion, prompt.format, "Imported from bundle");
+          this.addVersion(
+            existingId,
+            prompt.body,
+            prompt.semanticVersion,
+            prompt.format,
+            "Imported from bundle",
+          );
           updated += 1;
         }
 
         return { created, updated, skipped };
-      }
+      },
     );
   }
 
@@ -734,26 +915,32 @@ export class PromptVaultService {
     options: {
       readonly format?: "json" | "yaml";
       readonly conflictStrategy?: "skip" | "addVersion";
-    } = {}
+    } = {},
   ): Promise<{ created: number; updated: number; skipped: number }> {
-    return this.telemetry.withSpan("service.importPromptBundleFromFile", { filePath }, async () => {
-      const stats = fs.statSync(filePath);
-      if (stats.size > this.limits.maxFileSizeBytes) {
-        throw new ValidationError([
-          `File size ${stats.size} bytes exceeds maximum allowed size of ${this.limits.maxFileSizeBytes} bytes`,
-        ]);
-      }
+    return this.telemetry.withSpan(
+      "service.importPromptBundleFromFile",
+      { filePath },
+      async () => {
+        const stats = fs.statSync(filePath);
+        if (stats.size > this.limits.maxFileSizeBytes) {
+          throw new ValidationError([
+            `File size ${stats.size} bytes exceeds maximum allowed size of ${this.limits.maxFileSizeBytes} bytes`,
+          ]);
+        }
 
-      const content = fs.readFileSync(filePath, "utf-8");
-      const ext = path.extname(filePath).toLowerCase();
-      const format = options.format ?? (ext === ".yaml" || ext === ".yml" ? "yaml" : "json");
+        const content = fs.readFileSync(filePath, "utf-8");
+        const ext = path.extname(filePath).toLowerCase();
+        const format =
+          options.format ??
+          (ext === ".yaml" || ext === ".yml" ? "yaml" : "json");
 
-      return this.importPromptBundle({
-        format,
-        content,
-        conflictStrategy: options.conflictStrategy,
-      });
-    });
+        return this.importPromptBundle({
+          format,
+          content,
+          conflictStrategy: options.conflictStrategy,
+        });
+      },
+    );
   }
 
   /**
@@ -779,90 +966,105 @@ export class PromptVaultService {
    * // Results include highlighted excerpts and match positions
    * ```
    */
-  public async advancedSearchPrompts(queryInput: z.input<typeof searchQuerySchema>): Promise<AdvancedPromptSearchResult> {
-    return this.telemetry.withSpan("service.advancedSearchPrompts", {
-      hasText: Boolean(queryInput.text),
-      hasFormats: Boolean(queryInput.formats),
-      caseSensitive: queryInput.caseSensitive,
-      maxResults: queryInput.maxResults,
-      maxMatchesPerRule: queryInput.maxMatchesPerRule,
-      maxTotalMatches: queryInput.maxTotalMatches,
-      hasProjectTag: Boolean(queryInput.projectTagId),
-    }, async () => {
-      const query = searchQuerySchema.parse(queryInput);
-      const tagIds = query.tags ? await this.lookupTagIds(query.tags, { createIfMissing: false }) : undefined;
-      const filterSets: Array<Set<string>> = [];
+  public async advancedSearchPrompts(
+    queryInput: z.input<typeof searchQuerySchema>,
+  ): Promise<AdvancedPromptSearchResult> {
+    return this.telemetry.withSpan(
+      "service.advancedSearchPrompts",
+      {
+        hasText: Boolean(queryInput.text),
+        hasFormats: Boolean(queryInput.formats),
+        caseSensitive: queryInput.caseSensitive,
+        maxResults: queryInput.maxResults,
+        maxMatchesPerRule: queryInput.maxMatchesPerRule,
+        maxTotalMatches: queryInput.maxTotalMatches,
+        hasProjectTag: Boolean(queryInput.projectTagId),
+      },
+      async () => {
+        const query = searchQuerySchema.parse(queryInput);
+        const tagIds = query.tags
+          ? await this.lookupTagIds(query.tags, { createIfMissing: false })
+          : undefined;
+        const filterSets: Array<Set<string>> = [];
 
-      if (tagIds && tagIds.length > 0) {
-        const ids = await listSharedEntitiesByTags({ entityType: "prompts", tagIds, match: "all" });
-        filterSets.push(new Set(ids));
-      }
+        if (tagIds && tagIds.length > 0) {
+          const ids = await listSharedEntitiesByTags({
+            entityType: "prompts",
+            tagIds,
+            match: "all",
+          });
+          filterSets.push(new Set(ids));
+        }
 
-      if (query.projectTagId) {
-        const projectMatches = await listSharedEntitiesByTags({
-          entityType: "prompts",
-          tagIds: [query.projectTagId],
-          match: "all",
+        if (query.projectTagId) {
+          const projectMatches = await listSharedEntitiesByTags({
+            entityType: "prompts",
+            tagIds: [query.projectTagId],
+            match: "all",
+          });
+          filterSets.push(new Set(projectMatches));
+        }
+
+        const allowedIds = filterSets.reduce<Set<string> | null>(
+          (acc, current) => {
+            if (!acc) return current;
+            return new Set([...acc].filter((id) => current.has(id)));
+          },
+          null,
+        );
+
+        if (allowedIds && allowedIds.size === 0) {
+          return {
+            matches: [],
+            page: query.page,
+            pageSize: query.pageSize,
+            total: 0,
+            totalMatches: 0,
+          };
+        }
+
+        this.logger.debug("advanced_prompt_search", {
+          hasText: Boolean(query.text),
+          tags: tagIds?.length ?? 0,
+          formats: query.formats?.length ?? 0,
+          caseSensitive: query.caseSensitive,
+          maxResults: query.maxResults,
+          maxMatchesPerRule: query.maxMatchesPerRule,
+          maxTotalMatches: query.maxTotalMatches,
+          category: query.category,
+          projectTagId: query.projectTagId,
         });
-        filterSets.push(new Set(projectMatches));
-      }
 
-      const allowedIds = filterSets.reduce<Set<string> | null>((acc, current) => {
-        if (!acc) return current;
-        return new Set([...acc].filter((id) => current.has(id)));
-      }, null);
-
-      if (allowedIds && allowedIds.size === 0) {
-        return {
-          matches: [],
+        const base = this.repository.advancedSearchPrompts({
+          text: query.text,
+          formats: query.formats,
           page: query.page,
           pageSize: query.pageSize,
-          total: 0,
-          totalMatches: 0,
+          caseSensitive: query.caseSensitive,
+          maxResults: query.maxResults,
+          maxMatchesPerRule: query.maxMatchesPerRule,
+          maxTotalMatches: query.maxTotalMatches,
+          category: query.category,
+        });
+
+        const matchesWithTags = await Promise.all(
+          base.matches.map(async (match) => ({
+            ...match,
+            prompt: await this.enrichPromptWithTags(match.prompt),
+          })),
+        );
+
+        const filteredMatches = allowedIds
+          ? matchesWithTags.filter((match) => allowedIds.has(match.prompt.id))
+          : matchesWithTags;
+
+        return {
+          ...base,
+          matches: filteredMatches,
+          total: allowedIds ? filteredMatches.length : base.total,
         };
-      }
-
-      this.logger.debug("advanced_prompt_search", {
-        hasText: Boolean(query.text),
-        tags: tagIds?.length ?? 0,
-        formats: query.formats?.length ?? 0,
-        caseSensitive: query.caseSensitive,
-        maxResults: query.maxResults,
-        maxMatchesPerRule: query.maxMatchesPerRule,
-        maxTotalMatches: query.maxTotalMatches,
-        category: query.category,
-        projectTagId: query.projectTagId,
-      });
-
-      const base = this.repository.advancedSearchPrompts({
-        text: query.text,
-        formats: query.formats,
-        page: query.page,
-        pageSize: query.pageSize,
-        caseSensitive: query.caseSensitive,
-        maxResults: query.maxResults,
-        maxMatchesPerRule: query.maxMatchesPerRule,
-        maxTotalMatches: query.maxTotalMatches,
-        category: query.category,
-      });
-
-      const matchesWithTags = await Promise.all(
-        base.matches.map(async (match) => ({
-          ...match,
-          prompt: await this.enrichPromptWithTags(match.prompt),
-        }))
-      );
-
-      const filteredMatches = allowedIds
-        ? matchesWithTags.filter((match) => allowedIds.has(match.prompt.id))
-        : matchesWithTags;
-
-      return {
-        ...base,
-        matches: filteredMatches,
-        total: allowedIds ? filteredMatches.length : base.total,
-      };
-    });
+      },
+    );
   }
 
   /**
@@ -886,30 +1088,46 @@ export class PromptVaultService {
    * // Adds tags while preserving existing ones and avoiding duplicates
    * ```
    */
-  public async tagPrompt(promptId: PromptId, labels: readonly string[]): Promise<void> {
+  public async tagPrompt(
+    promptId: PromptId,
+    labels: readonly string[],
+  ): Promise<void> {
     if (labels.length === 0) {
       return;
     }
 
-    return this.telemetry.withSpan("service.tagPrompt", { promptId, count: labels.length }, async () => {
-      this.repository.getPromptById(promptId);
-      const tags = await this.ensureSharedTags(labels);
-      const current = await listSharedTagsForEntity({ entityType: "prompts", entityId: promptId });
-      const currentIds = new Set(current.map((tag) => tag.id));
-      const missing = tags.filter((tag) => !currentIds.has(tag.id));
-      const domainTags = missing.map((tag) => this.toDomainTag(tag));
+    return this.telemetry.withSpan(
+      "service.tagPrompt",
+      { promptId, count: labels.length },
+      async () => {
+        this.repository.getPromptById(promptId);
+        const tags = await this.ensureSharedTags(labels);
+        const current = await listSharedTagsForEntity({
+          entityType: "prompts",
+          entityId: promptId,
+        });
+        const currentIds = new Set(current.map((tag) => tag.id));
+        const missing = tags.filter((tag) => !currentIds.has(tag.id));
+        const domainTags = missing.map((tag) => this.toDomainTag(tag));
 
-      for (const tag of missing) {
-        await tagSharedPrompt(promptId, tag.id);
-      }
+        for (const tag of missing) {
+          await tagSharedPrompt(promptId, tag.id);
+        }
 
-      if (missing.length > 0) {
-        this.repository.touchPrompt(promptId, new Date());
-        this.logger.info("prompt_tagged", { promptId, count: missing.length });
-        this.pluginHost.emit("onPromptTagged", { promptId, tags: domainTags });
-        emitPromptEvent("pv:prompt_updated", { promptId });
-      }
-    });
+        if (missing.length > 0) {
+          this.repository.touchPrompt(promptId, new Date());
+          this.logger.info("prompt_tagged", {
+            promptId,
+            count: missing.length,
+          });
+          this.pluginHost.emit("onPromptTagged", {
+            promptId,
+            tags: domainTags,
+          });
+          emitPromptEvent("pv:prompt_updated", { promptId });
+        }
+      },
+    );
   }
 
   /**
@@ -931,29 +1149,51 @@ export class PromptVaultService {
    * // Removes matching tags while preserving others
    * ```
    */
-  public async untagPrompt(promptId: PromptId, labels: readonly string[]): Promise<void> {
-    const normalized = this.normalizeLabels(labels).map((label) => label.toLowerCase());
+  public async untagPrompt(
+    promptId: PromptId,
+    labels: readonly string[],
+  ): Promise<void> {
+    const normalized = this.normalizeLabels(labels).map((label) =>
+      label.toLowerCase(),
+    );
     if (normalized.length === 0) {
       return;
     }
 
-    return this.telemetry.withSpan("service.untagPrompt", { promptId, count: normalized.length }, async () => {
-      this.repository.getPromptById(promptId);
-      const current = await listSharedTagsForEntity({ entityType: "prompts", entityId: promptId });
-      const removalIds = current
-        .filter((tag) => normalized.includes((tag.name ?? tag.description ?? tag.id).toLowerCase()))
-        .map((tag) => tag.id);
+    return this.telemetry.withSpan(
+      "service.untagPrompt",
+      { promptId, count: normalized.length },
+      async () => {
+        this.repository.getPromptById(promptId);
+        const current = await listSharedTagsForEntity({
+          entityType: "prompts",
+          entityId: promptId,
+        });
+        const removalIds = current
+          .filter((tag) =>
+            normalized.includes(
+              (tag.name ?? tag.description ?? tag.id).toLowerCase(),
+            ),
+          )
+          .map((tag) => tag.id);
 
-      for (const tagId of removalIds) {
-        await untagSharedPrompt(promptId, tagId);
-      }
+        for (const tagId of removalIds) {
+          await untagSharedPrompt(promptId, tagId);
+        }
 
-      this.repository.touchPrompt(promptId, new Date());
+        this.repository.touchPrompt(promptId, new Date());
 
-      this.logger.info("prompt_untagged", { promptId, count: removalIds.length });
-      this.pluginHost.emit("onPromptUntagged", { promptId, labels: normalized });
-      emitPromptEvent("pv:prompt_updated", { promptId });
-    });
+        this.logger.info("prompt_untagged", {
+          promptId,
+          count: removalIds.length,
+        });
+        this.pluginHost.emit("onPromptUntagged", {
+          promptId,
+          labels: normalized,
+        });
+        emitPromptEvent("pv:prompt_updated", { promptId });
+      },
+    );
   }
 
   /**
@@ -961,23 +1201,35 @@ export class PromptVaultService {
    * @param promptId - Identifier of the prompt to delete.
    * @param deletedAt - Timestamp when the prompt was deleted.
    */
-  public softDeletePrompt(promptId: PromptId, deletedAt: Date = new Date(), context: PromptVaultOperationContext = {}): void {
-    return this.telemetry.withSpan("service.softDeletePrompt", { promptId }, () => {
-      // Ensure the prompt exists and is not already deleted
-      const prompt = this.repository.getPromptById(promptId);
-      if (prompt.deletedAt) {
-        throw new ValidationError(["Prompt is already deleted"]);
-      }
+  public softDeletePrompt(
+    promptId: PromptId,
+    deletedAt: Date = new Date(),
+    context: PromptVaultOperationContext = {},
+  ): void {
+    return this.telemetry.withSpan(
+      "service.softDeletePrompt",
+      { promptId },
+      () => {
+        // Ensure the prompt exists and is not already deleted
+        const prompt = this.repository.getPromptById(promptId);
+        if (prompt.deletedAt) {
+          throw new ValidationError(["Prompt is already deleted"]);
+        }
 
-      this.repository.softDeletePrompt(promptId, deletedAt);
-      this.logger.info("prompt_soft_deleted", { promptId });
-      this.pluginHost.emit("onPromptDeleted", { promptId, mode: "soft", actor: context.actor });
-      emitPromptEvent("pv:prompt_deleted", {
-        promptId,
-        actorUserId: context.actor?.userId,
-        requestId: context.actor?.requestId,
-      });
-    });
+        this.repository.softDeletePrompt(promptId, deletedAt);
+        this.logger.info("prompt_soft_deleted", { promptId });
+        this.pluginHost.emit("onPromptDeleted", {
+          promptId,
+          mode: "soft",
+          actor: context.actor,
+        });
+        emitPromptEvent("pv:prompt_deleted", {
+          promptId,
+          actorUserId: context.actor?.userId,
+          requestId: context.actor?.requestId,
+        });
+      },
+    );
   }
 
   /**
@@ -985,17 +1237,21 @@ export class PromptVaultService {
    * @param promptId - Identifier of the prompt to restore.
    */
   public restorePrompt(promptId: PromptId): void {
-    return this.telemetry.withSpan("service.restorePrompt", { promptId }, () => {
-      // Ensure the prompt exists and is deleted
-      const prompt = this.repository.getPromptById(promptId);
-      if (!prompt.deletedAt) {
-        throw new ValidationError(["Prompt is not deleted"]);
-      }
+    return this.telemetry.withSpan(
+      "service.restorePrompt",
+      { promptId },
+      () => {
+        // Ensure the prompt exists and is deleted
+        const prompt = this.repository.getPromptById(promptId);
+        if (!prompt.deletedAt) {
+          throw new ValidationError(["Prompt is not deleted"]);
+        }
 
-      this.repository.restorePrompt(promptId);
-      this.logger.info("prompt_restored", { promptId });
-      // Note: Plugin events for restore not implemented yet
-    });
+        this.repository.restorePrompt(promptId);
+        this.logger.info("prompt_restored", { promptId });
+        // Note: Plugin events for restore not implemented yet
+      },
+    );
   }
 
   /**
@@ -1003,30 +1259,47 @@ export class PromptVaultService {
    * @returns Array of deleted prompts with their metadata.
    */
   public async getDeletedPrompts(): Promise<readonly Prompt[]> {
-    return this.telemetry.withSpan("service.getDeletedPrompts", {}, async () => {
-      const deleted = this.repository.getDeletedPrompts();
-      return Promise.all(deleted.map((prompt) => this.enrichPromptWithTags(prompt)));
-    });
+    return this.telemetry.withSpan(
+      "service.getDeletedPrompts",
+      {},
+      async () => {
+        const deleted = this.repository.getDeletedPrompts();
+        return Promise.all(
+          deleted.map((prompt) => this.enrichPromptWithTags(prompt)),
+        );
+      },
+    );
   }
 
   /**
    * Permanently delete a prompt and all its associated data.
    * @param promptId - Identifier of the prompt to permanently delete.
    */
-  public permanentlyDeletePrompt(promptId: PromptId, context: PromptVaultOperationContext = {}): void {
-    return this.telemetry.withSpan("service.permanentlyDeletePrompt", { promptId }, () => {
-      // Ensure the prompt exists (could be deleted or not)
-      this.repository.getPromptById(promptId);
+  public permanentlyDeletePrompt(
+    promptId: PromptId,
+    context: PromptVaultOperationContext = {},
+  ): void {
+    return this.telemetry.withSpan(
+      "service.permanentlyDeletePrompt",
+      { promptId },
+      () => {
+        // Ensure the prompt exists (could be deleted or not)
+        this.repository.getPromptById(promptId);
 
-      this.repository.permanentlyDeletePrompt(promptId);
-      this.logger.info("prompt_permanently_deleted", { promptId });
-      this.pluginHost.emit("onPromptDeleted", { promptId, mode: "permanent", actor: context.actor });
-      emitPromptEvent("pv:prompt_deleted", {
-        promptId,
-        actorUserId: context.actor?.userId,
-        requestId: context.actor?.requestId,
-      });
-    });
+        this.repository.permanentlyDeletePrompt(promptId);
+        this.logger.info("prompt_permanently_deleted", { promptId });
+        this.pluginHost.emit("onPromptDeleted", {
+          promptId,
+          mode: "permanent",
+          actor: context.actor,
+        });
+        emitPromptEvent("pv:prompt_deleted", {
+          promptId,
+          actorUserId: context.actor?.userId,
+          requestId: context.actor?.requestId,
+        });
+      },
+    );
   }
 
   /**
@@ -1062,48 +1335,57 @@ export class PromptVaultService {
       tags?: readonly string[];
       format?: PromptFormat;
       category?: string;
-    } = {}
+    } = {},
   ): Promise<Prompt> {
-    return this.telemetry.withSpan("service.importPromptFromFile", { filePath }, async () => {
-      // Check file size before reading
-      const stats = fs.statSync(filePath);
-      if (stats.size > this.limits.maxFileSizeBytes) {
-        throw new ValidationError([`File size ${stats.size} bytes exceeds maximum allowed size of ${this.limits.maxFileSizeBytes} bytes`]);
-      }
+    return this.telemetry.withSpan(
+      "service.importPromptFromFile",
+      { filePath },
+      async () => {
+        // Check file size before reading
+        const stats = fs.statSync(filePath);
+        if (stats.size > this.limits.maxFileSizeBytes) {
+          throw new ValidationError([
+            `File size ${stats.size} bytes exceeds maximum allowed size of ${this.limits.maxFileSizeBytes} bytes`,
+          ]);
+        }
 
-      // Read file content
-      const content = fs.readFileSync(filePath, 'utf-8');
+        // Read file content
+        const content = fs.readFileSync(filePath, "utf-8");
 
-      // Check content length
-      if (content.length > this.limits.maxPromptContentLength) {
-        throw new ValidationError([`Prompt content length ${content.length} characters exceeds maximum allowed length of ${this.limits.maxPromptContentLength} characters`]);
-      }
+        // Check content length
+        if (content.length > this.limits.maxPromptContentLength) {
+          throw new ValidationError([
+            `Prompt content length ${content.length} characters exceeds maximum allowed length of ${this.limits.maxPromptContentLength} characters`,
+          ]);
+        }
 
-      // Detect format from file extension if not provided
-      const format = options.format || this.detectFormatFromPath(filePath);
+        // Detect format from file extension if not provided
+        const format = options.format || this.detectFormatFromPath(filePath);
 
-      // Generate slug from name or filename
-      const baseName = options.name || path.basename(filePath, path.extname(filePath));
-      const slug = this.generateSlug(baseName);
+        // Generate slug from name or filename
+        const baseName =
+          options.name || path.basename(filePath, path.extname(filePath));
+        const slug = this.generateSlug(baseName);
 
-      // Create the prompt
-      const promptInput = {
-        id: randomUUID(),
-        slug,
-        title: baseName,
-        description: `Imported from ${filePath}`,
-        category: options.category,
-        body: content,
-        format,
-        semanticVersion: '1.0.0',
-        tags: [...(options.tags || [])],
-        changelog: 'Initial import',
-      };
+        // Create the prompt
+        const promptInput = {
+          id: randomUUID(),
+          slug,
+          title: baseName,
+          description: `Imported from ${filePath}`,
+          category: options.category,
+          body: content,
+          format,
+          semanticVersion: "1.0.0",
+          tags: [...(options.tags || [])],
+          changelog: "Initial import",
+        };
 
-      const prompt = await this.createPrompt(promptInput);
-      this.logger.info("prompt_imported", { promptId: prompt.id, filePath });
-      return prompt;
-    });
+        const prompt = await this.createPrompt(promptInput);
+        this.logger.info("prompt_imported", { promptId: prompt.id, filePath });
+        return prompt;
+      },
+    );
   }
 
   /**
@@ -1136,75 +1418,83 @@ export class PromptVaultService {
     options: {
       format?: PromptFormat;
       includeMetadata?: boolean;
-    } = {}
+    } = {},
   ): Promise<void> {
-    return this.telemetry.withSpan("service.exportPromptToFile", { promptId, filePath }, async () => {
-      const prompt = await this.getPrompt(promptId);
-      if (!prompt.latestVersion) {
-        throw new ValidationError(['Prompt has no content to export']);
-      }
-
-      let content = prompt.latestVersion.body;
-
-      // Convert format if requested
-      if (options.format && options.format !== prompt.latestVersion.format) {
-        content = convertPromptContent(content, prompt.latestVersion.format, options.format);
-      }
-
-      // Add metadata if requested
-      if (options.includeMetadata) {
-        const metadata = {
-          id: prompt.id,
-          slug: prompt.slug,
-          title: prompt.title,
-          description: prompt.description,
-          category: prompt.category,
-          tags: prompt.tags.map(tag => tag.label),
-          format: options.format || prompt.latestVersion.format,
-          version: prompt.latestVersion.semanticVersion,
-          exportedAt: new Date().toISOString(),
-        };
-
-        if (options.format === 'json') {
-          content = JSON.stringify({ metadata, content }, null, 2);
-        } else if (options.format === 'yaml') {
-          content = yaml.stringify({ metadata }) + '---\n' + content;
-        } else {
-          // Markdown format
-          content = '---\n' + yaml.stringify(metadata) + '---\n\n' + content;
+    return this.telemetry.withSpan(
+      "service.exportPromptToFile",
+      { promptId, filePath },
+      async () => {
+        const prompt = await this.getPrompt(promptId);
+        if (!prompt.latestVersion) {
+          throw new ValidationError(["Prompt has no content to export"]);
         }
-      }
 
-      // Write to file
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(filePath, content, 'utf-8');
+        let content = prompt.latestVersion.body;
 
-      this.logger.info("prompt_exported", { promptId, filePath });
-    });
+        // Convert format if requested
+        if (options.format && options.format !== prompt.latestVersion.format) {
+          content = convertPromptContent(
+            content,
+            prompt.latestVersion.format,
+            options.format,
+          );
+        }
+
+        // Add metadata if requested
+        if (options.includeMetadata) {
+          const metadata = {
+            id: prompt.id,
+            slug: prompt.slug,
+            title: prompt.title,
+            description: prompt.description,
+            category: prompt.category,
+            tags: prompt.tags.map((tag) => tag.label),
+            format: options.format || prompt.latestVersion.format,
+            version: prompt.latestVersion.semanticVersion,
+            exportedAt: new Date().toISOString(),
+          };
+
+          if (options.format === "json") {
+            content = JSON.stringify({ metadata, content }, null, 2);
+          } else if (options.format === "yaml") {
+            content = yaml.stringify({ metadata }) + "---\n" + content;
+          } else {
+            // Markdown format
+            content = "---\n" + yaml.stringify(metadata) + "---\n\n" + content;
+          }
+        }
+
+        // Write to file
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(filePath, content, "utf-8");
+
+        this.logger.info("prompt_exported", { promptId, filePath });
+      },
+    );
   }
 
   private detectFormatFromPath(filePath: string): PromptFormat {
     const ext = path.extname(filePath).toLowerCase();
     switch (ext) {
-      case '.yaml':
-      case '.yml':
-        return 'yaml';
-      case '.json':
-        return 'json';
-      case '.md':
+      case ".yaml":
+      case ".yml":
+        return "yaml";
+      case ".json":
+        return "json";
+      case ".md":
       default:
-        return 'markdown';
+        return "markdown";
     }
   }
 
   private generateSlug(baseName: string): string {
     return baseName
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
       .substring(0, 50);
   }
 
@@ -1217,14 +1507,18 @@ export class PromptVaultService {
   private async ensureCoreDb(): Promise<void> {
     if (!this.coreDbReady) {
       this.coreDbReady = resetCoreDb().catch((error) => {
-        this.logger.warn("core_db_reset_failed", { error: error instanceof Error ? error.message : error });
+        this.logger.warn("core_db_reset_failed", {
+          error: error instanceof Error ? error.message : error,
+        });
       });
     }
 
     await this.coreDbReady;
   }
 
-  private async ensureSharedTags(labels: readonly string[]): Promise<SharedTag[]> {
+  private async ensureSharedTags(
+    labels: readonly string[],
+  ): Promise<SharedTag[]> {
     await this.ensureCoreDb();
     const normalized = this.normalizeLabels(labels);
     if (normalized.length === 0) {
@@ -1240,7 +1534,9 @@ export class PromptVaultService {
     }
 
     const existing = await listSharedTags();
-    const byName = new Map(existing.map((tag) => [tag.name.toLowerCase(), tag] as const));
+    const byName = new Map(
+      existing.map((tag) => [tag.name.toLowerCase(), tag] as const),
+    );
     const result: SharedTag[] = [];
 
     for (const [key, label] of unique.entries()) {
@@ -1258,7 +1554,10 @@ export class PromptVaultService {
     return result;
   }
 
-  private async lookupTagIds(labels: readonly string[], options: { createIfMissing: boolean }): Promise<string[]> {
+  private async lookupTagIds(
+    labels: readonly string[],
+    options: { createIfMissing: boolean },
+  ): Promise<string[]> {
     if (labels.length === 0) {
       return [];
     }
@@ -1269,13 +1568,18 @@ export class PromptVaultService {
     }
 
     const existing = await listSharedTags();
-    const normalized = this.normalizeLabels(labels).map((label) => label.toLowerCase());
+    const normalized = this.normalizeLabels(labels).map((label) =>
+      label.toLowerCase(),
+    );
     return existing
       .filter((tag) => normalized.includes(tag.name.toLowerCase()))
       .map((tag) => tag.id);
   }
 
-  private async applyTagsToPrompt(promptId: string, tagIds: readonly string[]): Promise<void> {
+  private async applyTagsToPrompt(
+    promptId: string,
+    tagIds: readonly string[],
+  ): Promise<void> {
     for (const tagId of tagIds) {
       await tagSharedPrompt(promptId, tagId);
     }
@@ -1303,7 +1607,10 @@ export class PromptVaultService {
 
   private async enrichPromptWithTags(prompt: Prompt): Promise<Prompt> {
     await this.ensureCoreDb();
-    const sharedTags = await listSharedTagsForEntity({ entityType: "prompts", entityId: prompt.id });
+    const sharedTags = await listSharedTagsForEntity({
+      entityType: "prompts",
+      entityId: prompt.id,
+    });
     return {
       ...prompt,
       tags: sharedTags.map((tag) => this.toDomainTag(tag)),
@@ -1354,7 +1661,7 @@ export class PromptVaultService {
       details?: unknown;
     };
     issues: Array<{
-      type: 'error' | 'warning';
+      type: "error" | "warning";
       message: string;
       promptId?: string;
       details?: unknown;
@@ -1362,13 +1669,17 @@ export class PromptVaultService {
   }> {
     return this.telemetry.withSpan("service.runDiagnostics", {}, async () => {
       const issues: Array<{
-        type: 'error' | 'warning';
+        type: "error" | "warning";
         message: string;
         promptId?: string;
         details?: unknown;
       }> = [];
 
-      let migrationState: { currentVersion: number; latestVersion: number; pendingVersions: readonly number[] };
+      let migrationState: {
+        currentVersion: number;
+        latestVersion: number;
+        pendingVersions: readonly number[];
+      };
       try {
         const state = this.repository.getMigrationState();
         migrationState = {
@@ -1377,21 +1688,37 @@ export class PromptVaultService {
           pendingVersions: state.pendingVersions,
         };
       } catch (error) {
-        migrationState = { currentVersion: 0, latestVersion: 0, pendingVersions: [] };
+        migrationState = {
+          currentVersion: 0,
+          latestVersion: 0,
+          pendingVersions: [],
+        };
         issues.push({
           type: "error",
           message: "Failed to read migration state",
           details: error instanceof Error ? error.message : error,
         });
       }
-      const integrity: { status: "ok" | "error"; details?: unknown } = { status: "ok" };
+      const integrity: { status: "ok" | "error"; details?: unknown } = {
+        status: "ok",
+      };
 
       // Get basic statistics
-      const allPrompts = await Promise.all(this.repository.getAllPrompts().map((prompt) => this.enrichPromptWithTags(prompt)));
-      const deletedPrompts = await Promise.all(this.repository.getDeletedPrompts().map((prompt) => this.enrichPromptWithTags(prompt)));
+      const allPrompts = await Promise.all(
+        this.repository
+          .getAllPrompts()
+          .map((prompt) => this.enrichPromptWithTags(prompt)),
+      );
+      const deletedPrompts = await Promise.all(
+        this.repository
+          .getDeletedPrompts()
+          .map((prompt) => this.enrichPromptWithTags(prompt)),
+      );
       const allTags = await listSharedTags();
 
-      const linkedTagIds = new Set(allPrompts.flatMap((p) => p.tags.map((tag) => tag.id)));
+      const linkedTagIds = new Set(
+        allPrompts.flatMap((p) => p.tags.map((tag) => tag.id)),
+      );
 
       let totalVersions = 0;
       let invalidContent = 0;
@@ -1402,8 +1729,8 @@ export class PromptVaultService {
         // Check for prompts without versions
         if (!prompt.latestVersion) {
           issues.push({
-            type: 'error',
-            message: 'Prompt has no versions',
+            type: "error",
+            message: "Prompt has no versions",
             promptId: prompt.id,
           });
         } else {
@@ -1411,65 +1738,77 @@ export class PromptVaultService {
 
           // Validate content format
           try {
-            validatePromptContent(prompt.latestVersion.body, prompt.latestVersion.format);
+            validatePromptContent(
+              prompt.latestVersion.body,
+              prompt.latestVersion.format,
+            );
           } catch (error) {
             invalidContent++;
             issues.push({
-              type: 'error',
+              type: "error",
               message: `Invalid ${prompt.latestVersion.format} content`,
               promptId: prompt.id,
               details: error instanceof Error ? error.message : error,
             });
           }
         }
-
       }
 
       orphanedTags = allTags.filter((tag) => !linkedTagIds.has(tag.id)).length;
 
-      const requiredTables = ["prompts", "prompt_versions", "tags", "prompt_tags"];
-      const missingTables = requiredTables.filter((table) => !this.repository.hasTable(table));
+      const requiredTables = [
+        "prompts",
+        "prompt_versions",
+        "tags",
+        "prompt_tags",
+      ];
+      const missingTables = requiredTables.filter(
+        (table) => !this.repository.hasTable(table),
+      );
 
       if (missingTables.length > 0) {
         issues.push({
-          type: 'error',
-          message: `Missing required tables: ${missingTables.join(', ')}`,
+          type: "error",
+          message: `Missing required tables: ${missingTables.join(", ")}`,
           details: { missingTables },
         });
       }
 
       // Check database integrity
       try {
-        const result = this.repository.getDatabase().prepare('PRAGMA integrity_check').get() as { integrity_check?: string } | undefined;
-        if (!result || typeof result.integrity_check !== 'string') {
-          integrity.status = 'error';
+        const result = this.repository
+          .getDatabase()
+          .prepare("PRAGMA integrity_check")
+          .get() as { integrity_check?: string } | undefined;
+        if (!result || typeof result.integrity_check !== "string") {
+          integrity.status = "error";
           issues.push({
-            type: 'error',
-            message: 'Database integrity check returned no result',
+            type: "error",
+            message: "Database integrity check returned no result",
             details: result,
           });
-        } else if (result.integrity_check.toLowerCase() !== 'ok') {
-          integrity.status = 'error';
+        } else if (result.integrity_check.toLowerCase() !== "ok") {
+          integrity.status = "error";
           integrity.details = result.integrity_check;
           issues.push({
-            type: 'error',
-            message: 'Database integrity check failed',
+            type: "error",
+            message: "Database integrity check failed",
             details: result.integrity_check,
           });
         }
       } catch (error) {
-        integrity.status = 'error';
+        integrity.status = "error";
         issues.push({
-          type: 'error',
-          message: 'Database integrity check failed',
+          type: "error",
+          message: "Database integrity check failed",
           details: error instanceof Error ? error.message : error,
         });
       }
 
       if (migrationState.pendingVersions.length > 0) {
         issues.push({
-          type: 'error',
-          message: 'Pending migrations detected',
+          type: "error",
+          message: "Pending migrations detected",
           details: { pendingVersions: migrationState.pendingVersions },
         });
       }
@@ -1538,8 +1877,16 @@ export class PromptVaultService {
     };
   }> {
     return this.telemetry.withSpan("service.getLibraryStats", {}, async () => {
-      const allPrompts = await Promise.all(this.repository.getAllPrompts().map((prompt) => this.enrichPromptWithTags(prompt)));
-      const deletedPrompts = await Promise.all(this.repository.getDeletedPrompts().map((prompt) => this.enrichPromptWithTags(prompt)));
+      const allPrompts = await Promise.all(
+        this.repository
+          .getAllPrompts()
+          .map((prompt) => this.enrichPromptWithTags(prompt)),
+      );
+      const deletedPrompts = await Promise.all(
+        this.repository
+          .getDeletedPrompts()
+          .map((prompt) => this.enrichPromptWithTags(prompt)),
+      );
       const allTags = await listSharedTags();
 
       // Calculate format distribution
@@ -1572,9 +1919,15 @@ export class PromptVaultService {
 
       // Calculate recent activity (last 7 days)
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const createdThisWeek = allPrompts.filter((p: Prompt) => p.createdAt >= weekAgo).length;
-      const updatedThisWeek = allPrompts.filter((p: Prompt) => p.updatedAt >= weekAgo).length;
-      const deletedThisWeek = deletedPrompts.filter((p: Prompt) => p.deletedAt && p.deletedAt >= weekAgo).length;
+      const createdThisWeek = allPrompts.filter(
+        (p: Prompt) => p.createdAt >= weekAgo,
+      ).length;
+      const updatedThisWeek = allPrompts.filter(
+        (p: Prompt) => p.updatedAt >= weekAgo,
+      ).length;
+      const deletedThisWeek = deletedPrompts.filter(
+        (p: Prompt) => p.deletedAt && p.deletedAt >= weekAgo,
+      ).length;
 
       return {
         prompts: {
@@ -1585,12 +1938,14 @@ export class PromptVaultService {
         },
         tags: {
           total: allTags.length,
-          averagePerPrompt: allPrompts.length > 0 ? allTags.length / allPrompts.length : 0,
+          averagePerPrompt:
+            allPrompts.length > 0 ? allTags.length / allPrompts.length : 0,
           mostUsed: mostUsedTags,
         },
         versions: {
           total: totalVersions,
-          averagePerPrompt: allPrompts.length > 0 ? totalVersions / allPrompts.length : 0,
+          averagePerPrompt:
+            allPrompts.length > 0 ? totalVersions / allPrompts.length : 0,
         },
         activity: {
           createdThisWeek,
@@ -1653,22 +2008,34 @@ export class PromptVaultService {
         if (diagnostics.summary.invalidContent > 0) {
           let repaired = 0;
           for (const issue of diagnostics.issues) {
-            if (issue.type === 'error' && issue.message.includes('Invalid') && issue.promptId) {
+            if (
+              issue.type === "error" &&
+              issue.message.includes("Invalid") &&
+              issue.promptId
+            ) {
               try {
                 const prompt = this.repository.getPromptById(issue.promptId);
                 if (prompt.latestVersion) {
                   // Try to detect and fix format
-                  const detectedFormat = detectPromptFormat(prompt.latestVersion.body);
+                  const detectedFormat = detectPromptFormat(
+                    prompt.latestVersion.body,
+                  );
                   if (detectedFormat !== prompt.latestVersion.format) {
                     // Update the format in the database
-                    this.repository.updateVersionFormat(prompt.latestVersion.id, detectedFormat);
+                    this.repository.updateVersionFormat(
+                      prompt.latestVersion.id,
+                      detectedFormat,
+                    );
                     repaired++;
                   }
                 }
               } catch (repairError) {
                 errors.push({
                   message: `Failed to repair prompt ${issue.promptId}`,
-                  details: repairError instanceof Error ? repairError.message : repairError,
+                  details:
+                    repairError instanceof Error
+                      ? repairError.message
+                      : repairError,
                 });
               }
             }
@@ -1676,8 +2043,8 @@ export class PromptVaultService {
 
           if (repaired > 0) {
             repairs.push({
-              type: 'content_format',
-              description: 'Fixed invalid content formats by auto-detection',
+              type: "content_format",
+              description: "Fixed invalid content formats by auto-detection",
               count: repaired,
             });
           }
@@ -1688,15 +2055,14 @@ export class PromptVaultService {
           // This would require more complex logic to identify truly orphaned tags
           // For now, we'll just report them
           repairs.push({
-            type: 'orphaned_tags',
-            description: 'Orphaned tags detected (manual cleanup required)',
+            type: "orphaned_tags",
+            description: "Orphaned tags detected (manual cleanup required)",
             count: diagnostics.summary.orphanedTags,
           });
         }
-
       } catch (error) {
         errors.push({
-          message: 'Integrity repair failed',
+          message: "Integrity repair failed",
           details: error instanceof Error ? error.message : error,
         });
       }
@@ -1760,43 +2126,54 @@ export class PromptVaultService {
       category?: string;
       format?: PromptFormat;
       skipErrors?: boolean;
-    } = {}
+    } = {},
   ): Promise<{
     successful: Array<{ filePath: string; prompt: Prompt }>;
     failed: Array<{ filePath: string; error: string }>;
   }> {
-    return this.telemetry.withSpan("service.bulkImportPrompts", { fileCount: filePaths.length }, async () => {
-      const successful: Array<{ filePath: string; prompt: Prompt }> = [];
-      const failed: Array<{ filePath: string; error: string }> = [];
+    return this.telemetry.withSpan(
+      "service.bulkImportPrompts",
+      { fileCount: filePaths.length },
+      async () => {
+        const successful: Array<{ filePath: string; prompt: Prompt }> = [];
+        const failed: Array<{ filePath: string; error: string }> = [];
 
-      for (const filePath of filePaths) {
-        try {
-          const prompt = await this.importPromptFromFile(filePath, {
-            tags: options.tags,
-            category: options.category,
-            format: options.format,
-          });
-          successful.push({ filePath, prompt });
-          this.logger.info("bulk_import_success", { filePath, promptId: prompt.id });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          failed.push({ filePath, error: errorMessage });
-          this.logger.warn("bulk_import_failed", { filePath, error: errorMessage });
+        for (const filePath of filePaths) {
+          try {
+            const prompt = await this.importPromptFromFile(filePath, {
+              tags: options.tags,
+              category: options.category,
+              format: options.format,
+            });
+            successful.push({ filePath, prompt });
+            this.logger.info("bulk_import_success", {
+              filePath,
+              promptId: prompt.id,
+            });
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            failed.push({ filePath, error: errorMessage });
+            this.logger.warn("bulk_import_failed", {
+              filePath,
+              error: errorMessage,
+            });
 
-          if (!options.skipErrors) {
-            break;
+            if (!options.skipErrors) {
+              break;
+            }
           }
         }
-      }
 
-      this.logger.info("bulk_import_completed", {
-        total: filePaths.length,
-        successful: successful.length,
-        failed: failed.length
-      });
+        this.logger.info("bulk_import_completed", {
+          total: filePaths.length,
+          successful: successful.length,
+          failed: failed.length,
+        });
 
-      return { successful, failed };
-    });
+        return { successful, failed };
+      },
+    );
   }
 
   /**
@@ -1838,64 +2215,80 @@ export class PromptVaultService {
       includeMetadata?: boolean;
       namingPattern?: string;
       skipErrors?: boolean;
-    } = {}
+    } = {},
   ): Promise<{
     successful: Array<{ promptId: string; filePath: string }>;
     failed: Array<{ promptId: string; error: string }>;
     outputDir: string;
   }> {
-    return this.telemetry.withSpan("service.bulkExportPrompts", { promptCount: promptIds.length, outputDir }, async () => {
-      const successful: Array<{ promptId: string; filePath: string }> = [];
-      const failed: Array<{ promptId: string; error: string }> = [];
-      const namingPattern = options.namingPattern || "{slug}";
+    return this.telemetry.withSpan(
+      "service.bulkExportPrompts",
+      { promptCount: promptIds.length, outputDir },
+      async () => {
+        const successful: Array<{ promptId: string; filePath: string }> = [];
+        const failed: Array<{ promptId: string; error: string }> = [];
+        const namingPattern = options.namingPattern || "{slug}";
 
-      // Ensure output directory exists
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
-      }
+        // Ensure output directory exists
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+        }
 
-      for (const promptId of promptIds) {
-        try {
-          const prompt = await this.getPrompt(promptId);
+        for (const promptId of promptIds) {
+          try {
+            const prompt = await this.getPrompt(promptId);
 
-          // Generate filename based on pattern
-          let filename = namingPattern;
-          filename = filename.replace("{slug}", prompt.slug);
-          filename = filename.replace("{title}", prompt.title.replace(/[^a-zA-Z0-9]/g, "_"));
-          filename = filename.replace("{id}", promptId);
+            // Generate filename based on pattern
+            let filename = namingPattern;
+            filename = filename.replace("{slug}", prompt.slug);
+            filename = filename.replace(
+              "{title}",
+              prompt.title.replace(/[^a-zA-Z0-9]/g, "_"),
+            );
+            filename = filename.replace("{id}", promptId);
 
-          // Add appropriate extension
-          const targetFormat = options.format || prompt.latestVersion?.format || "markdown";
-          const extension = targetFormat === "markdown" ? "md" :
-            targetFormat === "yaml" ? "yaml" : "json";
-          const filePath = path.join(outputDir, `${filename}.${extension}`);
+            // Add appropriate extension
+            const targetFormat =
+              options.format || prompt.latestVersion?.format || "markdown";
+            const extension =
+              targetFormat === "markdown"
+                ? "md"
+                : targetFormat === "yaml"
+                  ? "yaml"
+                  : "json";
+            const filePath = path.join(outputDir, `${filename}.${extension}`);
 
-          await this.exportPromptToFile(promptId, filePath, {
-            format: options.format,
-            includeMetadata: options.includeMetadata,
-          });
+            await this.exportPromptToFile(promptId, filePath, {
+              format: options.format,
+              includeMetadata: options.includeMetadata,
+            });
 
-          successful.push({ promptId, filePath });
-          this.logger.info("bulk_export_success", { promptId, filePath });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          failed.push({ promptId, error: errorMessage });
-          this.logger.warn("bulk_export_failed", { promptId, error: errorMessage });
+            successful.push({ promptId, filePath });
+            this.logger.info("bulk_export_success", { promptId, filePath });
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            failed.push({ promptId, error: errorMessage });
+            this.logger.warn("bulk_export_failed", {
+              promptId,
+              error: errorMessage,
+            });
 
-          if (!options.skipErrors) {
-            break;
+            if (!options.skipErrors) {
+              break;
+            }
           }
         }
-      }
 
-      this.logger.info("bulk_export_completed", {
-        total: promptIds.length,
-        successful: successful.length,
-        failed: failed.length,
-        outputDir
-      });
+        this.logger.info("bulk_export_completed", {
+          total: promptIds.length,
+          successful: successful.length,
+          failed: failed.length,
+          outputDir,
+        });
 
-      return { successful, failed, outputDir };
-    });
+        return { successful, failed, outputDir };
+      },
+    );
   }
 }

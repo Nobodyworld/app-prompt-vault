@@ -22,7 +22,9 @@ export interface LoggerOptions {
   readonly fields?: LogFields;
   readonly includeTraceId?: boolean;
   readonly includeSpanId?: boolean;
-  readonly telemetry?: { getActiveContext(): { traceId: string; spanId: string } | undefined };
+  readonly telemetry?: {
+    getActiveContext(): { traceId: string; spanId: string } | undefined;
+  };
 }
 
 function normaliseLevel(level: string | undefined): LogLevel {
@@ -30,7 +32,12 @@ function normaliseLevel(level: string | undefined): LogLevel {
     return "info";
   }
   const lower = level.toLowerCase();
-  if (lower === "debug" || lower === "info" || lower === "warn" || lower === "error") {
+  if (
+    lower === "debug" ||
+    lower === "info" ||
+    lower === "warn" ||
+    lower === "error"
+  ) {
     return lower;
   }
   return "info";
@@ -48,7 +55,9 @@ export class StructuredLogger {
 
   private readonly includeSpanId: boolean;
 
-  private readonly telemetry?: { getActiveContext(): { traceId: string; spanId: string } | undefined };
+  private readonly telemetry?: {
+    getActiveContext(): { traceId: string; spanId: string } | undefined;
+  };
 
   public constructor(options: LoggerOptions = {}) {
     this.level = options.level ?? "info";
@@ -106,7 +115,9 @@ export class StructuredLogger {
       payload.spanId = context.spanId;
     }
 
-    console[level === "error" ? "error" : level === "warn" ? "warn" : "log"](JSON.stringify(payload));
+    console[level === "error" ? "error" : level === "warn" ? "warn" : "log"](
+      JSON.stringify(payload),
+    );
   }
 }
 
@@ -115,11 +126,16 @@ export interface LoggerFactoryOptions {
   readonly level?: LogLevel;
   readonly fields?: LogFields;
   readonly includeTraceId?: boolean;
-  readonly telemetry?: { getActiveContext(): { traceId: string; spanId: string } | undefined };
+  readonly telemetry?: {
+    getActiveContext(): { traceId: string; spanId: string } | undefined;
+  };
 }
 
-export function createLoggerFromEnv(options: LoggerFactoryOptions): StructuredLogger {
-  const level = options.level ?? normaliseLevel(process.env.PROMPT_VAULT_LOG_LEVEL);
+export function createLoggerFromEnv(
+  options: LoggerFactoryOptions,
+): StructuredLogger {
+  const level =
+    options.level ?? normaliseLevel(process.env.PROMPT_VAULT_LOG_LEVEL);
   const baseFields: LogFields = {
     service: options.serviceName,
     pid: process.pid,

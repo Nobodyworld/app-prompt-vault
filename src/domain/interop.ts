@@ -37,7 +37,7 @@ export interface PlannerBucketDraft {
 
 export function buildButtonsSwitchboardPayload(
   prompts: readonly Prompt[],
-  limit = 12
+  limit = 12,
 ): ButtonsSwitchboardPayload | null {
   const phrases = prompts
     .filter((p) => p.latestVersion?.body)
@@ -77,12 +77,15 @@ export function buildButtonsSwitchboardPayload(
 
 export function buildPlannerBucketDraft(
   prompts: readonly Prompt[],
-  limit = 10
+  limit = 10,
 ): PlannerBucketDraft | null {
   const tasks = prompts.slice(0, limit).map((p) => ({
     title: `Use: ${p.title}`,
     note: p.latestVersion?.body?.slice(0, 360),
-    tags: ["prompt-vault", ...(p.tags ?? []).map((t) => t.label ?? "").filter(Boolean)],
+    tags: [
+      "prompt-vault",
+      ...(p.tags ?? []).map((t) => t.label ?? "").filter(Boolean),
+    ],
   }));
 
   if (tasks.length === 0) return null;

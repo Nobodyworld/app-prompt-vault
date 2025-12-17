@@ -14,7 +14,7 @@ describe("ErrorBoundary (minimal)", () => {
       render(
         <ErrorBoundary>
           <ProblemChild />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       );
     }).not.toThrow();
   });

@@ -15,13 +15,20 @@ export class SnapshotManager {
    * @param snapshotPath - Path where the compressed snapshot should be saved.
    * @returns Promise that resolves when backup is complete.
    */
-  public static async createSnapshot(database: Database.Database, snapshotPath: string): Promise<void> {
+  public static async createSnapshot(
+    database: Database.Database,
+    snapshotPath: string,
+  ): Promise<void> {
     // SQLite data dump to temporary file (only INSERT statements, no schema)
     const dumpPath = `${snapshotPath}.tmp`;
     const dumpStream = createWriteStream(dumpPath);
 
     // Write data for each table as INSERT statements
-    const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
+    const tables = database
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+      )
+      .all() as { name: string }[];
     for (const { name } of tables) {
       const rows = database.prepare(`SELECT * FROM ${name}`).all();
       if (rows.length > 0) {
@@ -30,13 +37,22 @@ export class SnapshotManager {
         const columns = Object.keys(firstRow).join(", ");
         for (const row of rows) {
           const rowData = row as Record<string, unknown>;
-          const values = Object.values(rowData).map(value =>
-            value === null ? "NULL" :
-            typeof value === "string" ? `'${value.replace(/'/g, "''")}'` :
-            typeof value === "boolean" ? (value ? "1" : "0") :
-            String(value)
-          ).join(", ");
-          dumpStream.write(`INSERT INTO ${name} (${columns}) VALUES (${values});\n`);
+          const values = Object.values(rowData)
+            .map((value) =>
+              value === null
+                ? "NULL"
+                : typeof value === "string"
+                  ? `'${value.replace(/'/g, "''")}'`
+                  : typeof value === "boolean"
+                    ? value
+                      ? "1"
+                      : "0"
+                    : String(value),
+            )
+            .join(", ");
+          dumpStream.write(
+            `INSERT INTO ${name} (${columns}) VALUES (${values});\n`,
+          );
         }
       }
     }
@@ -52,7 +68,7 @@ export class SnapshotManager {
     await pipeline(
       createReadStream(dumpPath),
       gzipStream,
-      createWriteStream(snapshotPath)
+      createWriteStream(snapshotPath),
     );
 
     // Clean up temporary file
@@ -65,22 +81,32 @@ export class SnapshotManager {
    * @param database - The SQLite database instance to restore into.
    * @returns Promise that resolves when restore is complete.
    */
-  public static async restoreSnapshot(snapshotPath: string, database: Database.Database): Promise<void> {
+  public static async restoreSnapshot(
+    snapshotPath: string,
+    database: Database.Database,
+  ): Promise<void> {
     // Decompress snapshot to temporary file
     const dumpPath = `${snapshotPath}.tmp`;
     await pipeline(
       createReadStream(snapshotPath),
       createGunzip(),
-      createWriteStream(dumpPath)
+      createWriteStream(dumpPath),
     );
 
     // Execute the SQL dump
     const sql = readFileSync(dumpPath, "utf8");
-    const statements = sql.split(";").map((stmt: string) => stmt.trim()).filter((stmt: string) => stmt.length > 0);
+    const statements = sql
+      .split(";")
+      .map((stmt: string) => stmt.trim())
+      .filter((stmt: string) => stmt.length > 0);
 
     // Clear existing data
     database.exec("PRAGMA foreign_keys = OFF");
-    const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
+    const tables = database
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+      )
+      .all() as { name: string }[];
     for (const { name } of tables) {
       database.exec(`DELETE FROM ${name}`);
     }
@@ -93,7 +119,10 @@ export class SnapshotManager {
           database.exec(statement);
         } catch (error) {
           // Log but continue - some statements might fail if data already exists
-          console.warn(`Failed to execute statement: ${statement.substring(0, 100)}...`, error);
+          console.warn(
+            `Failed to execute statement: ${statement.substring(0, 100)}...`,
+            error,
+          );
         }
       }
     }
@@ -116,7 +145,8 @@ export class SnapshotManager {
     return {
       size: stats.size,
       created: stats.birthtime,
-      compressed: snapshotPath.endsWith(".gz") || snapshotPath.endsWith(".gzip"),
+      compressed:
+        snapshotPath.endsWith(".gz") || snapshotPath.endsWith(".gzip"),
     };
   }
 
@@ -135,11 +165,12 @@ export class SnapshotManager {
       const zlib = await import("node:zlib");
 
       const fileContent = fs.readFileSync(snapshotPath);
-      const decompressed = zlib.gunzipSync(fileContent).toString('utf8');
+      const decompressed = zlib.gunzipSync(fileContent).toString("utf8");
 
       // Check if it contains SQL statements
-      return decompressed.includes("INSERT INTO") ||
-             decompressed.includes("PRAGMA");
+      return (
+        decompressed.includes("INSERT INTO") || decompressed.includes("PRAGMA")
+      );
     } catch {
       return false;
     }

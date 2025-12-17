@@ -6,7 +6,11 @@ import type { PromptVaultService } from "../services/PromptVaultService.js";
 import type { StructuredLogger } from "../observability/logger.js";
 import type { Telemetry } from "../observability/telemetry.js";
 import { createNoopTelemetry } from "../observability/telemetry.js";
-import { DuplicatePromptError, PromptNotFoundError, ValidationError } from "../domain/errors.js";
+import {
+  DuplicatePromptError,
+  PromptNotFoundError,
+  ValidationError,
+} from "../domain/errors.js";
 import type { Prompt, PromptVersion } from "../domain/models.js";
 import { executePromptTemplate } from "../lib/promptService.js";
 
@@ -19,7 +23,10 @@ const promptCreateSchema = z.object({
   slug: z
     .string()
     .min(3, "Slug must be at least 3 characters long")
-    .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumerics and hyphens"),
+    .regex(
+      /^[a-z0-9-]+$/,
+      "Slug can only contain lowercase alphanumerics and hyphens",
+    ),
   title: z.string().min(3, "Title must be at least 3 characters long"),
   description: z.string().max(2000).optional(),
   category: z.string().max(100).optional(),
@@ -64,7 +71,9 @@ const promptSearchSchema = z.object({
 
       const allowed = new Set(["markdown", "yaml", "json"]);
       const valid = normalized.filter((entry) => allowed.has(entry));
-      return valid.length > 0 ? (valid as Array<"markdown" | "yaml" | "json">) : undefined;
+      return valid.length > 0
+        ? (valid as Array<"markdown" | "yaml" | "json">)
+        : undefined;
     }),
   page: z.coerce.number().int().min(0).default(0),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -81,11 +90,15 @@ const versionCreateSchema = z.object({
 });
 
 const tagMutationSchema = z.object({
-  tags: z.array(z.string().min(1)).nonempty("At least one tag must be provided"),
+  tags: z
+    .array(z.string().min(1))
+    .nonempty("At least one tag must be provided"),
 });
 
 const promptExecuteSchema = z.object({
-  variables: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  variables: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .optional(),
 });
 
 const promptIdParamSchema = z.object({
@@ -106,7 +119,7 @@ function resolveRoutePath(request: Parameters<RequestHandler>[0]): string {
 export function createPromptVaultRouter(
   service: PromptVaultService,
   logger: StructuredLogger,
-  options: RouterOptions = {}
+  options: RouterOptions = {},
 ): Router {
   const router = createRouter();
   const telemetry = options.telemetry ?? createNoopTelemetry();
@@ -117,15 +130,17 @@ export function createPromptVaultRouter(
         method: request.method,
         route: resolveRoutePath(request),
       };
-      Promise.resolve(telemetry.withSpan(`http.${name}`, attributes, () => handler(request, response, next))).catch(
-        (error) => {
-          telemetry.recordEvent(`http.${name}.error`, {
-            message: error instanceof Error ? error.message : String(error),
-            route: attributes.route,
-          });
-          next(error);
-        }
-      );
+      Promise.resolve(
+        telemetry.withSpan(`http.${name}`, attributes, () =>
+          handler(request, response, next),
+        ),
+      ).catch((error) => {
+        telemetry.recordEvent(`http.${name}.error`, {
+          message: error instanceof Error ? error.message : String(error),
+          route: attributes.route,
+        });
+        next(error);
+      });
     };
   }
 
@@ -145,19 +160,21 @@ export function createPromptVaultRouter(
       deletedAt: prompt.deletedAt,
       latestVersion: prompt.latestVersion
         ? {
-          id: prompt.latestVersion.id,
-          semanticVersion: prompt.latestVersion.semanticVersion,
-          body: prompt.latestVersion.body,
-          format: prompt.latestVersion.format,
-          changelog: prompt.latestVersion.changelog,
-          createdAt: prompt.latestVersion.createdAt,
-          updatedAt: prompt.latestVersion.updatedAt,
-        }
+            id: prompt.latestVersion.id,
+            semanticVersion: prompt.latestVersion.semanticVersion,
+            body: prompt.latestVersion.body,
+            format: prompt.latestVersion.format,
+            changelog: prompt.latestVersion.changelog,
+            createdAt: prompt.latestVersion.createdAt,
+            updatedAt: prompt.latestVersion.updatedAt,
+          }
         : undefined,
     };
   }
 
-  function mapVersionToResponse(version: PromptVersion): Record<string, unknown> {
+  function mapVersionToResponse(
+    version: PromptVersion,
+  ): Record<string, unknown> {
     return {
       id: version.id,
       semanticVersion: version.semanticVersion,
@@ -189,7 +206,7 @@ export function createPromptVaultRouter(
           total: result.total,
         },
       });
-    })
+    }),
   );
 
   router.get(
@@ -221,7 +238,7 @@ export function createPromptVaultRouter(
 
       response.setHeader("Content-Type", result.mimeType);
       response.send(result.content);
-    })
+    }),
   );
 
   router.post(
@@ -238,7 +255,7 @@ export function createPromptVaultRouter(
 
       const result = await service.importPromptBundle(payload);
       response.json({ result });
-    })
+    }),
   );
 
   router.get(
@@ -247,7 +264,7 @@ export function createPromptVaultRouter(
       const { promptId } = promptIdParamSchema.parse(request.params);
       const prompt = await service.getPrompt(promptId);
       response.json({ prompt: mapPromptToResponse(prompt) });
-    })
+    }),
   );
 
   router.get(
@@ -256,24 +273,27 @@ export function createPromptVaultRouter(
       const { promptId } = promptIdParamSchema.parse(request.params);
       const versions = service.listPromptVersions(promptId);
       response.json({ versions: versions.map(mapVersionToResponse) });
-    })
+    }),
   );
 
   router.post(
     "/prompts",
     asyncHandler("create-prompt", async (request, response) => {
       const payload = promptCreateSchema.parse(request.body);
-      const prompt = await service.createPrompt({
-        ...payload,
-        id: payload.id ?? randomUUID(),
-      }, {
-        actor: {
-          userId: response.locals?.userId,
-          requestId: response.locals?.requestId,
+      const prompt = await service.createPrompt(
+        {
+          ...payload,
+          id: payload.id ?? randomUUID(),
         },
-      });
+        {
+          actor: {
+            userId: response.locals?.userId,
+            requestId: response.locals?.requestId,
+          },
+        },
+      );
       response.status(201).json({ prompt: mapPromptToResponse(prompt) });
-    })
+    }),
   );
 
   router.delete(
@@ -287,21 +307,23 @@ export function createPromptVaultRouter(
         },
       });
       response.status(204).send();
-    })
+    }),
   );
 
   router.put(
     "/prompts/:promptId",
     asyncHandler("update-prompt", async (request, response) => {
-      const payload = z.object({
-        title: z.string().min(1).max(200).optional(),
-        description: z.string().max(2000).optional(),
-        category: z.string().max(100).optional(),
-        isFavorite: z.boolean().optional(),
-        rating: z.number().int().min(1).max(5).nullable().optional(),
-        tags: z.array(z.string().min(1)).optional(),
-        projectTagId: z.string().uuid().optional(),
-      }).parse(request.body);
+      const payload = z
+        .object({
+          title: z.string().min(1).max(200).optional(),
+          description: z.string().max(2000).optional(),
+          category: z.string().max(100).optional(),
+          isFavorite: z.boolean().optional(),
+          rating: z.number().int().min(1).max(5).nullable().optional(),
+          tags: z.array(z.string().min(1)).optional(),
+          projectTagId: z.string().uuid().optional(),
+        })
+        .parse(request.body);
 
       const { promptId } = promptIdParamSchema.parse(request.params);
       const prompt = await service.updatePrompt(promptId, payload, {
@@ -311,7 +333,7 @@ export function createPromptVaultRouter(
         },
       });
       response.json({ prompt: mapPromptToResponse(prompt) });
-    })
+    }),
   );
 
   router.post(
@@ -324,10 +346,10 @@ export function createPromptVaultRouter(
         payload.body,
         payload.semanticVersion,
         payload.format,
-        payload.changelog
+        payload.changelog,
       );
       response.status(201).json({ version });
-    })
+    }),
   );
 
   router.get(
@@ -343,20 +365,22 @@ export function createPromptVaultRouter(
           body: version.body,
         })),
       });
-    })
+    }),
   );
 
   router.post(
     "/prompts/:promptId/convert",
     asyncHandler("convert-prompt", async (request, response) => {
-      const { targetFormat } = z.object({
-        targetFormat: z.enum(["markdown", "yaml", "json"])
-      }).parse(request.body);
+      const { targetFormat } = z
+        .object({
+          targetFormat: z.enum(["markdown", "yaml", "json"]),
+        })
+        .parse(request.body);
 
       const { promptId } = promptIdParamSchema.parse(request.params);
       const converted = await service.convertPrompt(promptId, targetFormat);
       response.json({ data: { content: converted, format: targetFormat } });
-    })
+    }),
   );
 
   router.post(
@@ -367,10 +391,15 @@ export function createPromptVaultRouter(
 
       const prompt = await service.getPrompt(promptId);
       if (!prompt.latestVersion?.body) {
-        throw new PromptNotFoundError(`Prompt ${promptId} has no content to execute`);
+        throw new PromptNotFoundError(
+          `Prompt ${promptId} has no content to execute`,
+        );
       }
 
-      const result = executePromptTemplate(prompt.latestVersion.body, payload.variables ?? {});
+      const result = executePromptTemplate(
+        prompt.latestVersion.body,
+        payload.variables ?? {},
+      );
       response.json({
         success: true,
         data: {
@@ -379,7 +408,7 @@ export function createPromptVaultRouter(
           missingVariables: result.missingVariables,
         },
       });
-    })
+    }),
   );
 
   router.post(
@@ -390,7 +419,7 @@ export function createPromptVaultRouter(
       await service.tagPrompt(promptId, payload.tags);
       const prompt = await service.getPrompt(promptId);
       response.json({ data: mapPromptToResponse(prompt) });
-    })
+    }),
   );
 
   router.delete(
@@ -401,47 +430,59 @@ export function createPromptVaultRouter(
       await service.untagPrompt(promptId, payload.tags);
       const prompt = await service.getPrompt(promptId);
       response.json({ data: mapPromptToResponse(prompt) });
-    })
+    }),
   );
 
-  router.use((
-    error: unknown,
-    request: Parameters<RequestHandler>[0],
-    response: Response,
-    next: NextFunction
-  ) => {
-    const requestId = response.locals?.requestId;
-    const traceId = response.locals?.traceId;
-    if (error instanceof ValidationError || error instanceof z.ZodError) {
-      const issues = error instanceof ValidationError ? error.issues : error.issues.map((issue) => issue.message);
-      response.status(400).json({ error: "Request validation failed", details: issues, requestId, traceId });
-      return;
-    }
+  router.use(
+    (
+      error: unknown,
+      request: Parameters<RequestHandler>[0],
+      response: Response,
+      next: NextFunction,
+    ) => {
+      const requestId = response.locals?.requestId;
+      const traceId = response.locals?.traceId;
+      if (error instanceof ValidationError || error instanceof z.ZodError) {
+        const issues =
+          error instanceof ValidationError
+            ? error.issues
+            : error.issues.map((issue) => issue.message);
+        response
+          .status(400)
+          .json({
+            error: "Request validation failed",
+            details: issues,
+            requestId,
+            traceId,
+          });
+        return;
+      }
 
-    if (error instanceof PromptNotFoundError) {
-      response.status(404).json({ error: error.message, requestId, traceId });
-      return;
-    }
+      if (error instanceof PromptNotFoundError) {
+        response.status(404).json({ error: error.message, requestId, traceId });
+        return;
+      }
 
-    if (error instanceof DuplicatePromptError) {
-      response.status(409).json({ error: error.message, requestId, traceId });
-      return;
-    }
+      if (error instanceof DuplicatePromptError) {
+        response.status(409).json({ error: error.message, requestId, traceId });
+        return;
+      }
 
-    logger.error("router_error", {
-      path: request.path,
-      method: request.method,
-      error: error instanceof Error ? error.message : error,
-      requestId,
-      traceId,
-    });
-    telemetry.recordEvent("http.router_error", {
-      method: request.method,
-      path: request.path,
-    });
+      logger.error("router_error", {
+        path: request.path,
+        method: request.method,
+        error: error instanceof Error ? error.message : error,
+        requestId,
+        traceId,
+      });
+      telemetry.recordEvent("http.router_error", {
+        method: request.method,
+        path: request.path,
+      });
 
-    next(error);
-  });
+      next(error);
+    },
+  );
 
   return router;
 }

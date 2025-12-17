@@ -29,8 +29,8 @@ export function PromptStatsWidget(): React.JSX.Element {
         const weekAgo = new Date();
         weekAgo.setDate(weekAgo.getDate() - 7);
 
-        const promptsThisWeek = prompts.filter(p =>
-          new Date(p.updatedAt) >= weekAgo
+        const promptsThisWeek = prompts.filter(
+          (p) => new Date(p.updatedAt) >= weekAgo,
         ).length;
 
         // Collect unique tags

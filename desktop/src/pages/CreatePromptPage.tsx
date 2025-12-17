@@ -24,7 +24,14 @@ const INITIAL_FORM: FormState = {
   customTags: "",
 };
 
-const TAG_PRESETS = ["Brainstorming", "Email Draft", "Product Strategy", "Support Reply", "Code Review", "Workflow"];
+const TAG_PRESETS = [
+  "Brainstorming",
+  "Email Draft",
+  "Product Strategy",
+  "Support Reply",
+  "Code Review",
+  "Workflow",
+];
 const INITIAL_VERSION = "1.0.0";
 
 function slugify(input: string): string {
@@ -101,14 +108,17 @@ export function CreatePromptPage(): React.JSX.Element {
   // Listen for custom event to submit form from header
   useEffect(() => {
     const handleSubmitEvent = (): void => {
-      const formElement = document.querySelector('.prompt-form') as HTMLFormElement;
+      const formElement = document.querySelector(
+        ".prompt-form",
+      ) as HTMLFormElement;
       if (formElement) {
         formElement.requestSubmit();
       }
     };
 
-    window.addEventListener('submit-create-form', handleSubmitEvent);
-    return () => window.removeEventListener('submit-create-form', handleSubmitEvent);
+    window.addEventListener("submit-create-form", handleSubmitEvent);
+    return () =>
+      window.removeEventListener("submit-create-form", handleSubmitEvent);
   }, []);
 
   const slugPreview = useMemo(() => {
@@ -123,7 +133,11 @@ export function CreatePromptPage(): React.JSX.Element {
   }, [selectedTags, form.customTags]);
 
   function toggleTag(tag: string): void {
-    setSelectedTags((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]));
+    setSelectedTags((current) =>
+      current.includes(tag)
+        ? current.filter((item) => item !== tag)
+        : [...current, tag],
+    );
   }
 
   function resetForm(): void {
@@ -134,7 +148,9 @@ export function CreatePromptPage(): React.JSX.Element {
     localStorage.removeItem(STORAGE_KEY);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
@@ -156,8 +172,12 @@ export function CreatePromptPage(): React.JSX.Element {
       const customTags = parseCustomTags(form.customTags);
       const tags = Array.from(new Set([...selectedTags, ...customTags]));
 
-      const ratingNumber = form.rating.trim() === "" ? null : Number.parseInt(form.rating, 10);
-      if (form.rating.trim() !== "" && (Number.isNaN(ratingNumber) || ratingNumber < 1 || ratingNumber > 5)) {
+      const ratingNumber =
+        form.rating.trim() === "" ? null : Number.parseInt(form.rating, 10);
+      if (
+        form.rating.trim() !== "" &&
+        (Number.isNaN(ratingNumber) || ratingNumber < 1 || ratingNumber > 5)
+      ) {
         setError(t("create.ratingInvalid"));
         return;
       }
@@ -197,7 +217,9 @@ export function CreatePromptPage(): React.JSX.Element {
           required
           rows={10}
           value={form.body}
-          onChange={(event) => setForm((state) => ({ ...state, body: event.target.value }))}
+          onChange={(event) =>
+            setForm((state) => ({ ...state, body: event.target.value }))
+          }
           placeholder={t("create.promptMessage.placeholder")}
         />
       </label>
@@ -206,7 +228,9 @@ export function CreatePromptPage(): React.JSX.Element {
         {t("create.category")}
         <input
           value={form.category}
-          onChange={(event) => setForm((state) => ({ ...state, category: event.target.value }))}
+          onChange={(event) =>
+            setForm((state) => ({ ...state, category: event.target.value }))
+          }
           placeholder={t("create.category.placeholder")}
         />
       </label>
@@ -215,7 +239,9 @@ export function CreatePromptPage(): React.JSX.Element {
         <input
           type="checkbox"
           checked={form.isFavorite}
-          onChange={(event) => setForm((state) => ({ ...state, isFavorite: event.target.checked }))}
+          onChange={(event) =>
+            setForm((state) => ({ ...state, isFavorite: event.target.checked }))
+          }
         />
         {t("create.favorite")}
       </label>
@@ -225,7 +251,9 @@ export function CreatePromptPage(): React.JSX.Element {
         <input
           inputMode="numeric"
           value={form.rating}
-          onChange={(event) => setForm((state) => ({ ...state, rating: event.target.value }))}
+          onChange={(event) =>
+            setForm((state) => ({ ...state, rating: event.target.value }))
+          }
           placeholder={t("create.rating.placeholder")}
         />
       </label>
@@ -253,7 +281,9 @@ export function CreatePromptPage(): React.JSX.Element {
         {t("create.customTags")}
         <input
           value={form.customTags}
-          onChange={(event) => setForm((state) => ({ ...state, customTags: event.target.value }))}
+          onChange={(event) =>
+            setForm((state) => ({ ...state, customTags: event.target.value }))
+          }
           placeholder={t("create.customTags.placeholder")}
         />
       </label>
@@ -278,7 +308,11 @@ export function CreatePromptPage(): React.JSX.Element {
       {error && <p className="error">{error}</p>}
 
       <div className="form-actions">
-        <button className="secondary" type="button" onClick={() => navigate("/")}>
+        <button
+          className="secondary"
+          type="button"
+          onClick={() => navigate("/")}
+        >
           {t("actions.cancel")}
         </button>
         <button
@@ -298,9 +332,7 @@ export function CreatePromptPage(): React.JSX.Element {
       </div>
 
       {!runtimeAvailable && (
-        <p className="warning">
-          {t("create.warning.runtimeUnavailable")}
-        </p>
+        <p className="warning">{t("create.warning.runtimeUnavailable")}</p>
       )}
     </form>
   );

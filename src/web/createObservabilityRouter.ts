@@ -1,5 +1,10 @@
 import { Router } from "express";
-import type { NextFunction, Request, Response, Router as ExpressRouter } from "express";
+import type {
+  NextFunction,
+  Request,
+  Response,
+  Router as ExpressRouter,
+} from "express";
 import type { StructuredLogger } from "../observability/logger.js";
 import type { HealthIndicator } from "../observability/healthServer.js";
 import type { MetricRegistry } from "../observability/telemetry.js";
@@ -12,7 +17,9 @@ interface ObservabilityRouterOptions {
   readonly service?: PromptVaultService;
 }
 
-export function createObservabilityRouter(options: ObservabilityRouterOptions): ExpressRouter {
+export function createObservabilityRouter(
+  options: ObservabilityRouterOptions,
+): ExpressRouter {
   const router = Router();
 
   router.get("/healthz", (_request, response) => {
@@ -39,7 +46,7 @@ export function createObservabilityRouter(options: ObservabilityRouterOptions): 
         const result = await service.runDiagnostics();
         response.status(200).json({
           timestamp: new Date().toISOString(),
-          ...result
+          ...result,
         });
       } catch (error) {
         options.logger.error("diagnostics_endpoint_error", {
@@ -47,7 +54,7 @@ export function createObservabilityRouter(options: ObservabilityRouterOptions): 
         });
         response.status(500).json({
           error: "Failed to run diagnostics",
-          details: error instanceof Error ? error.message : String(error)
+          details: error instanceof Error ? error.message : String(error),
         });
       }
     });
@@ -57,7 +64,7 @@ export function createObservabilityRouter(options: ObservabilityRouterOptions): 
         const result = await service.getLibraryStats();
         response.status(200).json({
           timestamp: new Date().toISOString(),
-          ...result
+          ...result,
         });
       } catch (error) {
         options.logger.error("stats_endpoint_error", {
@@ -65,7 +72,7 @@ export function createObservabilityRouter(options: ObservabilityRouterOptions): 
         });
         response.status(500).json({
           error: "Failed to get library stats",
-          details: error instanceof Error ? error.message : String(error)
+          details: error instanceof Error ? error.message : String(error),
         });
       }
     });
@@ -75,7 +82,7 @@ export function createObservabilityRouter(options: ObservabilityRouterOptions): 
         const result = await service.repairIntegrity();
         response.status(200).json({
           timestamp: new Date().toISOString(),
-          ...result
+          ...result,
         });
       } catch (error) {
         options.logger.error("repair_endpoint_error", {
@@ -83,19 +90,26 @@ export function createObservabilityRouter(options: ObservabilityRouterOptions): 
         });
         response.status(500).json({
           error: "Failed to repair integrity",
-          details: error instanceof Error ? error.message : String(error)
+          details: error instanceof Error ? error.message : String(error),
         });
       }
     });
   }
 
-  router.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
-    void _next;
-    options.logger.error("observability_router_error", {
-      error: error instanceof Error ? error.message : error,
-    });
-    response.status(500).json({ error: "Observability router error" });
-  });
+  router.use(
+    (
+      error: unknown,
+      _request: Request,
+      response: Response,
+      _next: NextFunction,
+    ) => {
+      void _next;
+      options.logger.error("observability_router_error", {
+        error: error instanceof Error ? error.message : error,
+      });
+      response.status(500).json({ error: "Observability router error" });
+    },
+  );
 
   return router;
 }

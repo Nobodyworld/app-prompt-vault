@@ -10,9 +10,14 @@ export function isTauriAvailable(): boolean {
   return typeof globalWindow.__TAURI_INTERNALS__?.invoke === "function";
 }
 
-export async function invokeOrThrow<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+export async function invokeOrThrow<T>(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
   if (!isTauriAvailable()) {
-    throw new Error("Tauri runtime is not available. Launch the desktop app to use this feature.");
+    throw new Error(
+      "Tauri runtime is not available. Launch the desktop app to use this feature.",
+    );
   }
 
   const { invoke } = await import("@tauri-apps/api/core");

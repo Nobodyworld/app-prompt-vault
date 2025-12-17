@@ -20,7 +20,9 @@ interface ThemeContextType {
   toggleTheme: () => void;
 }
 
-const LegacyThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const LegacyThemeContext = createContext<ThemeContextType | undefined>(
+  undefined,
+);
 
 /**
  * Hook for accessing theme context (backwards compatible API)
@@ -58,11 +60,12 @@ function ThemeBridge({ children }: { children: ReactNode }): React.JSX.Element {
 /**
  * Theme provider using shared @nw/ui-theme with backwards compatible API
  */
-export function ThemeProvider({ children }: ThemeProviderProps): React.JSX.Element {
+export function ThemeProvider({
+  children,
+}: ThemeProviderProps): React.JSX.Element {
   return (
     <NwThemeProvider defaultMode="dark" storageKey="prompt-vault-theme">
       <ThemeBridge>{children}</ThemeBridge>
     </NwThemeProvider>
   );
 }
-

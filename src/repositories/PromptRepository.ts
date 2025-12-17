@@ -2,7 +2,10 @@ import type { Database as BetterSqlite3Database } from "better-sqlite3";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateIntegrityChecksum, checkDataIntegrity } from "../lib/platform-core.js";
+import {
+  generateIntegrityChecksum,
+  checkDataIntegrity,
+} from "../lib/platform-core.js";
 import type {
   Prompt,
   PromptId,
@@ -53,10 +56,15 @@ export class PromptRepository {
   private readonly logger: StructuredLogger;
   private promptsFtsAvailable: boolean | null = null;
 
-  public constructor(database: BetterSqlite3Database, options: PromptRepositoryOptions = {}) {
+  public constructor(
+    database: BetterSqlite3Database,
+    options: PromptRepositoryOptions = {},
+  ) {
     this.database = database;
     this.telemetry = options.telemetry ?? createNoopTelemetry();
-    this.logger = options.logger ?? createLoggerFromEnv({ serviceName: "prompt-vault-repository" });
+    this.logger =
+      options.logger ??
+      createLoggerFromEnv({ serviceName: "prompt-vault-repository" });
     this.applyMigrations();
   }
 
@@ -67,7 +75,9 @@ export class PromptRepository {
 
     try {
       const row = this.database
-        .prepare("SELECT 1 as ok FROM sqlite_master WHERE type='table' AND name='prompts_fts' LIMIT 1")
+        .prepare(
+          "SELECT 1 as ok FROM sqlite_master WHERE type='table' AND name='prompts_fts' LIMIT 1",
+        )
         .get() as { ok?: number } | undefined;
       this.promptsFtsAvailable = Boolean(row?.ok);
     } catch {
@@ -98,12 +108,18 @@ export class PromptRepository {
   }
 
   public getPromptIdBySlug(slug: string): PromptId | null {
-    return this.telemetry.withSpan("repository.getPromptIdBySlug", { slug }, () => {
-      const row = this.database
-        .prepare("SELECT id FROM prompts WHERE slug = @slug AND deleted_at IS NULL")
-        .get({ slug }) as { id: string } | undefined;
-      return row?.id ?? null;
-    });
+    return this.telemetry.withSpan(
+      "repository.getPromptIdBySlug",
+      { slug },
+      () => {
+        const row = this.database
+          .prepare(
+            "SELECT id FROM prompts WHERE slug = @slug AND deleted_at IS NULL",
+          )
+          .get({ slug }) as { id: string } | undefined;
+        return row?.id ?? null;
+      },
+    );
   }
 
   /**
@@ -135,20 +151,31 @@ export class PromptRepository {
    * ```
    */
   public createPrompt(prompt: Prompt, version: PromptVersion): void {
-    this.telemetry.withSpan("repository.createPrompt", { promptId: prompt.id }, () => {
-      try {
-        this.runTransaction(() => {
-          this.insertPromptRecord(prompt);
-          this.insertVersionRecord(version);
-        });
-      } catch (error: unknown) {
-        if (error instanceof Error && "code" in error && (error as { code: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
-          this.logger.warn("repository_duplicate_prompt", { promptId: prompt.id, slug: prompt.slug });
-          throw new DuplicatePromptError(prompt.slug);
+    this.telemetry.withSpan(
+      "repository.createPrompt",
+      { promptId: prompt.id },
+      () => {
+        try {
+          this.runTransaction(() => {
+            this.insertPromptRecord(prompt);
+            this.insertVersionRecord(version);
+          });
+        } catch (error: unknown) {
+          if (
+            error instanceof Error &&
+            "code" in error &&
+            (error as { code: string }).code === "SQLITE_CONSTRAINT_UNIQUE"
+          ) {
+            this.logger.warn("repository_duplicate_prompt", {
+              promptId: prompt.id,
+              slug: prompt.slug,
+            });
+            throw new DuplicatePromptError(prompt.slug);
+          }
+          throw error;
         }
-        throw error;
-      }
-    });
+      },
+    );
   }
 
   /**
@@ -174,10 +201,13 @@ export class PromptRepository {
    * ```
    */
   public getPromptById(promptId: PromptId): Prompt {
-    return this.telemetry.withSpan("repository.getPromptById", { promptId }, () => {
-      const row = this.database
-        .prepare(
-          `SELECT p.id, p.slug, p.title, p.description, p.category, p.is_favorite, p.rating, p.integrity_checksum, p.created_at, p.updated_at, p.deleted_at,
+    return this.telemetry.withSpan(
+      "repository.getPromptById",
+      { promptId },
+      () => {
+        const row = this.database
+          .prepare(
+            `SELECT p.id, p.slug, p.title, p.description, p.category, p.is_favorite, p.rating, p.integrity_checksum, p.created_at, p.updated_at, p.deleted_at,
                   pv.id AS version_id, pv.semantic_version, pv.body, pv.format, pv.changelog, pv.integrity_checksum AS version_integrity_checksum,
                   pv.created_at AS version_created_at, pv.updated_at AS version_updated_at
            FROM prompts p
@@ -187,54 +217,65 @@ export class PromptRepository {
              ORDER BY datetime(created_at) DESC, rowid DESC
              LIMIT 1
            )
-           WHERE p.id = @promptId AND p.deleted_at IS NULL`
-        )
-        .get({ promptId }) as PromptRow | undefined;
+           WHERE p.id = @promptId AND p.deleted_at IS NULL`,
+          )
+          .get({ promptId }) as PromptRow | undefined;
 
-      if (!row) {
-        this.logger.warn("repository_prompt_missing", { promptId });
-        throw new PromptNotFoundError(promptId);
-      }
-
-      // Verify prompt integrity
-      if (row.integrity_checksum) {
-        const promptData = this.buildPromptChecksumPayload({
-          id: row.id,
-          slug: row.slug,
-          title: row.title ?? null,
-          description: row.description ?? null,
-          category: row.category ?? null,
-          isFavorite: row.is_favorite === 1,
-          rating: row.rating ?? null,
-        });
-        const integrityCheck = checkDataIntegrity(promptData, row.integrity_checksum);
-        if (!integrityCheck.isValid) {
-          this.logger.error("Prompt integrity check failed", {
-            promptId,
-            expected: integrityCheck.expectedChecksum,
-            actual: integrityCheck.actualChecksum
-          });
-          throw new Error(`Data integrity check failed for prompt '${promptId}'`);
+        if (!row) {
+          this.logger.warn("repository_prompt_missing", { promptId });
+          throw new PromptNotFoundError(promptId);
         }
-      }
 
-      // Verify version integrity if present
-      if (row.version_integrity_checksum && row.body) {
-        const integrityCheck = checkDataIntegrity(row.body, row.version_integrity_checksum);
-        if (!integrityCheck.isValid) {
-          this.logger.error("Prompt version integrity check failed", {
-            promptId,
-            versionId: row.version_id,
-            expected: integrityCheck.expectedChecksum,
-            actual: integrityCheck.actualChecksum
+        // Verify prompt integrity
+        if (row.integrity_checksum) {
+          const promptData = this.buildPromptChecksumPayload({
+            id: row.id,
+            slug: row.slug,
+            title: row.title ?? null,
+            description: row.description ?? null,
+            category: row.category ?? null,
+            isFavorite: row.is_favorite === 1,
+            rating: row.rating ?? null,
           });
-          throw new Error(`Data integrity check failed for prompt version '${row.version_id}'`);
+          const integrityCheck = checkDataIntegrity(
+            promptData,
+            row.integrity_checksum,
+          );
+          if (!integrityCheck.isValid) {
+            this.logger.error("Prompt integrity check failed", {
+              promptId,
+              expected: integrityCheck.expectedChecksum,
+              actual: integrityCheck.actualChecksum,
+            });
+            throw new Error(
+              `Data integrity check failed for prompt '${promptId}'`,
+            );
+          }
         }
-      }
 
-      const tags = this.getTagsForPrompt(promptId);
-      return this.mapPromptRow(row, tags);
-    });
+        // Verify version integrity if present
+        if (row.version_integrity_checksum && row.body) {
+          const integrityCheck = checkDataIntegrity(
+            row.body,
+            row.version_integrity_checksum,
+          );
+          if (!integrityCheck.isValid) {
+            this.logger.error("Prompt version integrity check failed", {
+              promptId,
+              versionId: row.version_id,
+              expected: integrityCheck.expectedChecksum,
+              actual: integrityCheck.actualChecksum,
+            });
+            throw new Error(
+              `Data integrity check failed for prompt version '${row.version_id}'`,
+            );
+          }
+        }
+
+        const tags = this.getTagsForPrompt(promptId);
+        return this.mapPromptRow(row, tags);
+      },
+    );
   }
 
   /**
@@ -272,7 +313,11 @@ export class PromptRepository {
   }): PromptSearchResult {
     return this.telemetry.withSpan(
       "repository.searchPrompts",
-      { text: query.text ?? "", formats: query.formats?.length ?? 0, page: query.page },
+      {
+        text: query.text ?? "",
+        formats: query.formats?.length ?? 0,
+        page: query.page,
+      },
       () => {
         const whereClauses: string[] = [];
         const parameters: Record<string, unknown> = {};
@@ -293,27 +338,36 @@ export class PromptRepository {
             parameters.ftsQuery = ftsQuery;
           }
         } else if (query.text) {
-          whereClauses.push("(p.title LIKE @text OR p.description LIKE @text OR pv.body LIKE @text)");
+          whereClauses.push(
+            "(p.title LIKE @text OR p.description LIKE @text OR pv.body LIKE @text)",
+          );
           parameters.text = `%${query.text}%`;
         }
 
         if (query.formats && query.formats.length > 0) {
-          whereClauses.push(`pv.format IN (${query.formats.map((_, index) => `@format${index}`).join(", ")})`);
+          whereClauses.push(
+            `pv.format IN (${query.formats.map((_, index) => `@format${index}`).join(", ")})`,
+          );
           query.formats.forEach((format, index) => {
             parameters[`format${index}`] = format;
           });
         }
 
-        const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")} AND p.deleted_at IS NULL` : "WHERE p.deleted_at IS NULL";
+        const whereClause =
+          whereClauses.length > 0
+            ? `WHERE ${whereClauses.join(" AND ")} AND p.deleted_at IS NULL`
+            : "WHERE p.deleted_at IS NULL";
 
-        const fromClause = canUseFts ? "FROM prompts p INNER JOIN prompts_fts ON prompts_fts.rowid = p.rowid" : "FROM prompts p";
+        const fromClause = canUseFts
+          ? "FROM prompts p INNER JOIN prompts_fts ON prompts_fts.rowid = p.rowid"
+          : "FROM prompts p";
 
         const totalRow = this.database
           .prepare(
             `SELECT COUNT(DISTINCT p.id) as count
              ${fromClause}
              LEFT JOIN prompt_versions pv ON pv.prompt_id = p.id
-             ${whereClause}`
+             ${whereClause}`,
           )
           .get(parameters) as { count: number };
 
@@ -335,9 +389,13 @@ export class PromptRepository {
              )
              ${whereClause}
              ${orderByClause}
-             LIMIT @limit OFFSET @offset`
+             LIMIT @limit OFFSET @offset`,
           )
-          .all({ ...parameters, limit: query.pageSize, offset: query.page * query.pageSize }) as PromptRow[];
+          .all({
+            ...parameters,
+            limit: query.pageSize,
+            offset: query.page * query.pageSize,
+          }) as PromptRow[];
 
         const prompts = rows.map((row) => this.mapPromptRow(row, []));
 
@@ -347,7 +405,7 @@ export class PromptRepository {
           pageSize: query.pageSize,
           total: totalRow.count,
         };
-      }
+      },
     );
   }
 
@@ -372,7 +430,7 @@ export class PromptRepository {
         text: query.text ?? "",
         formats: query.formats?.length ?? 0,
         page: query.page,
-        caseSensitive: query.caseSensitive
+        caseSensitive: query.caseSensitive,
       },
       () => {
         const whereClauses: string[] = [];
@@ -394,27 +452,36 @@ export class PromptRepository {
             parameters.ftsQuery = ftsQuery;
           }
         } else if (query.text) {
-          whereClauses.push("(p.title LIKE @text OR p.description LIKE @text OR pv.body LIKE @text)");
+          whereClauses.push(
+            "(p.title LIKE @text OR p.description LIKE @text OR pv.body LIKE @text)",
+          );
           parameters.text = `%${query.text}%`;
         }
 
         if (query.formats && query.formats.length > 0) {
-          whereClauses.push(`pv.format IN (${query.formats.map((_, index) => `@format${index}`).join(", ")})`);
+          whereClauses.push(
+            `pv.format IN (${query.formats.map((_, index) => `@format${index}`).join(", ")})`,
+          );
           query.formats.forEach((format, index) => {
             parameters[`format${index}`] = format;
           });
         }
 
-        const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")} AND p.deleted_at IS NULL` : "WHERE p.deleted_at IS NULL";
+        const whereClause =
+          whereClauses.length > 0
+            ? `WHERE ${whereClauses.join(" AND ")} AND p.deleted_at IS NULL`
+            : "WHERE p.deleted_at IS NULL";
 
-        const fromClause = canUseFts ? "FROM prompts p INNER JOIN prompts_fts ON prompts_fts.rowid = p.rowid" : "FROM prompts p";
+        const fromClause = canUseFts
+          ? "FROM prompts p INNER JOIN prompts_fts ON prompts_fts.rowid = p.rowid"
+          : "FROM prompts p";
 
         const totalRow = this.database
           .prepare(
             `SELECT COUNT(DISTINCT p.id) as count
              ${fromClause}
              LEFT JOIN prompt_versions pv ON pv.prompt_id = p.id
-             ${whereClause}`
+             ${whereClause}`,
           )
           .get(parameters) as { count: number };
 
@@ -436,18 +503,30 @@ export class PromptRepository {
              )
              ${whereClause}
              ${orderByClause}
-             LIMIT @limit OFFSET @offset`
+             LIMIT @limit OFFSET @offset`,
           )
-          .all({ ...parameters, limit: Math.min(query.pageSize, query.maxResults), offset: query.page * query.pageSize }) as PromptRow[];
+          .all({
+            ...parameters,
+            limit: Math.min(query.pageSize, query.maxResults),
+            offset: query.page * query.pageSize,
+          }) as PromptRow[];
 
         const matches: PromptSearchMatch[] = [];
         let totalMatches = 0;
 
         for (const row of rows) {
           const prompt = this.mapPromptRow(row, []);
-          const promptMatches = this.findMatchesInPrompt(prompt, query.text, query.caseSensitive, query.maxMatchesPerRule);
+          const promptMatches = this.findMatchesInPrompt(
+            prompt,
+            query.text,
+            query.caseSensitive,
+            query.maxMatchesPerRule,
+          );
 
-          if (promptMatches.length > 0 && totalMatches + promptMatches.length <= query.maxTotalMatches) {
+          if (
+            promptMatches.length > 0 &&
+            totalMatches + promptMatches.length <= query.maxTotalMatches
+          ) {
             matches.push({
               prompt,
               totalMatches: promptMatches.length,
@@ -456,7 +535,10 @@ export class PromptRepository {
             totalMatches += promptMatches.length;
           }
 
-          if (matches.length >= query.maxResults || totalMatches >= query.maxTotalMatches) {
+          if (
+            matches.length >= query.maxResults ||
+            totalMatches >= query.maxTotalMatches
+          ) {
             break;
           }
         }
@@ -468,7 +550,7 @@ export class PromptRepository {
           total: totalRow.count,
           totalMatches,
         };
-      }
+      },
     );
   }
 
@@ -484,7 +566,7 @@ export class PromptRepository {
     prompt: Prompt,
     searchText?: string,
     caseSensitive: boolean = false,
-    maxMatches: number = 3
+    maxMatches: number = 3,
   ): SearchMatch[] {
     if (!searchText) {
       return [];
@@ -492,33 +574,70 @@ export class PromptRepository {
 
     const matches: SearchMatch[] = [];
     const searchTerm = caseSensitive ? searchText : searchText.toLowerCase();
-    const flags = caseSensitive ? 'g' : 'gi';
-    const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+    const flags = caseSensitive ? "g" : "gi";
+    const regex = new RegExp(
+      searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      flags,
+    );
 
     // Search in title
     if (prompt.title) {
       const text = caseSensitive ? prompt.title : prompt.title.toLowerCase();
       let match;
-      while ((match = regex.exec(text)) !== null && matches.length < maxMatches) {
-        matches.push(this.createMatchExcerpt(prompt.title, match.index, match[0].length, 100));
+      while (
+        (match = regex.exec(text)) !== null &&
+        matches.length < maxMatches
+      ) {
+        matches.push(
+          this.createMatchExcerpt(
+            prompt.title,
+            match.index,
+            match[0].length,
+            100,
+          ),
+        );
       }
     }
 
     // Search in description
     if (prompt.description) {
-      const text = caseSensitive ? prompt.description : prompt.description.toLowerCase();
+      const text = caseSensitive
+        ? prompt.description
+        : prompt.description.toLowerCase();
       let match;
-      while ((match = regex.exec(text)) !== null && matches.length < maxMatches) {
-        matches.push(this.createMatchExcerpt(prompt.description, match.index, match[0].length, 100));
+      while (
+        (match = regex.exec(text)) !== null &&
+        matches.length < maxMatches
+      ) {
+        matches.push(
+          this.createMatchExcerpt(
+            prompt.description,
+            match.index,
+            match[0].length,
+            100,
+          ),
+        );
       }
     }
 
     // Search in body
     if (prompt.latestVersion?.body) {
-      const text = caseSensitive ? prompt.latestVersion.body : prompt.latestVersion.body.toLowerCase();
+      const text = caseSensitive
+        ? prompt.latestVersion.body
+        : prompt.latestVersion.body.toLowerCase();
       let match;
-      while ((match = regex.exec(text)) !== null && matches.length < maxMatches) {
-        matches.push(this.createMatchExcerpt(prompt.latestVersion.body, match.index, match[0].length, 150));
+      while (
+        (match = regex.exec(text)) !== null &&
+        matches.length < maxMatches
+      ) {
+        matches.push(
+          this.createMatchExcerpt(
+            prompt.latestVersion.body,
+            match.index,
+            match[0].length,
+            150,
+          ),
+        );
       }
     }
 
@@ -533,7 +652,12 @@ export class PromptRepository {
    * @param contextLength - How much context to include around the match.
    * @returns Search match with excerpt.
    */
-  private createMatchExcerpt(text: string, position: number, length: number, contextLength: number): SearchMatch {
+  private createMatchExcerpt(
+    text: string,
+    position: number,
+    length: number,
+    contextLength: number,
+  ): SearchMatch {
     const start = Math.max(0, position - contextLength);
     const end = Math.min(text.length, position + length + contextLength);
     const excerpt = text.substring(start, end);
@@ -553,11 +677,16 @@ export class PromptRepository {
    * @param promptId - Identifier of the prompt to delete.
    * @param deletedAt - Timestamp when the prompt was deleted.
    */
-  public softDeletePrompt(promptId: PromptId, deletedAt: Date = new Date()): void {
+  public softDeletePrompt(
+    promptId: PromptId,
+    deletedAt: Date = new Date(),
+  ): void {
     this.telemetry.withSpan("repository.softDeletePrompt", { promptId }, () => {
       // First check if the prompt exists and is not already deleted
       const existing = this.database
-        .prepare("SELECT id FROM prompts WHERE id = @promptId AND deleted_at IS NULL")
+        .prepare(
+          "SELECT id FROM prompts WHERE id = @promptId AND deleted_at IS NULL",
+        )
         .get({ promptId }) as { id: string } | undefined;
 
       if (!existing) {
@@ -566,7 +695,9 @@ export class PromptRepository {
       }
 
       this.database
-        .prepare("UPDATE prompts SET deleted_at = @deletedAt WHERE id = @promptId")
+        .prepare(
+          "UPDATE prompts SET deleted_at = @deletedAt WHERE id = @promptId",
+        )
         .run({ promptId, deletedAt: deletedAt.toISOString() });
 
       this.logger.info("prompt_soft_deleted", { promptId });
@@ -581,11 +712,15 @@ export class PromptRepository {
     this.telemetry.withSpan("repository.restorePrompt", { promptId }, () => {
       // Check if the prompt exists and is deleted
       const existing = this.database
-        .prepare("SELECT id FROM prompts WHERE id = @promptId AND deleted_at IS NOT NULL")
+        .prepare(
+          "SELECT id FROM prompts WHERE id = @promptId AND deleted_at IS NOT NULL",
+        )
         .get({ promptId }) as { id: string } | undefined;
 
       if (!existing) {
-        this.logger.warn("repository_prompt_missing_or_not_deleted", { promptId });
+        this.logger.warn("repository_prompt_missing_or_not_deleted", {
+          promptId,
+        });
         throw new PromptNotFoundError(promptId);
       }
 
@@ -605,53 +740,71 @@ export class PromptRepository {
    */
   public updatePromptMetadata(
     promptId: PromptId,
-    data: { title?: string; description?: string; category?: string; isFavorite?: boolean; rating?: number | null }
+    data: {
+      title?: string;
+      description?: string;
+      category?: string;
+      isFavorite?: boolean;
+      rating?: number | null;
+    },
   ): Prompt {
-    return this.telemetry.withSpan("repository.updatePromptMetadata", { promptId }, () => {
-      // First check if the prompt exists and is not deleted
-      const existing = this.database
-        .prepare("SELECT id FROM prompts WHERE id = @promptId AND deleted_at IS NULL")
-        .get({ promptId }) as { id: string } | undefined;
+    return this.telemetry.withSpan(
+      "repository.updatePromptMetadata",
+      { promptId },
+      () => {
+        // First check if the prompt exists and is not deleted
+        const existing = this.database
+          .prepare(
+            "SELECT id FROM prompts WHERE id = @promptId AND deleted_at IS NULL",
+          )
+          .get({ promptId }) as { id: string } | undefined;
 
-      if (!existing) {
-        this.logger.warn("repository_prompt_missing_for_update", { promptId });
-        throw new PromptNotFoundError(promptId);
-      }
+        if (!existing) {
+          this.logger.warn("repository_prompt_missing_for_update", {
+            promptId,
+          });
+          throw new PromptNotFoundError(promptId);
+        }
 
-      const updates: string[] = [];
-      const params: Record<string, string | number | boolean | null | undefined> = { promptId };
+        const updates: string[] = [];
+        const params: Record<
+          string,
+          string | number | boolean | null | undefined
+        > = { promptId };
 
-      if (data.title !== undefined) {
-        updates.push("title = @title");
-        params.title = data.title;
-      }
-      if (data.description !== undefined) {
-        updates.push("description = @description");
-        params.description = data.description;
-      }
-      if (data.category !== undefined) {
-        updates.push("category = @category");
-        params.category = data.category;
-      }
+        if (data.title !== undefined) {
+          updates.push("title = @title");
+          params.title = data.title;
+        }
+        if (data.description !== undefined) {
+          updates.push("description = @description");
+          params.description = data.description;
+        }
+        if (data.category !== undefined) {
+          updates.push("category = @category");
+          params.category = data.category;
+        }
 
-      if (data.isFavorite !== undefined) {
-        updates.push("is_favorite = @isFavorite");
-        params.isFavorite = data.isFavorite ? 1 : 0;
-      }
+        if (data.isFavorite !== undefined) {
+          updates.push("is_favorite = @isFavorite");
+          params.isFavorite = data.isFavorite ? 1 : 0;
+        }
 
-      if (data.rating !== undefined) {
-        updates.push("rating = @rating");
-        params.rating = data.rating;
-      }
+        if (data.rating !== undefined) {
+          updates.push("rating = @rating");
+          params.rating = data.rating;
+        }
 
-      if (updates.length > 0) {
-        updates.push("updated_at = @updatedAt");
-        params.updatedAt = new Date().toISOString();
+        if (updates.length > 0) {
+          updates.push("updated_at = @updatedAt");
+          params.updatedAt = new Date().toISOString();
 
-        // Get current prompt data to recalculate integrity checksum
-        const currentPrompt = this.database
-          .prepare("SELECT id, slug, title, description, category, is_favorite, rating FROM prompts WHERE id = @promptId")
-          .get({ promptId }) as {
+          // Get current prompt data to recalculate integrity checksum
+          const currentPrompt = this.database
+            .prepare(
+              "SELECT id, slug, title, description, category, is_favorite, rating FROM prompts WHERE id = @promptId",
+            )
+            .get({ promptId }) as {
             id: string;
             slug: string;
             title?: string;
@@ -661,39 +814,51 @@ export class PromptRepository {
             rating: number | null;
           };
 
-        // Apply updates to get new data
-        const updatedPrompt = {
-          ...currentPrompt,
-          ...data,
-          is_favorite: data.isFavorite !== undefined ? (data.isFavorite ? 1 : 0) : currentPrompt.is_favorite,
-          rating: data.rating !== undefined ? data.rating : currentPrompt.rating,
-        };
+          // Apply updates to get new data
+          const updatedPrompt = {
+            ...currentPrompt,
+            ...data,
+            is_favorite:
+              data.isFavorite !== undefined
+                ? data.isFavorite
+                  ? 1
+                  : 0
+                : currentPrompt.is_favorite,
+            rating:
+              data.rating !== undefined ? data.rating : currentPrompt.rating,
+          };
 
-        // Recalculate integrity checksum
-        const integrityChecksum = generateIntegrityChecksum(
-          this.buildPromptChecksumPayload({
-            id: updatedPrompt.id,
-            slug: updatedPrompt.slug,
-            title: updatedPrompt.title ?? null,
-            description: updatedPrompt.description ?? null,
-            category: updatedPrompt.category ?? null,
-            isFavorite: updatedPrompt.is_favorite === 1,
-            rating: updatedPrompt.rating ?? null,
-          })
-        );
+          // Recalculate integrity checksum
+          const integrityChecksum = generateIntegrityChecksum(
+            this.buildPromptChecksumPayload({
+              id: updatedPrompt.id,
+              slug: updatedPrompt.slug,
+              title: updatedPrompt.title ?? null,
+              description: updatedPrompt.description ?? null,
+              category: updatedPrompt.category ?? null,
+              isFavorite: updatedPrompt.is_favorite === 1,
+              rating: updatedPrompt.rating ?? null,
+            }),
+          );
 
-        updates.push("integrity_checksum = @integrityChecksum");
-        params.integrityChecksum = integrityChecksum;
+          updates.push("integrity_checksum = @integrityChecksum");
+          params.integrityChecksum = integrityChecksum;
 
-        this.database
-          .prepare(`UPDATE prompts SET ${updates.join(", ")} WHERE id = @promptId`)
-          .run(params);
+          this.database
+            .prepare(
+              `UPDATE prompts SET ${updates.join(", ")} WHERE id = @promptId`,
+            )
+            .run(params);
 
-        this.logger.info("prompt_metadata_updated", { promptId, fields: Object.keys(data) });
-      }
+          this.logger.info("prompt_metadata_updated", {
+            promptId,
+            fields: Object.keys(data),
+          });
+        }
 
-      return this.getPromptById(promptId);
-    });
+        return this.getPromptById(promptId);
+      },
+    );
   }
 
   /**
@@ -715,7 +880,7 @@ export class PromptRepository {
              LIMIT 1
            )
            WHERE p.deleted_at IS NOT NULL
-           ORDER BY p.deleted_at DESC`
+           ORDER BY p.deleted_at DESC`,
         )
         .all() as PromptRow[];
 
@@ -728,22 +893,32 @@ export class PromptRepository {
    * @param promptId - Identifier of the prompt to permanently delete.
    */
   public permanentlyDeletePrompt(promptId: PromptId): void {
-    this.telemetry.withSpan("repository.permanentlyDeletePrompt", { promptId }, () => {
-      this.runTransaction(() => {
-        // Delete versions
-        this.database.prepare("DELETE FROM prompt_versions WHERE prompt_id = @promptId").run({ promptId });
+    this.telemetry.withSpan(
+      "repository.permanentlyDeletePrompt",
+      { promptId },
+      () => {
+        this.runTransaction(() => {
+          // Delete versions
+          this.database
+            .prepare("DELETE FROM prompt_versions WHERE prompt_id = @promptId")
+            .run({ promptId });
 
-        // Delete the prompt itself
-        const result = this.database.prepare("DELETE FROM prompts WHERE id = @promptId").run({ promptId });
+          // Delete the prompt itself
+          const result = this.database
+            .prepare("DELETE FROM prompts WHERE id = @promptId")
+            .run({ promptId });
 
-        if (result.changes === 0) {
-          this.logger.warn("repository_prompt_missing_for_deletion", { promptId });
-          throw new PromptNotFoundError(promptId);
-        }
+          if (result.changes === 0) {
+            this.logger.warn("repository_prompt_missing_for_deletion", {
+              promptId,
+            });
+            throw new PromptNotFoundError(promptId);
+          }
 
-        this.logger.info("prompt_permanently_deleted", { promptId });
-      });
-    });
+          this.logger.info("prompt_permanently_deleted", { promptId });
+        });
+      },
+    );
   }
 
   /**
@@ -751,35 +926,45 @@ export class PromptRepository {
    * @param version - Version metadata to persist.
    */
   public addVersion(version: PromptVersion): void {
-    this.telemetry.withSpan("repository.addVersion", { promptId: version.promptId }, () => {
-      this.runTransaction(() => {
-        this.insertVersionRecord(version);
-        this.updatePromptTimestamps(version.promptId, version.updatedAt.toISOString());
-      });
-    });
+    this.telemetry.withSpan(
+      "repository.addVersion",
+      { promptId: version.promptId },
+      () => {
+        this.runTransaction(() => {
+          this.insertVersionRecord(version);
+          this.updatePromptTimestamps(
+            version.promptId,
+            version.updatedAt.toISOString(),
+          );
+        });
+      },
+    );
   }
 
   /**
    * List all versions for a prompt (most recent first).
    */
   public listPromptVersions(promptId: PromptId): readonly PromptVersion[] {
-    return this.telemetry.withSpan("repository.listPromptVersions", { promptId }, () => {
-      const exists = this.database
-        .prepare("SELECT 1 as ok FROM prompts WHERE id = @promptId LIMIT 1")
-        .get({ promptId }) as { ok?: number } | undefined;
+    return this.telemetry.withSpan(
+      "repository.listPromptVersions",
+      { promptId },
+      () => {
+        const exists = this.database
+          .prepare("SELECT 1 as ok FROM prompts WHERE id = @promptId LIMIT 1")
+          .get({ promptId }) as { ok?: number } | undefined;
 
-      if (!exists?.ok) {
-        throw new PromptNotFoundError(promptId);
-      }
+        if (!exists?.ok) {
+          throw new PromptNotFoundError(promptId);
+        }
 
-      const rows = this.database
-        .prepare(
-          `SELECT id, prompt_id, semantic_version, body, format, changelog, created_at, updated_at
+        const rows = this.database
+          .prepare(
+            `SELECT id, prompt_id, semantic_version, body, format, changelog, created_at, updated_at
            FROM prompt_versions
            WHERE prompt_id = @promptId
-           ORDER BY datetime(created_at) DESC, rowid DESC`
-        )
-        .all({ promptId }) as {
+           ORDER BY datetime(created_at) DESC, rowid DESC`,
+          )
+          .all({ promptId }) as {
           id: string;
           prompt_id: string;
           semantic_version: string;
@@ -790,17 +975,18 @@ export class PromptRepository {
           updated_at: string;
         }[];
 
-      return rows.map((row) => ({
-        id: row.id,
-        promptId: row.prompt_id,
-        semanticVersion: row.semantic_version,
-        body: row.body,
-        format: (row.format as PromptFormat) ?? "markdown",
-        changelog: row.changelog ?? undefined,
-        createdAt: new Date(row.created_at),
-        updatedAt: new Date(row.updated_at),
-      }));
-    });
+        return rows.map((row) => ({
+          id: row.id,
+          promptId: row.prompt_id,
+          semanticVersion: row.semantic_version,
+          body: row.body,
+          format: (row.format as PromptFormat) ?? "markdown",
+          changelog: row.changelog ?? undefined,
+          createdAt: new Date(row.created_at),
+          updatedAt: new Date(row.updated_at),
+        }));
+      },
+    );
   }
 
   /**
@@ -809,70 +995,93 @@ export class PromptRepository {
   public upsertTags(promptId: PromptId, tags: readonly Tag[]): void {
     if (tags.length === 0) return;
 
-    this.telemetry.withSpan("repository.upsertTags", { promptId, count: tags.length }, () => {
-      const labelColumn = this.getTagLabelColumn();
-      const descriptionColumn = this.hasColumn("tags", "description");
-      const createdColumn = this.hasColumn("tags", "created_at");
-      const updatedColumn = this.hasColumn("tags", "updated_at");
+    this.telemetry.withSpan(
+      "repository.upsertTags",
+      { promptId, count: tags.length },
+      () => {
+        const labelColumn = this.getTagLabelColumn();
+        const descriptionColumn = this.hasColumn("tags", "description");
+        const createdColumn = this.hasColumn("tags", "created_at");
+        const updatedColumn = this.hasColumn("tags", "updated_at");
 
-      this.runTransaction(() => {
-        for (const tag of tags) {
-          const existing = this.database
-            .prepare(`SELECT id, ${labelColumn} as label, description FROM tags WHERE LOWER(${labelColumn}) = LOWER(@label) LIMIT 1`)
-            .get({ label: tag.label }) as { id: string; label: string; description?: string | null } | undefined;
+        this.runTransaction(() => {
+          for (const tag of tags) {
+            const existing = this.database
+              .prepare(
+                `SELECT id, ${labelColumn} as label, description FROM tags WHERE LOWER(${labelColumn}) = LOWER(@label) LIMIT 1`,
+              )
+              .get({ label: tag.label }) as
+              | { id: string; label: string; description?: string | null }
+              | undefined;
 
-          const tagId = existing?.id ?? tag.id;
-          const description = descriptionColumn
-            ? tag.description ?? existing?.description ?? null
-            : undefined;
+            const tagId = existing?.id ?? tag.id;
+            const description = descriptionColumn
+              ? (tag.description ?? existing?.description ?? null)
+              : undefined;
 
-          if (!existing) {
-            const columns = ["id", labelColumn];
-            const values = ["@id", "@label"];
+            if (!existing) {
+              const columns = ["id", labelColumn];
+              const values = ["@id", "@label"];
 
-            if (descriptionColumn) {
-              columns.push("description");
-              values.push("@description");
-            }
+              if (descriptionColumn) {
+                columns.push("description");
+                values.push("@description");
+              }
 
-            if (createdColumn) {
-              columns.push("created_at");
-              values.push("@createdAt");
-            }
+              if (createdColumn) {
+                columns.push("created_at");
+                values.push("@createdAt");
+              }
 
-            if (updatedColumn) {
-              columns.push("updated_at");
-              values.push("@updatedAt");
+              if (updatedColumn) {
+                columns.push("updated_at");
+                values.push("@updatedAt");
+              }
+
+              this.database
+                .prepare(
+                  `INSERT INTO tags (${columns.join(", ")}) VALUES (${values.join(", ")})`,
+                )
+                .run({
+                  id: tagId,
+                  label: tag.label,
+                  description,
+                  createdAt:
+                    (tag.createdAt ?? new Date()).toISOString?.() ??
+                    new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                });
+            } else if (
+              descriptionColumn &&
+              tag.description !== undefined &&
+              tag.description !== null &&
+              existing.description == null
+            ) {
+              const updates = ["description = @description"];
+              if (updatedColumn) {
+                updates.push("updated_at = @updatedAt");
+              }
+
+              this.database
+                .prepare(`UPDATE tags SET ${updates.join(", ")} WHERE id = @id`)
+                .run({
+                  id: tagId,
+                  description: tag.description,
+                  updatedAt: new Date().toISOString(),
+                });
             }
 
             this.database
-              .prepare(`INSERT INTO tags (${columns.join(", ")}) VALUES (${values.join(", ")})`)
-              .run({
-                id: tagId,
-                label: tag.label,
-                description,
-                createdAt: (tag.createdAt ?? new Date()).toISOString?.() ?? new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              });
-          } else if (descriptionColumn && tag.description !== undefined && tag.description !== null && existing.description == null) {
-            const updates = ["description = @description"];
-            if (updatedColumn) {
-              updates.push("updated_at = @updatedAt");
-            }
-
-            this.database
-              .prepare(`UPDATE tags SET ${updates.join(", ")} WHERE id = @id`)
-              .run({ id: tagId, description: tag.description, updatedAt: new Date().toISOString() });
+              .prepare(
+                "INSERT OR IGNORE INTO prompt_tags (prompt_id, tag_id) VALUES (@promptId, @tagId)",
+              )
+              .run({ promptId, tagId });
           }
 
-          this.database
-            .prepare("INSERT OR IGNORE INTO prompt_tags (prompt_id, tag_id) VALUES (@promptId, @tagId)")
-            .run({ promptId, tagId });
-        }
-
-        this.updatePromptTimestamps(promptId, new Date().toISOString());
-      });
-    });
+          this.updatePromptTimestamps(promptId, new Date().toISOString());
+        });
+      },
+    );
   }
 
   /**
@@ -881,47 +1090,63 @@ export class PromptRepository {
   public removeTags(promptId: PromptId, labels: readonly string[]): void {
     if (labels.length === 0) return;
 
-    this.telemetry.withSpan("repository.removeTags", { promptId, count: labels.length }, () => {
-      const labelColumn = this.getTagLabelColumn();
-      const lowerLabels = labels.map((label) => label.toLowerCase());
+    this.telemetry.withSpan(
+      "repository.removeTags",
+      { promptId, count: labels.length },
+      () => {
+        const labelColumn = this.getTagLabelColumn();
+        const lowerLabels = labels.map((label) => label.toLowerCase());
 
-      this.runTransaction(() => {
-        const placeholders = lowerLabels.map((_, index) => `@label${index}`).join(", ");
-        const params: Record<string, string> = {};
-        lowerLabels.forEach((label, index) => {
-          params[`label${index}`] = label;
-        });
+        this.runTransaction(() => {
+          const placeholders = lowerLabels
+            .map((_, index) => `@label${index}`)
+            .join(", ");
+          const params: Record<string, string> = {};
+          lowerLabels.forEach((label, index) => {
+            params[`label${index}`] = label;
+          });
 
-        const matchingTags = this.database
-          .prepare(`SELECT id FROM tags WHERE LOWER(${labelColumn}) IN (${placeholders})`)
-          .all(params) as { id: string }[];
+          const matchingTags = this.database
+            .prepare(
+              `SELECT id FROM tags WHERE LOWER(${labelColumn}) IN (${placeholders})`,
+            )
+            .all(params) as { id: string }[];
 
-        const tagIds = matchingTags.map((row) => row.id);
-        if (tagIds.length === 0) return;
+          const tagIds = matchingTags.map((row) => row.id);
+          if (tagIds.length === 0) return;
 
-        const tagPlaceholders = tagIds.map((_, index) => `@tag${index}`).join(", ");
-        const tagParams: Record<string, string> = { promptId };
-        tagIds.forEach((id, index) => {
-          tagParams[`tag${index}`] = id;
-        });
+          const tagPlaceholders = tagIds
+            .map((_, index) => `@tag${index}`)
+            .join(", ");
+          const tagParams: Record<string, string> = { promptId };
+          tagIds.forEach((id, index) => {
+            tagParams[`tag${index}`] = id;
+          });
 
-        this.database
-          .prepare(`DELETE FROM prompt_tags WHERE prompt_id = @promptId AND tag_id IN (${tagPlaceholders})`)
-          .run(tagParams);
+          this.database
+            .prepare(
+              `DELETE FROM prompt_tags WHERE prompt_id = @promptId AND tag_id IN (${tagPlaceholders})`,
+            )
+            .run(tagParams);
 
-        for (const tagId of tagIds) {
-          const usage = this.database
-            .prepare("SELECT COUNT(*) as count FROM prompt_tags WHERE tag_id = @tagId")
-            .get({ tagId }) as { count: number };
+          for (const tagId of tagIds) {
+            const usage = this.database
+              .prepare(
+                "SELECT COUNT(*) as count FROM prompt_tags WHERE tag_id = @tagId",
+              )
+              .get({ tagId }) as { count: number };
 
-          if (usage.count === 0) {
-            this.database.prepare("DELETE FROM tags WHERE id = @tagId").run({ tagId });
+            if (usage.count === 0) {
+              this.database
+                .prepare("DELETE FROM tags WHERE id = @tagId")
+                .run({ tagId });
+            }
           }
-        }
 
-        this.updatePromptTimestamps(promptId, new Date().toISOString());
-      });
-    });
+          this.updatePromptTimestamps(promptId, new Date().toISOString());
+        });
+      },
+    );
   }
 
   // Migrations are handled by shared @nw/core-db; local migration runner removed.
@@ -937,11 +1162,29 @@ export class PromptRepository {
         category: prompt.category ?? null,
         isFavorite: prompt.isFavorite ?? false,
         rating: prompt.rating ?? null,
-      })
+      }),
     );
 
-    const columns = ["id", "slug", "title", "description", "category", "integrity_checksum", "created_at", "updated_at"];
-    const values = ["@id", "@slug", "@title", "@description", "@category", "@integrityChecksum", "@createdAt", "@updatedAt"];
+    const columns = [
+      "id",
+      "slug",
+      "title",
+      "description",
+      "category",
+      "integrity_checksum",
+      "created_at",
+      "updated_at",
+    ];
+    const values = [
+      "@id",
+      "@slug",
+      "@title",
+      "@description",
+      "@category",
+      "@integrityChecksum",
+      "@createdAt",
+      "@updatedAt",
+    ];
 
     if (this.hasColumn("prompts", "is_favorite")) {
       columns.splice(5, 0, "is_favorite");
@@ -956,7 +1199,7 @@ export class PromptRepository {
 
     const statement = this.database.prepare(
       `INSERT INTO prompts (${columns.join(", ")})
-       VALUES (${values.join(", ")})`
+       VALUES (${values.join(", ")})`,
     );
 
     statement.run({
@@ -979,7 +1222,7 @@ export class PromptRepository {
 
     const statement = this.database.prepare(
       `INSERT INTO prompt_versions (id, prompt_id, semantic_version, body, format, changelog, integrity_checksum, created_at, updated_at)
-       VALUES (@id, @promptId, @semanticVersion, @body, @format, @changelog, @integrityChecksum, @createdAt, @updatedAt)`
+       VALUES (@id, @promptId, @semanticVersion, @body, @format, @changelog, @integrityChecksum, @createdAt, @updatedAt)`,
     );
 
     statement.run({
@@ -1010,15 +1253,15 @@ export class PromptRepository {
       tags,
       latestVersion: row.version_id
         ? {
-          id: row.version_id,
-          promptId: row.id,
-          semanticVersion: row.semantic_version ?? "",
-          body: row.body ?? "",
-          format: (row.format as PromptFormat) ?? "markdown",
-          changelog: row.changelog ?? undefined,
-          createdAt: new Date(row.version_created_at ?? row.updated_at),
-          updatedAt: new Date(row.version_updated_at ?? row.updated_at),
-        }
+            id: row.version_id,
+            promptId: row.id,
+            semanticVersion: row.semantic_version ?? "",
+            body: row.body ?? "",
+            format: (row.format as PromptFormat) ?? "markdown",
+            changelog: row.changelog ?? undefined,
+            createdAt: new Date(row.version_created_at ?? row.updated_at),
+            updatedAt: new Date(row.version_updated_at ?? row.updated_at),
+          }
         : undefined,
     };
   }
@@ -1033,15 +1276,21 @@ export class PromptRepository {
         `SELECT t.id as id, t.${labelColumn} as label, t.description as description, t.created_at as created_at
          FROM prompt_tags pt
          JOIN tags t ON t.id = pt.tag_id
-         WHERE pt.prompt_id = @promptId`
+         WHERE pt.prompt_id = @promptId`,
       )
-      .all({ promptId }) as { id: string; label: string; description?: string | null; created_at?: string | null }[];
+      .all({ promptId }) as {
+      id: string;
+      label: string;
+      description?: string | null;
+      created_at?: string | null;
+    }[];
 
     return rows.map((row) => ({
       id: row.id,
       label: row.label,
-      description: hasDescription ? row.description ?? undefined : undefined,
-      createdAt: hasCreatedAt && row.created_at ? new Date(row.created_at) : new Date(),
+      description: hasDescription ? (row.description ?? undefined) : undefined,
+      createdAt:
+        hasCreatedAt && row.created_at ? new Date(row.created_at) : new Date(),
     }));
   }
 
@@ -1054,22 +1303,32 @@ export class PromptRepository {
     const rows = this.database
       .prepare(
         `SELECT id, ${labelColumn} as label${hasDescription ? ", description" : ""}${hasCreatedAt ? ", created_at" : ""}${hasUpdatedAt ? ", updated_at" : ""}
-         FROM tags`
+         FROM tags`,
       )
-      .all() as { id: string; label: string; description?: string | null; created_at?: string | null; updated_at?: string | null }[];
+      .all() as {
+      id: string;
+      label: string;
+      description?: string | null;
+      created_at?: string | null;
+      updated_at?: string | null;
+    }[];
 
     return rows.map((row) => ({
       id: row.id,
       label: row.label,
-      description: hasDescription ? row.description ?? undefined : undefined,
-      createdAt: hasCreatedAt && row.created_at ? new Date(row.created_at) : new Date(),
-      updatedAt: hasUpdatedAt && row.updated_at ? new Date(row.updated_at) : undefined,
+      description: hasDescription ? (row.description ?? undefined) : undefined,
+      createdAt:
+        hasCreatedAt && row.created_at ? new Date(row.created_at) : new Date(),
+      updatedAt:
+        hasUpdatedAt && row.updated_at ? new Date(row.updated_at) : undefined,
     }));
   }
 
   private updatePromptTimestamps(promptId: PromptId, isoDate: string): void {
     this.database
-      .prepare(`UPDATE prompts SET updated_at = @updatedAt WHERE id = @promptId`)
+      .prepare(
+        `UPDATE prompts SET updated_at = @updatedAt WHERE id = @promptId`,
+      )
       .run({ promptId, updatedAt: isoDate });
   }
 
@@ -1110,8 +1369,15 @@ export class PromptRepository {
     pendingVersions: readonly number[];
     appliedVersions: readonly number[];
   } {
-    const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "db", "migrations");
-    const userVersion = this.database.pragma("user_version", { simple: true }) as number;
+    const migrationsDir = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "db",
+      "migrations",
+    );
+    const userVersion = this.database.pragma("user_version", {
+      simple: true,
+    }) as number;
     const inferredVersion = this.inferSchemaVersion();
     const currentVersion = Math.max(userVersion, inferredVersion);
 
@@ -1119,14 +1385,31 @@ export class PromptRepository {
       .map((file) => {
         const match = file.match(/^(\d+)_.*\.sql$/);
         if (!match) return null;
-        return { version: Number.parseInt(match[1], 10), path: join(migrationsDir, file) };
+        return {
+          version: Number.parseInt(match[1], 10),
+          path: join(migrationsDir, file),
+        };
       })
-      .filter((entry): entry is { version: number; path: string } => Boolean(entry))
+      .filter((entry): entry is { version: number; path: string } =>
+        Boolean(entry),
+      )
       .sort((a, b) => a.version - b.version);
 
     const latestVersion = migrations.at(-1)?.version ?? 0;
-    const pendingVersions = [...new Set(migrations.filter((migration) => migration.version > currentVersion).map((migration) => migration.version))];
-    const appliedVersions = [...new Set(migrations.filter((migration) => migration.version <= currentVersion).map((migration) => migration.version))];
+    const pendingVersions = [
+      ...new Set(
+        migrations
+          .filter((migration) => migration.version > currentVersion)
+          .map((migration) => migration.version),
+      ),
+    ];
+    const appliedVersions = [
+      ...new Set(
+        migrations
+          .filter((migration) => migration.version <= currentVersion)
+          .map((migration) => migration.version),
+      ),
+    ];
 
     return {
       migrationsDir,
@@ -1157,7 +1440,7 @@ export class PromptRepository {
              ORDER BY datetime(created_at) DESC, rowid DESC
              LIMIT 1
            )
-           ORDER BY p.created_at DESC`
+           ORDER BY p.created_at DESC`,
         )
         .all() as PromptRow[];
 
@@ -1171,17 +1454,23 @@ export class PromptRepository {
    * @param format - New format for the version.
    */
   public updateVersionFormat(versionId: string, format: PromptFormat): void {
-    this.telemetry.withSpan("repository.updateVersionFormat", { versionId, format }, () => {
-      const result = this.database
-        .prepare("UPDATE prompt_versions SET format = @format WHERE id = @versionId")
-        .run({ versionId, format });
+    this.telemetry.withSpan(
+      "repository.updateVersionFormat",
+      { versionId, format },
+      () => {
+        const result = this.database
+          .prepare(
+            "UPDATE prompt_versions SET format = @format WHERE id = @versionId",
+          )
+          .run({ versionId, format });
 
-      if (result.changes === 0) {
-        throw new Error(`Version not found: ${versionId}`);
-      }
+        if (result.changes === 0) {
+          throw new Error(`Version not found: ${versionId}`);
+        }
 
-      this.logger.info("version_format_updated", { versionId, format });
-    });
+        this.logger.info("version_format_updated", { versionId, format });
+      },
+    );
   }
 
   private runTransaction<T>(operation: () => T): T {
@@ -1194,26 +1483,42 @@ export class PromptRepository {
 
   public hasTable(table: string): boolean {
     const row = this.database
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = @table LIMIT 1")
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = @table LIMIT 1",
+      )
       .get({ table }) as { name?: string } | undefined;
     return Boolean(row?.name);
   }
 
   private applyMigrations(): void {
-    const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "db", "migrations");
-    const storedVersion = this.database.pragma("user_version", { simple: true }) as number;
+    const migrationsDir = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "db",
+      "migrations",
+    );
+    const storedVersion = this.database.pragma("user_version", {
+      simple: true,
+    }) as number;
     const inferredVersion = this.inferSchemaVersion();
     const currentVersion = Math.max(storedVersion, inferredVersion);
     const migrations = readdirSync(migrationsDir)
       .map((file) => {
         const match = file.match(/^(\d+)_.*\.sql$/);
         if (!match) return null;
-        return { version: Number.parseInt(match[1], 10), path: join(migrationsDir, file) };
+        return {
+          version: Number.parseInt(match[1], 10),
+          path: join(migrationsDir, file),
+        };
       })
-      .filter((entry): entry is { version: number; path: string } => Boolean(entry))
+      .filter((entry): entry is { version: number; path: string } =>
+        Boolean(entry),
+      )
       .sort((a, b) => a.version - b.version);
 
-    const pending = migrations.filter((migration) => migration.version > currentVersion);
+    const pending = migrations.filter(
+      (migration) => migration.version > currentVersion,
+    );
     this.database.exec("PRAGMA foreign_keys = ON;");
 
     if (pending.length === 0) {
@@ -1223,58 +1528,102 @@ export class PromptRepository {
       return;
     }
 
-    this.telemetry.withSpan("repository.applyMigrations", { from: currentVersion, to: pending.at(-1)?.version ?? currentVersion }, () => {
-      for (const migration of pending) {
-        const sql = readFileSync(migration.path, "utf8");
+    this.telemetry.withSpan(
+      "repository.applyMigrations",
+      { from: currentVersion, to: pending.at(-1)?.version ?? currentVersion },
+      () => {
+        for (const migration of pending) {
+          const sql = readFileSync(migration.path, "utf8");
 
-        if (sql.includes("ALTER TABLE prompts ADD COLUMN category") && this.hasColumn("prompts", "category")) {
+          if (
+            sql.includes("ALTER TABLE prompts ADD COLUMN category") &&
+            this.hasColumn("prompts", "category")
+          ) {
+            this.database.pragma(`user_version = ${migration.version}`);
+            continue;
+          }
+
+          if (
+            sql.includes("ALTER TABLE prompts ADD COLUMN deleted_at") &&
+            this.hasColumn("prompts", "deleted_at")
+          ) {
+            this.database.pragma(`user_version = ${migration.version}`);
+            continue;
+          }
+
+          if (
+            sql.includes("ALTER TABLE prompt_versions ADD COLUMN format") &&
+            this.hasColumn("prompt_versions", "format")
+          ) {
+            this.database.pragma(`user_version = ${migration.version}`);
+            continue;
+          }
+
+          if (
+            sql.includes("ALTER TABLE prompts ADD COLUMN is_favorite") &&
+            this.hasColumn("prompts", "is_favorite")
+          ) {
+            this.database.pragma(`user_version = ${migration.version}`);
+            continue;
+          }
+
+          if (
+            sql.includes("ALTER TABLE prompts ADD COLUMN rating") &&
+            this.hasColumn("prompts", "rating")
+          ) {
+            this.database.pragma(`user_version = ${migration.version}`);
+            continue;
+          }
+
+          this.database.exec(sql);
           this.database.pragma(`user_version = ${migration.version}`);
-          continue;
         }
-
-        if (sql.includes("ALTER TABLE prompts ADD COLUMN deleted_at") && this.hasColumn("prompts", "deleted_at")) {
-          this.database.pragma(`user_version = ${migration.version}`);
-          continue;
-        }
-
-        if (sql.includes("ALTER TABLE prompt_versions ADD COLUMN format") && this.hasColumn("prompt_versions", "format")) {
-          this.database.pragma(`user_version = ${migration.version}`);
-          continue;
-        }
-
-        if (sql.includes("ALTER TABLE prompts ADD COLUMN is_favorite") && this.hasColumn("prompts", "is_favorite")) {
-          this.database.pragma(`user_version = ${migration.version}`);
-          continue;
-        }
-
-        if (sql.includes("ALTER TABLE prompts ADD COLUMN rating") && this.hasColumn("prompts", "rating")) {
-          this.database.pragma(`user_version = ${migration.version}`);
-          continue;
-        }
-
-        this.database.exec(sql);
-        this.database.pragma(`user_version = ${migration.version}`);
-      }
-      this.logger.info("migrations_applied", { applied: pending.length, targetVersion: pending.at(-1)?.version ?? currentVersion });
-    });
+        this.logger.info("migrations_applied", {
+          applied: pending.length,
+          targetVersion: pending.at(-1)?.version ?? currentVersion,
+        });
+      },
+    );
   }
 
   private hasColumn(table: string, column: string): boolean {
-    const columns = this.database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    const columns = this.database
+      .prepare(`PRAGMA table_info(${table})`)
+      .all() as { name: string }[];
     return columns.some((definition) => definition.name === column);
   }
 
   private inferSchemaVersion(): number {
     try {
-      const promptColumns = this.database.prepare("PRAGMA table_info(prompts)").all() as { name: string }[];
-      const promptVersionColumns = this.database.prepare("PRAGMA table_info(prompt_versions)").all() as { name: string }[];
-      const hasCategory = promptColumns.some((column) => column.name === "category");
-      const hasDeletedAt = promptColumns.some((column) => column.name === "deleted_at");
-      const hasFavorite = promptColumns.some((column) => column.name === "is_favorite");
-      const hasRating = promptColumns.some((column) => column.name === "rating");
-      const hasFormat = promptVersionColumns.some((column) => column.name === "format");
+      const promptColumns = this.database
+        .prepare("PRAGMA table_info(prompts)")
+        .all() as { name: string }[];
+      const promptVersionColumns = this.database
+        .prepare("PRAGMA table_info(prompt_versions)")
+        .all() as { name: string }[];
+      const hasCategory = promptColumns.some(
+        (column) => column.name === "category",
+      );
+      const hasDeletedAt = promptColumns.some(
+        (column) => column.name === "deleted_at",
+      );
+      const hasFavorite = promptColumns.some(
+        (column) => column.name === "is_favorite",
+      );
+      const hasRating = promptColumns.some(
+        (column) => column.name === "rating",
+      );
+      const hasFormat = promptVersionColumns.some(
+        (column) => column.name === "format",
+      );
 
-      if (hasCategory && hasDeletedAt && hasFormat && hasFavorite && hasRating) {
+      if (
+        hasCategory &&
+        hasDeletedAt &&
+        hasFormat &&
+        hasFavorite &&
+        hasRating
+      ) {
         return 5;
       }
 
