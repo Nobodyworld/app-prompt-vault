@@ -55,6 +55,7 @@ export const pvSearchPromptsDefinition: ToolDefinition = {
   },
   category: "prompts",
   source: "prompt-vault",
+  ontologyEntities: ["prompt", "tag"],
 };
 
 export const pvListPromptsDefinition = pvSearchPromptsDefinition;
@@ -77,6 +78,7 @@ export const pvGetPromptDefinition: ToolDefinition = {
   },
   category: "prompts",
   source: "prompt-vault",
+  ontologyEntities: ["prompt", "tag"],
 };
 
 export const pvCreatePromptDefinition: ToolDefinition = {
@@ -116,6 +118,7 @@ export const pvCreatePromptDefinition: ToolDefinition = {
   requiresConfirmation: true,
   category: "prompts",
   source: "prompt-vault",
+  ontologyEntities: ["prompt", "tag"],
 };
 
 export const pvGetStatsDefinition: ToolDefinition = {
@@ -137,6 +140,7 @@ export const pvGetStatsDefinition: ToolDefinition = {
   },
   category: "prompts",
   source: "prompt-vault",
+  ontologyEntities: ["prompt", "tag"],
 };
 
 export const pvUpdatePromptDefinition: ToolDefinition = {
@@ -181,6 +185,7 @@ export const pvUpdatePromptDefinition: ToolDefinition = {
   requiresConfirmation: true,
   category: "prompts",
   source: "prompt-vault",
+  ontologyEntities: ["prompt", "tag"],
 };
 
 export const pvDeletePromptDefinition: ToolDefinition = {
@@ -201,6 +206,7 @@ export const pvDeletePromptDefinition: ToolDefinition = {
   requiresConfirmation: true,
   category: "prompts",
   source: "prompt-vault",
+  ontologyEntities: ["prompt", "tag"],
 };
 
 export const pvExecutePromptDefinition: ToolDefinition = {
@@ -226,6 +232,7 @@ export const pvExecutePromptDefinition: ToolDefinition = {
   },
   category: "prompts",
   source: "prompt-vault",
+  ontologyEntities: ["prompt"],
 };
 
 export const pvListFoldersDefinition: ToolDefinition = {
@@ -238,6 +245,7 @@ export const pvListFoldersDefinition: ToolDefinition = {
   },
   category: "prompts",
   source: "prompt-vault",
+  ontologyEntities: ["prompt"],
 };
 
 export const pvListTagsDefinition: ToolDefinition = {
@@ -250,6 +258,7 @@ export const pvListTagsDefinition: ToolDefinition = {
   },
   category: "prompts",
   source: "prompt-vault",
+  ontologyEntities: ["tag"],
 };
 
 export const pvExportPlannerBucketDefinition: ToolDefinition = {
@@ -288,6 +297,7 @@ export const pvExportPlannerBucketDefinition: ToolDefinition = {
   },
   category: "interop",
   source: "prompt-vault",
+  ontologyEntities: ["prompt", "aido", "tag"],
 };
 
 export const pvImportPromptsDefinition: ToolDefinition = {
@@ -310,6 +320,7 @@ export const pvImportPromptsDefinition: ToolDefinition = {
   requiresConfirmation: true,
   category: "interop",
   source: "prompt-vault",
+  ontologyEntities: ["prompt", "tag"],
 };
 
 export const pvImportPlannerBucketDefinition: ToolDefinition = {
@@ -345,6 +356,7 @@ export const pvImportPlannerBucketDefinition: ToolDefinition = {
   requiresConfirmation: true,
   category: "interop",
   source: "prompt-vault",
+  ontologyEntities: ["prompt", "aido", "tag"],
 };
 
 // =============================================================================

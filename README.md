@@ -5,7 +5,7 @@
 
 > **🎉 Successor to Prompt Rules Manager (PRM)** - This project is the next evolution of PRM with improved architecture, better performance, and enhanced features. See [Migration Guide](#migrating-from-prm) below.
 
-# Overview
+## Overview
 
 Prompt Vault is a cross-platform vault for collecting, versioning, and tagging reusable prompts. Ships CLI, HTTP API, desktop UI, and orchestrator integration with SQLite persistence.
 

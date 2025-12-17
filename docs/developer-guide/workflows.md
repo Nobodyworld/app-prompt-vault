@@ -4,7 +4,7 @@ This document captures the most common developer and operator workflows for Prom
 
 ## 1. Bootstrapping the Environment
 
-1. Install Node.js 18.17 or newer.
+1. Install Node.js 24.x LTS (minimum `>=24.0.0`).
 2. Clone the repository and run `npm install` to install dependencies.
 3. Optionally install SQLite CLI tools for inspecting databases created by the CLI.
 4. Copy `.env.example` (future) if environment variables become necessary.

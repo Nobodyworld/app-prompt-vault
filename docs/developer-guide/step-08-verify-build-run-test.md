@@ -9,8 +9,7 @@
 
 ## Current Status
 
-- Automated commands are configured but were not executed in this environment because dependencies were not installed. Running th
-e steps above on a machine with Node.js 18.17+ will validate the codebase end-to-end.
+- Automated commands are configured but were not executed in this environment because dependencies were not installed. Running the steps above on a machine with Node.js 24.x LTS (minimum `>=24.0.0`) will validate the codebase end-to-end.
 - Coverage output will appear in `coverage/` after successful test execution.
 
 ## Next Steps
