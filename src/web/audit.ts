@@ -148,10 +148,7 @@ export function createAuditMiddleware(options: {
     const originalEnd = response.end.bind(response) as ResponseEnd;
 
     // Wrap response.end to log after response is sent
-    response.end = function (
-      this: Response,
-      ...args: Parameters<ResponseEnd>
-    ): Response {
+    const wrappedEnd = ((...args: Parameters<ResponseEnd>) => {
       // Restore original end
       response.end = originalEnd;
 
@@ -187,7 +184,9 @@ export function createAuditMiddleware(options: {
 
       // Call original end
       return originalEnd(...args);
-    };
+    }) as ResponseEnd;
+
+    response.end = wrappedEnd;
 
     next();
   };

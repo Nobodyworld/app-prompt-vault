@@ -170,30 +170,10 @@ export async function initializeNwIntegrations(): Promise<void> {
 
   // Register Prompt Vault widgets with the shared pages-widgets registry
   try {
-    const { registerWidgets } = await import("./platform-core.js");
-    registerWidgets([
-      {
-        id: "pv:quick-add",
-        appId: "prompt-vault",
-        displayName: "Quick Add Prompt",
-        description: "Create a new prompt in the current project",
-        icon: "plus",
-      },
-      {
-        id: "pv:recent",
-        appId: "prompt-vault",
-        displayName: "Recent Prompts",
-        description: "Recently created or edited prompts",
-        icon: "clock",
-      },
-      {
-        id: "pv:stats",
-        appId: "prompt-vault",
-        displayName: "Prompt Stats",
-        description: "Overview of prompt totals and activity",
-        icon: "bar-chart",
-      },
-    ]);
+    const { registerPromptVaultWidgetsWithPagesWidgets } = await import(
+      "../widgets/register.js"
+    );
+    registerPromptVaultWidgetsWithPagesWidgets();
     pvLogger.info("Prompt Vault widgets registered with pages-widgets");
   } catch (error) {
     pvLogger.warn("Failed to register Prompt Vault widgets", { error });

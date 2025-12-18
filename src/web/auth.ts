@@ -443,7 +443,7 @@ export function createAuthMiddleware(options: {
           authenticated = true;
           authMethod = "jwt";
           authCtx = {
-            kind: "jwt",
+            kind: "session",
             userId: jwtPayload.userId,
             displayName: jwtPayload.username,
             roles: jwtPayload.roles ?? [],

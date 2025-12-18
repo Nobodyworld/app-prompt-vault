@@ -805,14 +805,14 @@ export class PromptRepository {
               "SELECT id, slug, title, description, category, is_favorite, rating FROM prompts WHERE id = @promptId",
             )
             .get({ promptId }) as {
-            id: string;
-            slug: string;
-            title?: string;
-            description?: string;
-            category?: string;
-            is_favorite: number;
-            rating: number | null;
-          };
+              id: string;
+              slug: string;
+              title?: string;
+              description?: string;
+              category?: string;
+              is_favorite: number;
+              rating: number | null;
+            };
 
           // Apply updates to get new data
           const updatedPrompt = {
@@ -965,15 +965,15 @@ export class PromptRepository {
            ORDER BY datetime(created_at) DESC, rowid DESC`,
           )
           .all({ promptId }) as {
-          id: string;
-          prompt_id: string;
-          semantic_version: string;
-          body: string;
-          format: string | null;
-          changelog: string | null;
-          created_at: string;
-          updated_at: string;
-        }[];
+            id: string;
+            prompt_id: string;
+            semantic_version: string;
+            body: string;
+            format: string | null;
+            changelog: string | null;
+            created_at: string;
+            updated_at: string;
+          }[];
 
         return rows.map((row) => ({
           id: row.id,
@@ -1253,15 +1253,15 @@ export class PromptRepository {
       tags,
       latestVersion: row.version_id
         ? {
-            id: row.version_id,
-            promptId: row.id,
-            semanticVersion: row.semantic_version ?? "",
-            body: row.body ?? "",
-            format: (row.format as PromptFormat) ?? "markdown",
-            changelog: row.changelog ?? undefined,
-            createdAt: new Date(row.version_created_at ?? row.updated_at),
-            updatedAt: new Date(row.version_updated_at ?? row.updated_at),
-          }
+          id: row.version_id,
+          promptId: row.id,
+          semanticVersion: row.semantic_version ?? "",
+          body: row.body ?? "",
+          format: (row.format as PromptFormat) ?? "markdown",
+          changelog: row.changelog ?? undefined,
+          createdAt: new Date(row.version_created_at ?? row.updated_at),
+          updatedAt: new Date(row.version_updated_at ?? row.updated_at),
+        }
         : undefined,
     };
   }
@@ -1279,11 +1279,11 @@ export class PromptRepository {
          WHERE pt.prompt_id = @promptId`,
       )
       .all({ promptId }) as {
-      id: string;
-      label: string;
-      description?: string | null;
-      created_at?: string | null;
-    }[];
+        id: string;
+        label: string;
+        description?: string | null;
+        created_at?: string | null;
+      }[];
 
     return rows.map((row) => ({
       id: row.id,
@@ -1306,12 +1306,12 @@ export class PromptRepository {
          FROM tags`,
       )
       .all() as {
-      id: string;
-      label: string;
-      description?: string | null;
-      created_at?: string | null;
-      updated_at?: string | null;
-    }[];
+        id: string;
+        label: string;
+        description?: string | null;
+        created_at?: string | null;
+        updated_at?: string | null;
+      }[];
 
     return rows.map((row) => ({
       id: row.id,
