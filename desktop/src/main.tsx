@@ -1,5 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { httpFetch } from "@nw/connectors-http";
 import { App } from "./App";
 import "./styles.css";
 
@@ -76,7 +77,7 @@ try {
               });
               // also attempt to POST logs to a local log server (fallback for dev capture)
               try {
-                fetch("http://127.0.0.1:1421/log", {
+                httpFetch("http://127.0.0.1:1421/log", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -103,7 +104,7 @@ try {
                   : String(ev);
               emit("client-log", { level: "error", message: evMessage });
               try {
-                fetch("http://127.0.0.1:1421/log", {
+                httpFetch("http://127.0.0.1:1421/log", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ level: "error", message: evMessage }),

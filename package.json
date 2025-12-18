@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
+    "@nw/connectors-http": "workspace:*",
     "@nw/core-db": "workspace:*",
     "@nw/event-bus": "workspace:*",
     "@nw/logging": "workspace:*",

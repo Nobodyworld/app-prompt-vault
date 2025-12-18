@@ -6,6 +6,7 @@ import type {
   UpdatePromptInput,
 } from "../types/prompt";
 import { isTauriAvailable } from "../lib/tauri";
+import { httpFetch } from "@nw/connectors-http";
 import type {
   PromptVersionSummary as Version,
   PromptSummary as Summary,
@@ -90,7 +91,7 @@ async function browserApiCall<T>(
   options?: RequestInit,
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  const response = await fetch(url, {
+  const response = await httpFetch(url, {
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
@@ -112,7 +113,7 @@ async function browserApiCallText(
   options?: RequestInit,
 ): Promise<string> {
   const url = `${API_BASE_URL}${endpoint}`;
-  const response = await fetch(url, {
+  const response = await httpFetch(url, {
     headers: {
       ...options?.headers,
     },
@@ -133,7 +134,7 @@ async function browserApiCallVoid(
   options?: RequestInit,
 ): Promise<void> {
   const url = `${API_BASE_URL}${endpoint}`;
-  const response = await fetch(url, {
+  const response = await httpFetch(url, {
     headers: {
       ...options?.headers,
     },
