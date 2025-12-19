@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { getPromptVaultConfig } from "../config/index.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -41,6 +42,14 @@ function normaliseLevel(level: string | undefined): LogLevel {
     return lower;
   }
   return "info";
+}
+
+function resolveConfigLogLevel(): LogLevel | undefined {
+  try {
+    return getPromptVaultConfig().logLevel;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -135,7 +144,11 @@ export function createLoggerFromEnv(
   options: LoggerFactoryOptions,
 ): StructuredLogger {
   const level =
-    options.level ?? normaliseLevel(process.env.PROMPT_VAULT_LOG_LEVEL);
+    options.level ??
+    resolveConfigLogLevel() ??
+    normaliseLevel(
+      process.env.PROMPT_VAULT_LOG_LEVEL ?? process.env.LOG_LEVEL,
+    );
   const baseFields: LogFields = {
     service: options.serviceName,
     pid: process.pid,

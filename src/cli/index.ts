@@ -50,6 +50,7 @@ import {
   createOperationalTelemetryPlugin,
   type PromptVaultPlugin,
 } from "../extensions/index.js";
+import { getPromptVaultConfig } from "../config/index.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -86,6 +87,18 @@ observability.indicator.setReadiness({
  */
 async function shutdownObservability(): Promise<void> {
   await observability.shutdown();
+}
+
+function printPromptVaultConfig(): void {
+  try {
+    const config = getPromptVaultConfig();
+    console.log("\nconfig:");
+    console.log(JSON.stringify(config, null, 2));
+  } catch (error) {
+    console.error("Failed to load prompt vault config", {
+      error: error instanceof Error ? error.message : error,
+    });
+  }
 }
 
 // Signal handlers for graceful shutdown
@@ -1109,6 +1122,7 @@ program
   .description("Run doctor checks including migrations and integrity")
   .option("--db <path>", "Path to SQLite database", defaultDbPath)
   .action(async (options) => {
+    printPromptVaultConfig();
     await useService(options.db, async (service) => {
       const report = await service.runDiagnostics();
       printDiagnosticsReport(report, "🩺 Prompt Vault Doctor Report");

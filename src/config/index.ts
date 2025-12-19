@@ -30,7 +30,7 @@ export function getPromptVaultConfig(
   return {
     appId: "prompt-vault",
     logLevel: normaliseLogLevel(
-      env.PROMPT_VAULT_LOG_LEVEL ?? env.LOG_LEVEL,
+      env.VITE_LOG_LEVEL ?? env.PROMPT_VAULT_LOG_LEVEL ?? env.LOG_LEVEL,
     ),
     server: loadServerConfig().config,
     ...overrides,
