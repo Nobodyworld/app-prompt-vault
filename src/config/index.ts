@@ -17,9 +17,15 @@ function normaliseLogLevel(value: unknown): PromptVaultConfig["logLevel"] {
 export function getPromptVaultConfig(
   overrides: Partial<PromptVaultConfig> = {},
 ): PromptVaultConfig {
-  const env =
-    (typeof process !== "undefined" ? (process.env as Record<string, unknown>) : {}) ??
-    {};
+  const metaEnv =
+    typeof import.meta !== "undefined"
+      ? (import.meta as unknown as { env?: Record<string, unknown> }).env
+      : undefined;
+  const nodeEnv =
+    typeof process !== "undefined"
+      ? (process.env as Record<string, unknown>)
+      : undefined;
+  const env = { ...(nodeEnv ?? {}), ...(metaEnv ?? {}) };
 
   return {
     appId: "prompt-vault",
