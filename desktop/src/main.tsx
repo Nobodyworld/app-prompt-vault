@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { httpFetch } from "@nw/connectors-http";
 import { App } from "./App";
 import "./styles.css";
+import { initializeNwIntegrations } from "../../src/lib/nw-bridge";
 
 const container = document.getElementById("root");
 
@@ -11,6 +12,7 @@ if (!container) {
 }
 
 const root = createRoot(container);
+void initializeNwIntegrations().catch(() => undefined);
 
 function showFatalError(message: string): void {
   try {
