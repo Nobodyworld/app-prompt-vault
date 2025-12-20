@@ -5,7 +5,7 @@
  * them (and fall back to placeholders if the Hub doesn't yet ship real loaders).
  */
 
-import { registerWidgets } from "@nw/pages-widgets";
+import { registerWidgets } from "../lib/platform-pages-widgets.js";
 import {
   promptVaultQuickAddWidgetMeta,
   promptVaultRecentWidgetMeta,

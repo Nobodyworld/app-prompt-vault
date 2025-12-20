@@ -232,7 +232,6 @@ pnpm --filter @nw/prompt-vault test tests/rate-limit.test.ts
 See `docs/SECURITY.md` for:
 
 - Nginx/Caddy reverse proxy configuration
-- Docker deployment examples
 - Kubernetes security contexts
 - Monitoring and alerting setup
 - Incident response procedures

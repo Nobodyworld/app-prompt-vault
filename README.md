@@ -1,7 +1,6 @@
 # Prompt Vault
 
 [![CI](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml/badge.svg)](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/Nobodyworld/app-prompt-vault/branch/main/graph/badge.svg)](https://codecov.io/gh/Nobodyworld/app-prompt-vault)
 
 > **🎉 Successor to Prompt Rules Manager (PRM)** - This project is the next evolution of PRM with improved architecture, better performance, and enhanced features. See [Migration Guide](#migrating-from-prm) below.
 
@@ -58,7 +57,7 @@ Prereqs: Node 24.x recommended (bindings), Rust for Tauri.
 ## Dev Workflow
 
 - Build: `pnpm build`
-- Coverage: Vitest suite; Codecov supported (see CI token note below)
+- Coverage: Vitest suite
 - CLI/HTTP: see `src/cli` and Express server docs; keep migrations in sync
 
 ## APIs & Surfaces
@@ -68,10 +67,6 @@ Prereqs: Node 24.x recommended (bindings), Rust for Tauri.
 - **Desktop UI:** React app under `desktop/`
 - **Orchestrator/MCP:** Tooling hooks for automation
 - **Planner AiDo import/export:** `pv_export_planner_bucket` builds a bucket draft from Vault prompts; `pv_import_prompts` bulk-imports prompt payloads (mirrors `export-planner` CLI).
-
-## CI / Codecov token
-
-Add `CODECOV_TOKEN` (repo secret) for authenticated uploads; CI auto-detects. Without it, uploads are skipped.
 
 ## Troubleshooting
 
@@ -134,104 +129,6 @@ npm run observability
 npm run db:bootstrap ./prompt-vault.db
 ```
 
-## Docker Deployment
-
-Prompt Vault can be easily deployed using Docker for production environments.
-
-### Quick Start with Docker
-
-```bash
-# Build and start the application
-npm run docker:start
-
-# Or use the deployment script
-npm run docker:deploy start
-
-# Check status
-npm run docker:status
-
-# View logs
-npm run docker:logs
-```
-
-The application will be available at `http://localhost:3001`.
-
-### Docker Commands
-
-```bash
-# Build the Docker image
-npm run docker:build
-
-# Start containers in background
-npm run docker:start
-
-# Stop containers
-npm run docker:stop
-
-# Restart containers
-npm run docker:restart
-
-# View container logs
-npm run docker:logs
-
-# Check container status
-npm run docker:status
-
-# Use the interactive deployment script
-npm run docker:deploy
-```
-
-### Docker Configuration
-
-The Docker setup includes:
-
-- **Multi-stage build** for optimized production images
-- **SQLite persistence** with named volumes for data safety
-- **Health checks** for container monitoring
-- **Environment configuration** for easy customization
-- **Security hardening** with non-root user execution
-
-### Environment Variables
-
-Configure the deployment using environment variables:
-
-```bash
-# Port configuration
-PROMPT_VAULT_PORT=3001
-
-# Database configuration
-PROMPT_VAULT_DB_PATH=/app/data/prompt-vault.db
-
-# CORS configuration
-PROMPT_VAULT_CORS_ORIGINS=*
-
-# Metrics and observability
-PROMPT_VAULT_METRICS=true
-PROMPT_VAULT_METRICS_PORT=9090
-
-# File size limits
-PROMPT_VAULT_MAX_FILE_SIZE_BYTES=10485760
-PROMPT_VAULT_MAX_PROMPT_CONTENT_LENGTH=102400
-```
-
-### Data Persistence
-
-The Docker setup uses named volumes to persist SQLite data:
-
-- Database files are stored in `/app/data/` inside the container
-- Data survives container restarts and updates
-- Use `docker volume ls` and `docker volume rm` to manage volumes
-
-### Production Deployment
-
-For production deployments:
-
-1. **Customize environment variables** in `docker-compose.yml`
-2. **Configure reverse proxy** (nginx, Caddy, etc.) for SSL termination
-3. **Set up monitoring** using the exposed metrics endpoints
-4. **Configure backups** of the named volume for data safety
-5. **Use secrets management** for sensitive configuration
-
 ## Migrating from PRM
 
 Prompt Vault is the successor to [Prompt Rules Manager (PRM)](https://github.com/Nobodyworld/app-prompt-manager-prm), featuring improved architecture, better performance, and enhanced features.
@@ -280,7 +177,7 @@ Prompt Vault is the successor to [Prompt Rules Manager (PRM)](https://github.com
 ### Feature Mapping
 
 | PRM Feature | Prompt Vault Equivalent | Status |
-|-------------|------------------------|--------|
+| --- | --- | --- |
 | Rules Library | Prompts Library | ✅ Enhanced |
 | Tag Management | Tag System | ✅ Improved |
 | Search & Filter | Advanced Search | ✅ Enhanced |

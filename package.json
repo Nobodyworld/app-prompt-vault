@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json && tsx scripts/copy-migrations.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint . --ext .ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -30,14 +31,7 @@
     "desktop:build": "vite build --config desktop/vite.config.ts",
     "web:dev": "tsx src/server.ts",
     "web:build": "npm run desktop:build && npm run web:dev",
-    "tauri:dev": "tsx scripts/tauri-run.ts dev",
-    "docker:build": "docker-compose build",
-    "docker:start": "docker-compose up -d",
-    "docker:stop": "docker-compose down",
-    "docker:restart": "docker-compose restart",
-    "docker:logs": "docker-compose logs -f",
-    "docker:status": "docker-compose ps",
-    "docker:deploy": "tsx scripts/docker-deploy.ts"
+    "tauri:dev": "tsx scripts/tauri-run.ts dev"
   },
   "keywords": [
     "prompt",

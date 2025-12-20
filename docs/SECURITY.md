@@ -383,35 +383,6 @@ api.example.com {
 }
 ```
 
-### Docker Deployment
-
-```dockerfile
-FROM node:24-alpine
-
-WORKDIR /app
-COPY . .
-RUN pnpm install --prod
-RUN pnpm build
-
-ENV JWT_SECRET=your-secret-key
-ENV REQUIRE_AUTH=true
-ENV LOCALHOST_ONLY=false
-ENV RATE_LIMIT_MAX_REQUESTS=100
-
-EXPOSE 3001
-CMD ["node", "dist/server.js"]
-```
-
-```bash
-docker build -t prompt-vault .
-docker run -d \
-  -p 3001:3001 \
-  -e JWT_SECRET=your-secret-key \
-  -e REQUIRE_AUTH=true \
-  -v /data:/app/data \
-  prompt-vault
-```
-
 ---
 
 ## Troubleshooting

@@ -21,7 +21,7 @@ All features are production-ready with unit tests, configuration documentation, 
 **Priority:** High  
 **Scope:** Add authentication for network deployments
 
-### Implementation
+### Auth: Implementation
 
 - **Custom JWT** using HMAC-SHA256 (no external dependencies)
 - **API Key** authentication (Bearer token or header-based)
@@ -29,7 +29,7 @@ All features are production-ready with unit tests, configuration documentation, 
 - **Middleware Integration** for Express routes
 - **Decorator Pattern** with `requireAuth()` for route protection
 
-### Files Created
+### Auth: Files Created
 
 - `apps/app-prompt-vault/src/web/auth.ts` (220+ lines)
   - `AuthManager` class with token generation/verification
@@ -45,7 +45,7 @@ All features are production-ready with unit tests, configuration documentation, 
   - Signature tampering detection tests
   - API key validation tests
 
-### Configuration
+### Auth: Configuration
 
 Environment variables in `.env.example`:
 
@@ -55,7 +55,7 @@ Environment variables in `.env.example`:
 - `LOCALHOST_ONLY` — Default: `false`
 - `API_KEY_<NAME>` — Optional API keys
 
-### Integration
+### Auth: Integration
 
 Updated `apps/app-prompt-vault/src/server.ts`:
 
@@ -71,7 +71,7 @@ Updated `apps/app-prompt-vault/src/server.ts`:
 **Priority:** High  
 **Scope:** Track who/what/when for sensitive operations
 
-### Implementation
+### Audit: Implementation
 
 - **Structured Events** with id, timestamp, userId, action, resource, result, details, IP, user agent
 - **In-Memory Storage** with configurable max events (10,000 default)
@@ -79,7 +79,7 @@ Updated `apps/app-prompt-vault/src/server.ts`:
 - **Automatic Middleware** for request logging
 - **Auto-Detection** of sensitive operations (CREATE/UPDATE/DELETE)
 
-### Files Created
+### Audit: Files Created
 
 - `apps/app-prompt-vault/src/web/audit.ts` (220+ lines)
   - `AuditEvent` interface
@@ -97,14 +97,14 @@ Updated `apps/app-prompt-vault/src/server.ts`:
   - Max events limit tests
   - Result limiting tests
 
-### Configuration
+### Audit: Configuration
 
 Environment variables in `.env.example`:
 
 - `AUDIT_LOGGING_ENABLED` — Default: `true`
 - `AUDIT_MAX_EVENTS` — Default: `10000`
 
-### Integration
+### Audit: Integration
 
 Updated `apps/app-prompt-vault/src/server.ts`:
 
@@ -119,7 +119,7 @@ Updated `apps/app-prompt-vault/src/server.ts`:
 **Priority:** Medium  
 **Scope:** Protect against abuse in networked deployments
 
-### Implementation
+### Rate Limiting: Implementation
 
 - **Sliding Window Algorithm** for accurate rate limiting
 - **Per-IP Rate Limiting** (customizable key generator)
@@ -128,7 +128,7 @@ Updated `apps/app-prompt-vault/src/server.ts`:
 - **Separate Limits** for sensitive endpoints
 - **Automatic Cleanup** of expired entries
 
-### Files Created
+### Rate Limiting: Files Created
 
 - `apps/app-prompt-vault/src/web/rate-limit.ts` (240+ lines)
   - `InMemoryRateLimitStore` class with get/set/delete/clear
@@ -145,7 +145,7 @@ Updated `apps/app-prompt-vault/src/server.ts`:
   - Expired entry handling tests
   - Missing key handling tests
 
-### Configuration
+### Rate Limiting: Configuration
 
 Environment variables in `.env.example`:
 
@@ -155,7 +155,7 @@ Environment variables in `.env.example`:
 - `RATE_LIMIT_STRICT_MAX_REQUESTS` — Default: `10`
 - `RATE_LIMIT_STRICT_WINDOW_MS` — Default: `60000`
 
-### Integration
+### Rate Limiting: Integration
 
 Updated `apps/app-prompt-vault/src/server.ts`:
 
@@ -171,33 +171,9 @@ Updated `apps/app-prompt-vault/src/server.ts`:
 
 ### Created Files
 
-1. **`apps/app-prompt-vault/.env.example`** (60+ lines)
-   - Complete environment variable reference
-   - Server, CORS, authentication, audit, rate limit, observability config
-   - Inline comments explaining each variable
-   - Example values and generation commands
-
-2. **`apps/app-prompt-vault/docs/SECURITY.md`** (400+ lines)
-   - Comprehensive security guide
-   - Authentication setup (JWT + API keys)
-   - Audit logging configuration and querying
-   - Rate limiting configuration and headers
-   - Environment variables table
-   - Deployment best practices (nginx, Caddy, Docker, Kubernetes)
-   - Troubleshooting guide
-   - Security checklist
-
-3. **`apps/app-prompt-vault/src/web/README.md`** (300+ lines)
-   - Quick start guide
-   - Module documentation (auth, audit, rate-limit)
-   - Usage examples for each module
-   - Environment variables table
-   - Security best practices
-   - Testing instructions
-   - Production deployment references
-   - Architecture diagram
-   - Limitations and alternatives
-   - Contributing guidelines
+- **`apps/app-prompt-vault/.env.example`** (60+ lines): Environment variable reference with example values and inline guidance.
+- **`apps/app-prompt-vault/docs/SECURITY.md`** (400+ lines): Security guide covering auth (JWT/API keys), audit logging, rate limiting, reverse proxy, Kubernetes, and troubleshooting.
+- **`apps/app-prompt-vault/src/web/README.md`** (300+ lines): Web server quick start, module docs (auth/audit/rate-limit), env var table, testing instructions, and architecture diagram.
 
 ---
 
@@ -229,7 +205,7 @@ All 24 tests passing:
 
 ## Security Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                     Prompt Vault Server                     │
 │                                                             │

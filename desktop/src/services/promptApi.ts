@@ -6,7 +6,7 @@ import type {
   UpdatePromptInput,
 } from "../types/prompt";
 import { isTauriAvailable } from "../lib/tauri";
-import { httpFetch } from "@nw/connectors-http";
+import { httpFetch } from "../../../src/lib/platform-connectors";
 import type {
   PromptVersionSummary as Version,
   PromptSummary as Summary,

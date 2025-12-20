@@ -1,9 +1,9 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { httpFetch } from "@nw/connectors-http";
 import { App } from "./App";
 import "./styles.css";
 import { initializeNwIntegrations } from "../../src/lib/nw-bridge";
+import { httpFetch } from "../../src/lib/platform-connectors";
 
 const container = document.getElementById("root");
 
@@ -47,7 +47,7 @@ window.addEventListener("unhandledrejection", (ev) => {
     const reason = (ev && (ev as PromiseRejectionEvent).reason) || ev;
     showFatalError(
       "Unhandled promise rejection: " +
-        (reason && (reason.stack || String(reason))),
+      (reason && (reason.stack || String(reason))),
     );
   } catch (e) {
     console.debug("unhandledrejection handler failed", e);

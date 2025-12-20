@@ -3,19 +3,19 @@
 ## Repository Purpose
 
 The **Prompt Vault** repository aims to provide a cross-platform desktop application for collecting, versioning, and tagging reusab
-le prompts used in creative and technical workflows. The long-term vision is a Tauri + React application backed by a local SQLite 
+le prompts used in creative and technical workflows. The long-term vision is a Tauri + React application backed by a local SQLite
 database so that power users can build a durable personal knowledge base for prompts, reference material, and reusable message tem
 plates.
 
 ## Current State Snapshot
 
 - **Languages & Frameworks**: Targeted stack defined as TypeScript + React for the frontend, Tauri for the shell, and SQLite for st
-orage. Actual source code was not present prior to this step; only `README.md` and `app.yaml` provided the scaffold description.
+orage. At the time of this write-up, the repository was still at an early scaffolding stage with minimal code.
 - **Features Advertised**: prompt library management, tag-based filtering, version tracking, and local persistence.
 - **Existing Documentation**: The root `README.md` outlined development commands but lacked architectural guidance. No additional d
 ocumentation existed.
 - **Testing**: No automated tests or tooling configured.
-- **Dependencies**: None declared in code; `app.yaml` indicated expected runtime dependencies (React, Tauri, rusqlite).
+- **Dependencies**: Dependencies and tooling were being established as part of the early bootstrap.
 
 ## Architectural Intent
 

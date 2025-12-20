@@ -12,7 +12,7 @@ te concerns between domain models, persistence, orchestration, and user interfac
 
 ## Rationale
 
-The repository now reflects an opinionated layout aligned with the app.yaml intent (React/Tauri/SQLite) while focusing initial im
+The repository now reflects an opinionated layout aligned with the intended stack (React/Tauri/SQLite) while focusing initial im
 plementation on the core domain logic. This structure enables future contributors to add UI layers without disturbing the domain
 foundation, and it allows automated tests to validate business rules without invoking a GUI.
 
