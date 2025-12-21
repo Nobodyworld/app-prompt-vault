@@ -8,7 +8,7 @@ This guide covers the security features available for network deployments of Pro
 - [Authentication](#authentication)
 - [Audit Logging](#audit-logging)
 - [Rate Limiting](#rate-limiting)
-- [Configuration](#configuration)
+- [Server Configuration](#server-configuration)
 - [Deployment Best Practices](#deployment-best-practices)
 - [Troubleshooting](#troubleshooting)
 
@@ -28,7 +28,7 @@ By default, Prompt Vault and Hub are designed for **local-only** deployments. Wh
 
 ### JWT Token-Based Authentication
 
-#### Configuration
+#### JWT Configuration
 
 Set the following environment variables:
 
@@ -78,7 +78,7 @@ curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
 
 ### API Key Authentication
 
-#### Configuration
+#### API Key Configuration
 
 Set API keys via environment variables:
 
@@ -130,7 +130,7 @@ router.delete("/prompts/:id", requireAuth({ roles: ["admin"] }), deletePromptHan
 
 ## Audit Logging
 
-### Overview
+### Audit Logging Overview
 
 Audit logging tracks sensitive operations with the following information:
 
@@ -140,7 +140,7 @@ Audit logging tracks sensitive operations with the following information:
 - **Result**: Success, failure, or denied
 - **Details**: Additional context (method, path, status code, etc.)
 
-### Configuration
+### Audit Logging Configuration
 
 ```bash
 # Enable audit logging (default: true)
@@ -153,7 +153,7 @@ AUDIT_MAX_EVENTS=10000
 AUDIT_LOG_FILE=/var/log/prompt-vault/audit.log
 ```
 
-### Usage
+### Audit Logging Usage
 
 ```typescript
 import { InMemoryAuditLogger, createAuditMiddleware, createAutoAuditMiddleware } from "./web/audit.js";
@@ -211,11 +211,11 @@ const recentEvents = auditLogger.getEvents({
 
 ## Rate Limiting
 
-### Overview
+### Rate Limiting Overview
 
 Rate limiting protects APIs from abuse using a sliding window algorithm. Limits are enforced per IP address (or user ID if authenticated).
 
-### Configuration
+### Rate Limiting Configuration
 
 ```bash
 # Global rate limit (requests per minute)
@@ -227,7 +227,7 @@ RATE_LIMIT_STRICT_MAX_REQUESTS=10
 RATE_LIMIT_STRICT_WINDOW_MS=60000
 ```
 
-### Usage
+### Rate Limiting Usage
 
 ```typescript
 import { createRateLimitMiddleware, createEndpointRateLimiter } from "./web/rate-limit.js";
@@ -274,12 +274,12 @@ HTTP/1.1 429 Too Many Requests
 
 ---
 
-## Configuration
+## Server Configuration
 
 ### Environment Variables
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| -------- | ------- | ----------- |
 | `JWT_SECRET` | (random) | JWT signing secret (32+ chars recommended) |
 | `JWT_EXPIRES_IN` | `24h` | Token expiration time |
 | `REQUIRE_AUTH` | `false` | Require authentication for all routes |
@@ -377,7 +377,7 @@ server {
 
 #### Caddy
 
-```
+```text
 api.example.com {
     reverse_proxy localhost:3001
 }

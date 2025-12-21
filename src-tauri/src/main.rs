@@ -388,6 +388,38 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn tauri_migrations_apply_to_latest_schema_version() {
+        let connection = Connection::open_in_memory().expect("open db");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let version = get_user_version(&connection).expect("read user_version");
+        assert_eq!(version, 5, "expected user_version to be 5 after migrations");
+
+        assert!(has_table(&connection, "prompts").expect("has_table prompts"));
+        assert!(has_table(&connection, "prompt_versions").expect("has_table prompt_versions"));
+
+        assert!(has_column(&connection, "prompts", "category").expect("has_column category"));
+        assert!(has_column(&connection, "prompts", "deleted_at").expect("has_column deleted_at"));
+        assert!(has_column(&connection, "prompts", "is_favorite").expect("has_column is_favorite"));
+        assert!(has_column(&connection, "prompts", "rating").expect("has_column rating"));
+        assert!(has_column(&connection, "prompt_versions", "format").expect("has_column format"));
+    }
+
+    #[test]
+    fn tauri_migrations_repair_stale_user_version_via_schema_inference() {
+        let connection = Connection::open_in_memory().expect("open db");
+        apply_migrations(&connection).expect("apply migrations");
+
+        set_user_version(&connection, 2).expect("force stale user_version");
+        let before = get_user_version(&connection).expect("read user_version before");
+        assert_eq!(before, 2);
+
+        apply_migrations(&connection).expect("re-apply migrations");
+        let after = get_user_version(&connection).expect("read user_version after");
+        assert_eq!(after, 5, "expected user_version to be repaired to 5");
+    }
+
+    #[test]
     fn test_persist_and_rotate_and_metrics() {
         let tmp = TempDir::new().expect("create tempdir");
         let dir = tmp.path();
