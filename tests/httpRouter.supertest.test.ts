@@ -26,7 +26,13 @@ function buildApp() {
     app.use(express.json());
     app.use((error: unknown, _request: Request, response: Response, next: NextFunction) => {
         if (error instanceof SyntaxError) {
-            response.status(400).json({ error: "Malformed JSON payload", requestId: response.locals.requestId });
+            response.status(400).json({
+                error: {
+                    code: "BAD_REQUEST",
+                    message: "Malformed JSON payload",
+                    details: { requestId: response.locals.requestId },
+                },
+            });
             return;
         }
         next(error);
@@ -35,7 +41,13 @@ function buildApp() {
     app.use((error: unknown, _request: Request, response: Response) => {
         response
             .status(500)
-            .json({ error: error instanceof Error ? error.message : String(error), requestId: response.locals.requestId });
+            .json({
+                error: {
+                    code: "INTERNAL_ERROR",
+                    message: error instanceof Error ? error.message : String(error),
+                    details: { requestId: response.locals.requestId },
+                },
+            });
     });
 
     return { app, service, database };
@@ -57,7 +69,8 @@ describe("HTTP router (supertest)", () => {
         await withApp(async ({ agent }) => {
             const missingId = randomUUID();
             const response = await agent.get(`/api/prompts/${missingId}`).expect(404);
-            expect(String(response.body.error)).toContain("not found");
+            expect(response.body.error.code).toBe("NOT_FOUND");
+            expect(String(response.body.error.message).toLowerCase()).toContain("not found");
         });
     });
 
@@ -76,18 +89,18 @@ describe("HTTP router (supertest)", () => {
                 })
                 .expect(201);
 
-            const promptId = createResponse.body.prompt.id as string;
+            const promptId = createResponse.body.data.prompt.id as string;
 
             const getResponse = await agent.get(`/api/prompts/${promptId}`).expect(200);
-            expect(getResponse.body.prompt.slug).toBe(slug);
-            expect(getResponse.body.prompt.tags.map((tag: { label: string }) => tag.label).sort()).toEqual([
+            expect(getResponse.body.data.prompt.slug).toBe(slug);
+            expect(getResponse.body.data.prompt.tags.map((tag: { label: string }) => tag.label).sort()).toEqual([
                 "alpha",
                 "beta",
             ]);
 
             const listResponse = await agent.get("/api/prompts?page=0&pageSize=5&tags=alpha").expect(200);
-            expect(listResponse.body.pagination.total).toBeGreaterThan(0);
-            expect(listResponse.body.prompts.some((prompt: { id: string }) => prompt.id === promptId)).toBe(true);
+            expect(listResponse.body.data.pagination.total).toBeGreaterThan(0);
+            expect(listResponse.body.data.prompts.some((prompt: { id: string }) => prompt.id === promptId)).toBe(true);
         });
     });
 
@@ -105,21 +118,24 @@ describe("HTTP router (supertest)", () => {
                 })
                 .expect(201);
 
-            const promptId = createResponse.body.prompt.id as string;
+            const promptId = createResponse.body.data.prompt.id as string;
 
             const tagResponse = await agent
                 .post(`/api/prompts/${promptId}/tags`)
                 .send({ tags: ["one", "two"] })
                 .expect(200);
 
-            expect(tagResponse.body.data.tags.map((tag: { label: string }) => tag.label).sort()).toEqual(["one", "two"]);
+            expect(tagResponse.body.data.prompt.tags.map((tag: { label: string }) => tag.label).sort()).toEqual([
+                "one",
+                "two",
+            ]);
 
             const untagResponse = await agent
                 .delete(`/api/prompts/${promptId}/tags`)
                 .send({ tags: ["one"] })
                 .expect(200);
 
-            expect(untagResponse.body.data.tags.map((tag: { label: string }) => tag.label)).toEqual(["two"]);
+            expect(untagResponse.body.data.prompt.tags.map((tag: { label: string }) => tag.label)).toEqual(["two"]);
         });
     });
 
@@ -138,22 +154,22 @@ describe("HTTP router (supertest)", () => {
                 })
                 .expect(201);
 
-            const promptId = createResponse.body.prompt.id as string;
+            const promptId = createResponse.body.data.prompt.id as string;
 
             const updateResponse = await agent
                 .put(`/api/prompts/${promptId}`)
                 .send({ title: "Updated", description: "Updated description", tags: ["delta", "epsilon"] })
                 .expect(200);
 
-            expect(updateResponse.body.prompt.title).toBe("Updated");
-            expect(updateResponse.body.prompt.description).toBe("Updated description");
-            expect(updateResponse.body.prompt.tags.map((tag: { label: string }) => tag.label).sort()).toEqual([
+            expect(updateResponse.body.data.prompt.title).toBe("Updated");
+            expect(updateResponse.body.data.prompt.description).toBe("Updated description");
+            expect(updateResponse.body.data.prompt.tags.map((tag: { label: string }) => tag.label).sort()).toEqual([
                 "delta",
                 "epsilon",
             ]);
 
             const getResponse = await agent.get(`/api/prompts/${promptId}`).expect(200);
-            expect(getResponse.body.prompt.tags.map((tag: { label: string }) => tag.label).sort()).toEqual([
+            expect(getResponse.body.data.prompt.tags.map((tag: { label: string }) => tag.label).sort()).toEqual([
                 "delta",
                 "epsilon",
             ]);
@@ -173,15 +189,15 @@ describe("HTTP router (supertest)", () => {
                 })
                 .expect(201);
 
-            const promptId = createResponse.body.prompt.id as string;
+            const promptId = createResponse.body.data.prompt.id as string;
 
             const versionPayload = { body: JSON.stringify({ greeting: "hello" }), semanticVersion: "1.0.1", format: "json" as const };
             const versionResponse = await agent.post(`/api/prompts/${promptId}/versions`).send(versionPayload).expect(201);
-            expect(versionResponse.body.version.semanticVersion).toBe("1.0.1");
+            expect(versionResponse.body.data.version.semanticVersion).toBe("1.0.1");
 
             const latest = await agent.get(`/api/prompts/${promptId}`).expect(200);
-            expect(latest.body.prompt.latestVersion.semanticVersion).toBe("1.0.1");
-            expect(latest.body.prompt.latestVersion.format).toBe("json");
+            expect(latest.body.data.prompt.latestVersion.semanticVersion).toBe("1.0.1");
+            expect(latest.body.data.prompt.latestVersion.format).toBe("json");
 
             const convertResponse = await agent
                 .post(`/api/prompts/${promptId}/convert`)
@@ -202,19 +218,21 @@ describe("HTTP router (supertest)", () => {
                 .send({ slug, title: "Valid", body: "Body", semanticVersion: "1.0.0" })
                 .expect(201);
 
-            expect(createResponse.body.prompt.slug).toBe(slug);
+            expect(createResponse.body.data.prompt.slug).toBe(slug);
 
             const duplicate = await agent
                 .post("/api/prompts")
                 .send({ slug, title: "Duplicate", body: "Body", semanticVersion: "1.0.0" })
                 .expect(409);
-            expect(duplicate.body.error).toContain(slug);
+            expect(duplicate.body.error.code).toBe("CONFLICT");
+            expect(duplicate.body.error.message).toContain(slug);
 
             const invalidVersion = await agent
-                .post(`/api/prompts/${createResponse.body.prompt.id}/versions`)
+                .post(`/api/prompts/${createResponse.body.data.prompt.id}/versions`)
                 .send({ body: "Body", semanticVersion: "1.0" })
                 .expect(400);
-            expect(invalidVersion.body.details).toContain("Version must follow semantic versioning");
+            expect(invalidVersion.body.error.code).toBe("VALIDATION_ERROR");
+            expect(invalidVersion.body.error.details.issues).toContain("Version must follow semantic versioning");
         });
     });
 
@@ -226,13 +244,15 @@ describe("HTTP router (supertest)", () => {
                 .send("{")
                 .expect(400)
                 .expect((response: any) => {
-                    expect(response.body.error).toBe("Malformed JSON payload");
-                    expect(response.body.requestId).toBeDefined();
+                    expect(response.body.error.code).toBe("BAD_REQUEST");
+                    expect(response.body.error.message).toBe("Malformed JSON payload");
+                    expect(response.body.error.details.requestId).toBeDefined();
                 });
 
             const invalidFilter = await agent.get("/api/prompts?projectTagId=not-a-uuid").expect(400);
-            expect(invalidFilter.body.error).toBe("Request validation failed");
-            expect(invalidFilter.body.details.some((detail: string) => detail.toLowerCase().includes("uuid"))).toBe(true);
+            expect(invalidFilter.body.error.code).toBe("VALIDATION_ERROR");
+            expect(invalidFilter.body.error.message).toBe("Request validation failed");
+            expect(invalidFilter.body.error.details.issues.some((detail: string) => detail.toLowerCase().includes("uuid"))).toBe(true);
         });
     });
 
@@ -261,14 +281,14 @@ describe("HTTP router (supertest)", () => {
                 .expect(201);
 
             const projectTag = await createProjectTag({ slug: "demo-project", label: "Demo Project" });
-            await tagPrompt(promptA.body.prompt.id, projectTag.id);
+            await tagPrompt(promptA.body.data.prompt.id, projectTag.id);
 
             const projectResponse = await agent.get(`/api/prompts?projectTagId=${projectTag.id}`).expect(200);
-            const projectIds = projectResponse.body.prompts.map((prompt: { id: string }) => prompt.id);
+            const projectIds = projectResponse.body.data.prompts.map((prompt: { id: string }) => prompt.id);
 
-            expect(projectIds).toContain(promptA.body.prompt.id);
-            expect(projectIds).not.toContain(promptB.body.prompt.id);
-            expect(projectResponse.body.pagination.total).toBeGreaterThanOrEqual(1);
+            expect(projectIds).toContain(promptA.body.data.prompt.id);
+            expect(projectIds).not.toContain(promptB.body.data.prompt.id);
+            expect(projectResponse.body.data.pagination.total).toBeGreaterThanOrEqual(1);
         });
     });
 });

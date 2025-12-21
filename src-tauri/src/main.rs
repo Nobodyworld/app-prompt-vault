@@ -7,12 +7,19 @@ use rusqlite::{params, Connection, Error as SqlError, ErrorCode, OptionalExtensi
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use thiserror::Error;
 use uuid::Uuid;
 
-const MIGRATIONS: &str = include_str!("../../src/db/migrations/001_init.sql");
+const MIGRATION_001: &str = include_str!("../../src/db/migrations/001_init.sql");
+const MIGRATION_002_CATEGORY: &str = include_str!("../../src/db/migrations/002_add_category.sql");
+const MIGRATION_002_INDEXES: &str = include_str!("../../src/db/migrations/002_indexes.sql");
+const MIGRATION_003_FORMAT: &str =
+    include_str!("../../src/db/migrations/003_add_format_support.sql");
+const MIGRATION_004_SOFT_DELETE: &str =
+    include_str!("../../src/db/migrations/004_add_soft_delete.sql");
 
 static SLUG_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").expect("invalid slug regex"));
@@ -903,36 +910,150 @@ fn ensure_database(handle: &AppHandle) -> Result<AppState, AppError> {
 
     std::fs::create_dir_all(&base_dir).map_err(|error| AppError::Internal(error.to_string()))?;
 
-    let database_path = base_dir.join("prompt-vault.db");
+    let database_path = resolve_database_path(&base_dir);
     let connection = Connection::open(&database_path)?;
     connection.pragma_update(None, "foreign_keys", "ON")?;
-    connection.execute_batch(MIGRATIONS)?;
-
-    ensure_prompt_columns(&connection)?;
+    apply_migrations(&connection)?;
 
     Ok(AppState {
         connection: Mutex::new(connection),
     })
 }
 
-fn ensure_prompt_columns(connection: &Connection) -> Result<(), AppError> {
-    let mut stmt = connection.prepare("PRAGMA table_info(prompts)")?;
+fn resolve_database_path(base_dir: &PathBuf) -> PathBuf {
+    let raw = std::env::var("PROMPT_VAULT_DB_PATH")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    match raw {
+        Some(value) => {
+            let candidate = PathBuf::from(value);
+            if candidate.is_absolute() {
+                candidate
+            } else {
+                base_dir.join(candidate)
+            }
+        }
+        None => base_dir.join("prompt-vault.db"),
+    }
+}
+
+fn has_table(connection: &Connection, table: &str) -> Result<bool, AppError> {
+    let mut stmt = connection
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1 LIMIT 1")?;
+    let exists: Option<String> = stmt
+        .query_row(params![table], |row| row.get(0))
+        .optional()?;
+    Ok(exists.is_some())
+}
+
+fn has_column(connection: &Connection, table: &str, column: &str) -> Result<bool, AppError> {
+    let sql = format!("PRAGMA table_info({})", table);
+    let mut stmt = connection.prepare(&sql)?;
     let mut rows = stmt.query([])?;
-    let mut columns: std::collections::HashSet<String> = std::collections::HashSet::new();
     while let Some(row) = rows.next()? {
         let name: String = row.get(1)?;
-        columns.insert(name);
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn get_user_version(connection: &Connection) -> Result<i32, AppError> {
+    let mut stmt = connection.prepare("PRAGMA user_version")?;
+    let version: i32 = stmt.query_row([], |row| row.get(0))?;
+    Ok(version)
+}
+
+fn set_user_version(connection: &Connection, version: i32) -> Result<(), AppError> {
+    connection.pragma_update(None, "user_version", &version.to_string())?;
+    Ok(())
+}
+
+fn infer_schema_version(connection: &Connection) -> Result<i32, AppError> {
+    if !has_table(connection, "prompts")? {
+        return Ok(0);
     }
 
-    if !columns.contains("is_favorite") {
-        connection.execute(
-            "ALTER TABLE prompts ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
-            [],
-        )?;
+    let has_category = has_column(connection, "prompts", "category")?;
+    let has_deleted_at = has_column(connection, "prompts", "deleted_at")?;
+    let has_favorite = has_column(connection, "prompts", "is_favorite")?;
+    let has_rating = has_column(connection, "prompts", "rating")?;
+    let has_format = has_column(connection, "prompt_versions", "format")?;
+
+    if has_category && has_deleted_at && has_format && has_favorite && has_rating {
+        return Ok(5);
     }
 
-    if !columns.contains("rating") {
-        connection.execute("ALTER TABLE prompts ADD COLUMN rating INTEGER", [])?;
+    if has_category && has_deleted_at && has_format {
+        return Ok(2);
+    }
+
+    Ok(1)
+}
+
+fn apply_migrations(connection: &Connection) -> Result<(), AppError> {
+    let stored_version = get_user_version(connection)?;
+    let inferred_version = infer_schema_version(connection)?;
+    let mut current_version = std::cmp::max(stored_version, inferred_version);
+
+    if stored_version != current_version {
+        set_user_version(connection, current_version)?;
+    }
+
+    // Migration 001: initialize schema.
+    if current_version < 1 {
+        if !has_table(connection, "prompts")? {
+            connection.execute_batch(MIGRATION_001)?;
+        }
+        set_user_version(connection, 1)?;
+        current_version = 1;
+    }
+
+    // Migration 002: category + indexes.
+    if current_version < 2 {
+        if !has_column(connection, "prompts", "category")? {
+            connection.execute_batch(MIGRATION_002_CATEGORY)?;
+        }
+        connection.execute_batch(MIGRATION_002_INDEXES)?;
+        set_user_version(connection, 2)?;
+        current_version = 2;
+    }
+
+    // Migration 003: format support.
+    if current_version < 3 {
+        if !has_column(connection, "prompt_versions", "format")? {
+            connection.execute_batch(MIGRATION_003_FORMAT)?;
+        }
+        set_user_version(connection, 3)?;
+        current_version = 3;
+    }
+
+    // Migration 004: soft delete.
+    if current_version < 4 {
+        if !has_column(connection, "prompts", "deleted_at")? {
+            connection.execute_batch(MIGRATION_004_SOFT_DELETE)?;
+        }
+        set_user_version(connection, 4)?;
+        current_version = 4;
+    }
+
+    // Migration 005: favorite + rating.
+    if current_version < 5 {
+        if !has_column(connection, "prompts", "is_favorite")? {
+            connection.execute(
+                "ALTER TABLE prompts ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+        }
+
+        if !has_column(connection, "prompts", "rating")? {
+            connection.execute("ALTER TABLE prompts ADD COLUMN rating INTEGER", [])?;
+        }
+
+        set_user_version(connection, 5)?;
     }
 
     Ok(())

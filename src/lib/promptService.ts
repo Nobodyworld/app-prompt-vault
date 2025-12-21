@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { Prompt } from "../domain/models.js";
 import {
@@ -59,9 +58,7 @@ function getDefaultDatabasePath(): string {
     return envPath;
   }
 
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  return path.resolve(__dirname, "prompt-vault.db");
+  return path.resolve(process.cwd(), "prompt-vault.db");
 }
 
 function getService(): PromptVaultService {

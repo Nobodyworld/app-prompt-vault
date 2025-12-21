@@ -14,6 +14,57 @@ import type {
 
 type ApiTag = string | { id?: string; label?: string };
 
+type ApiErrorEnvelope = {
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+};
+
+type ApiSuccessEnvelope<T> = {
+  data: T;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function isErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
+  if (!isRecord(value)) return false;
+  if (!isRecord(value.error)) return false;
+  return typeof value.error.code === "string" &&
+    typeof value.error.message === "string";
+}
+
+export function unwrapApiEnvelope<T>(payload: unknown): T {
+  if (!isRecord(payload) || !("data" in payload)) {
+    throw new Error("Invalid API response: missing data envelope");
+  }
+  return (payload as ApiSuccessEnvelope<T>).data;
+}
+
+class PromptVaultApiError extends Error {
+  public readonly code: string;
+
+  public readonly status: number;
+
+  public readonly details?: unknown;
+
+  public constructor(input: {
+    code: string;
+    message: string;
+    status: number;
+    details?: unknown;
+  }) {
+    super(input.message);
+    this.name = "PromptVaultApiError";
+    this.code = input.code;
+    this.status = input.status;
+    this.details = input.details;
+  }
+}
+
 function normalizeTags(tags: unknown): string[] {
   if (!Array.isArray(tags)) return [];
   const labels = tags
@@ -99,13 +150,26 @@ async function browserApiCall<T>(
     ...options,
   });
 
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.toLowerCase().includes("application/json");
+
   if (!response.ok) {
-    throw new Error(
-      `API call failed: ${response.status} ${response.statusText}`,
-    );
+    if (isJson) {
+      const json = (await response.json().catch(() => undefined)) as unknown;
+      if (isErrorEnvelope(json)) {
+        throw new PromptVaultApiError({
+          code: json.error.code,
+          message: json.error.message,
+          details: json.error.details,
+          status: response.status,
+        });
+      }
+    }
+    throw new Error(`API call failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json();
+  const json = (await response.json()) as unknown;
+  return unwrapApiEnvelope<T>(json);
 }
 
 async function browserApiCallText(
@@ -120,10 +184,22 @@ async function browserApiCallText(
     ...options,
   });
 
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.toLowerCase().includes("application/json");
+
   if (!response.ok) {
-    throw new Error(
-      `API call failed: ${response.status} ${response.statusText}`,
-    );
+    if (isJson) {
+      const json = (await response.json().catch(() => undefined)) as unknown;
+      if (isErrorEnvelope(json)) {
+        throw new PromptVaultApiError({
+          code: json.error.code,
+          message: json.error.message,
+          details: json.error.details,
+          status: response.status,
+        });
+      }
+    }
+    throw new Error(`API call failed: ${response.status} ${response.statusText}`);
   }
 
   return response.text();
@@ -141,10 +217,22 @@ async function browserApiCallVoid(
     ...options,
   });
 
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.toLowerCase().includes("application/json");
+
   if (!response.ok) {
-    throw new Error(
-      `API call failed: ${response.status} ${response.statusText}`,
-    );
+    if (isJson) {
+      const json = (await response.json().catch(() => undefined)) as unknown;
+      if (isErrorEnvelope(json)) {
+        throw new PromptVaultApiError({
+          code: json.error.code,
+          message: json.error.message,
+          details: json.error.details,
+          status: response.status,
+        });
+      }
+    }
+    throw new Error(`API call failed: ${response.status} ${response.statusText}`);
   }
 }
 
@@ -198,9 +286,11 @@ async function trySyncToServer(): Promise<void> {
 
   try {
     // fetch server prompts
-    const srv = await browserApiCall<{ prompts: PromptSummary[] }>("/prompts");
+    const srv = await browserApiCall<{ prompts: unknown[] }>("/prompts");
     const serverBySlug = new Map<string, PromptSummary>();
-    for (const p of srv.prompts) serverBySlug.set(p.slug, p);
+    for (const prompt of srv.prompts.map((raw) => normalizePromptSummary(raw))) {
+      serverBySlug.set(prompt.slug, prompt);
+    }
 
     // iterate local prompts and push to server
     for (const localPrompt of [...inMemoryStore.prompts]) {
@@ -221,7 +311,7 @@ async function trySyncToServer(): Promise<void> {
             semanticVersion: localLatest?.semanticVersion || "1.0.0",
             tags: localPrompt.tags || [],
           };
-          await browserApiCall<{ prompt: PromptSummary }>("/prompts", {
+          await browserApiCall<{ prompt: unknown }>("/prompts", {
             method: "POST",
             body: JSON.stringify(createPayload),
           });
@@ -285,7 +375,7 @@ function startBackgroundPoll(): void {
   // quick check to set initial fallback state
   (async () => {
     try {
-      await browserApiCall<{ prompts: PromptSummary[] }>("/prompts");
+      await browserApiCall<{ prompts: unknown[] }>("/prompts");
       // server reachable
       notifyFallback(false);
     } catch (err) {
@@ -297,7 +387,7 @@ function startBackgroundPoll(): void {
 
   setInterval(async () => {
     try {
-      await browserApiCall<{ prompts: PromptSummary[] }>("/prompts");
+      await browserApiCall<{ prompts: unknown[] }>("/prompts");
       // server reachable — attempt sync if we were in fallback mode
       if (fallbackActive) {
         await trySyncToServer();
@@ -604,14 +694,14 @@ export async function createPrompt(
     return response.prompt;
   } else {
     try {
-      const response = await browserApiCall<{ prompt: PromptSummary }>(
+      const response = await browserApiCall<{ prompt: unknown }>(
         "/prompts",
         {
           method: "POST",
           body: JSON.stringify(input),
         },
       );
-      return response.prompt;
+      return normalizePromptSummary(response.prompt);
     } catch (err: unknown) {
       console.warn(
         "createPrompt: HTTP API failed, creating prompt in-memory",
@@ -669,14 +759,14 @@ export async function updatePrompt(
     return response.prompt;
   } else {
     try {
-      const response = await browserApiCall<{ prompt: PromptSummary }>(
+      const response = await browserApiCall<{ prompt: unknown }>(
         `/prompts/${input.id}`,
         {
           method: "PUT",
           body: JSON.stringify(input),
         },
       );
-      return response.prompt;
+      return normalizePromptSummary(response.prompt);
     } catch (err: unknown) {
       console.warn("updatePrompt: HTTP API failed, updating in-memory", err);
       return updatePromptInMemory(input);

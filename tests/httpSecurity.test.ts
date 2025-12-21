@@ -93,9 +93,15 @@ async function withSecureServer(
   );
 
   app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
-    response
-      .status(500)
-      .json({ error: error instanceof Error ? error.message : String(error), requestId: response.locals.requestId });
+    response.status(500).json({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: error instanceof Error ? error.message : String(error),
+        details: {
+          requestId: response.locals.requestId,
+        },
+      },
+    });
   });
 
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
@@ -130,8 +136,8 @@ describe("HTTP security middleware", () => {
 
       expect(response.status).toBe(401);
       const payload = await response.json();
-      expect(payload.error).toBe("Unauthorized");
-      expect(payload.message).toContain("Authentication required");
+      expect(payload.error.code).toBe("UNAUTHORIZED");
+      expect(payload.error.message).toContain("Authentication required");
     });
   });
 
@@ -153,8 +159,8 @@ describe("HTTP security middleware", () => {
 
       expect(response.status).toBe(201);
       const payload = await response.json();
-      expect(payload.prompt.slug).toBeDefined();
-      expect(payload.prompt.latestVersion.semanticVersion).toBe("1.0.0");
+      expect(payload.data.prompt.slug).toBeDefined();
+      expect(payload.data.prompt.latestVersion.semanticVersion).toBe("1.0.0");
     });
   });
 
@@ -178,8 +184,8 @@ describe("HTTP security middleware", () => {
 
       expect(response.status).toBe(201);
       const payload = await response.json();
-      expect(payload.prompt.slug).toBeDefined();
-      expect(payload.prompt.latestVersion.semanticVersion).toBe("1.0.0");
+      expect(payload.data.prompt.slug).toBeDefined();
+      expect(payload.data.prompt.latestVersion.semanticVersion).toBe("1.0.0");
     });
   });
 
@@ -206,7 +212,7 @@ describe("HTTP security middleware", () => {
 
         expect(response.status).toBe(401);
         const payload = await response.json();
-        expect(payload.error).toBe("Unauthorized");
+        expect(payload.error.code).toBe("UNAUTHORIZED");
       },
       { jwtExpiresIn: "1s" }
     );
@@ -225,7 +231,7 @@ describe("HTTP security middleware", () => {
       const third = await fetch(`${baseUrl}/api/prompts`, { headers });
       expect(third.status).toBe(429);
       const payload = await third.json();
-      expect(payload.error).toBe("Too Many Requests");
+      expect(payload.error.code).toBe("RATE_LIMITED");
       expect(third.headers.get("retry-after")).toBeTruthy();
     });
   });
@@ -241,11 +247,11 @@ describe("HTTP security middleware", () => {
 
         expect(tokenResponse.status).toBe(201);
         const payload = await tokenResponse.json();
-        expect(typeof payload.token).toBe("string");
+        expect(typeof payload.data.token).toBe("string");
 
         const response = await fetch(`${baseUrl}/api/prompts`, {
           headers: {
-            authorization: `Bearer ${payload.token}`,
+            authorization: `Bearer ${payload.data.token}`,
           },
         });
 

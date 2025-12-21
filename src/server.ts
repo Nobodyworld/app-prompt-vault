@@ -92,7 +92,7 @@ function parseLevelFilter(raw: unknown): {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const defaultDbPath =
-  process.env.PROMPT_VAULT_DB_PATH ?? resolve(__dirname, "prompt-vault.db");
+  process.env.PROMPT_VAULT_DB_PATH ?? resolve(process.cwd(), "prompt-vault.db");
 const defaultStaticDir = resolve(__dirname, "desktop", "dist");
 
 let loadedConfig: LoadConfigResult;
@@ -304,7 +304,16 @@ app.use(
         requestId: response.locals.requestId,
         traceId: response.locals.traceId,
       });
-      response.status(400).json({ error: "Malformed JSON payload" });
+      response.status(400).json({
+        error: {
+          code: "BAD_REQUEST",
+          message: "Malformed JSON payload",
+          details: {
+            requestId: response.locals.requestId,
+            traceId: response.locals.traceId,
+          },
+        },
+      });
       return;
     }
     next(error);
@@ -411,11 +420,20 @@ logsRouter.get("/", (request, response) => {
 
   const { levels, error: levelError } = parseLevelFilter(parsed.data.level);
   if (levelError) {
-    response.status(400).json({ error: levelError });
+    response.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: levelError,
+        details: {
+          requestId: response.locals.requestId,
+          traceId: response.locals.traceId,
+        },
+      },
+    });
     return;
   }
 
-  response.json({ logs: getRecentLogs(parsed.data.limit, levels) });
+  response.json({ data: { logs: getRecentLogs(parsed.data.limit, levels) } });
 });
 
 app.use("/logs", logsRouter);
@@ -440,9 +458,14 @@ const errorHandler: ErrorRequestHandler = (error, request, response, _next) => {
     traceId: response.locals.traceId,
   });
   response.status(500).json({
-    error: "Internal Server Error",
-    requestId: response.locals.requestId,
-    traceId: response.locals.traceId,
+    error: {
+      code: "INTERNAL_ERROR",
+      message: "Internal Server Error",
+      details: {
+        requestId: response.locals.requestId,
+        traceId: response.locals.traceId,
+      },
+    },
   });
 };
 

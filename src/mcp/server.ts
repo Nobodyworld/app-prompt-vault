@@ -14,8 +14,6 @@ import {
 import type { Prompt, PromptFormat } from "../domain/models.js";
 import Database from "better-sqlite3";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
 import fs from "fs/promises";
 import path from "path";
 import { exec } from "child_process";
@@ -25,9 +23,7 @@ import { createLogger } from "../lib/platform-core.js";
 
 const execAsync = promisify(exec);
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const defaultDbPath = resolve(__dirname, "..", "..", "prompt-vault.db");
+const defaultDbPath = resolve(process.cwd(), "prompt-vault.db");
 const bootstrapLogger = createLogger({
   context: { app: "prompt-vault", module: "mcp-server" },
 });

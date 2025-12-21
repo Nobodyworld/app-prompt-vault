@@ -24,7 +24,13 @@ async function withServer(
   app.use(express.json());
   app.use((error: unknown, _request: Request, response: Response, next: NextFunction) => {
     if (error instanceof SyntaxError) {
-      response.status(400).json({ error: "Malformed JSON payload", requestId: response.locals.requestId });
+      response.status(400).json({
+        error: {
+          code: "BAD_REQUEST",
+          message: "Malformed JSON payload",
+          details: { requestId: response.locals.requestId },
+        },
+      });
       return;
     }
     next(error);
@@ -33,7 +39,13 @@ async function withServer(
   app.use((error: unknown, _request: Request, response: Response) => {
     response
       .status(500)
-      .json({ error: error instanceof Error ? error.message : String(error), requestId: response.locals.requestId });
+      .json({
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error instanceof Error ? error.message : String(error),
+          details: { requestId: response.locals.requestId },
+        },
+      });
   });
 
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
@@ -67,7 +79,7 @@ describe("HTTP router", () => {
       });
       expect(createResponse.status).toBe(201);
       const created = await createResponse.json();
-      const promptId = created.prompt.id as string;
+      const promptId = created.data.prompt.id as string;
 
       const versionResponse = await fetch(`${baseUrl}/api/prompts/${promptId}/versions`, {
         method: "POST",
@@ -76,20 +88,20 @@ describe("HTTP router", () => {
       });
       expect(versionResponse.status).toBe(201);
       const versionPayload = await versionResponse.json();
-      expect(versionPayload.version.semanticVersion).toBe("1.0.1");
+      expect(versionPayload.data.version.semanticVersion).toBe("1.0.1");
 
       const getResponse = await fetch(`${baseUrl}/api/prompts/${promptId}`);
       expect(getResponse.status).toBe(200);
       const fetched = await getResponse.json();
-      expect(fetched.prompt.slug).toBe(created.prompt.slug);
-      expect(fetched.prompt.tags).toHaveLength(1);
-      expect(fetched.prompt.latestVersion.semanticVersion).toBe("1.0.1");
+      expect(fetched.data.prompt.slug).toBe(created.data.prompt.slug);
+      expect(fetched.data.prompt.tags).toHaveLength(1);
+      expect(fetched.data.prompt.latestVersion.semanticVersion).toBe("1.0.1");
 
       const listResponse = await fetch(`${baseUrl}/api/prompts?page=0&pageSize=5&tags=alpha`);
       expect(listResponse.status).toBe(200);
       const listPayload = await listResponse.json();
-      expect(listPayload.pagination.total).toBeGreaterThanOrEqual(1);
-      expect(listPayload.prompts[0].slug).toBe(created.prompt.slug);
+      expect(listPayload.data.pagination.total).toBeGreaterThanOrEqual(1);
+      expect(listPayload.data.prompts[0].slug).toBe(created.data.prompt.slug);
     });
   });
 
@@ -110,7 +122,7 @@ describe("HTTP router", () => {
       });
       expect(createResponse.status).toBe(201);
       const created = await createResponse.json();
-      const promptId = created.prompt.id as string;
+      const promptId = created.data.prompt.id as string;
 
       // Update the prompt
       const updateResponse = await fetch(`${baseUrl}/api/prompts/${promptId}`, {
@@ -124,14 +136,14 @@ describe("HTTP router", () => {
       });
       expect(updateResponse.status).toBe(200);
       const updated = await updateResponse.json();
-      expect(updated.prompt.title).toBe("Updated Title");
-      expect(updated.prompt.description).toBe("Updated description");
-      expect(updated.prompt.tags.map((t: { label: string }) => t.label).sort()).toEqual(["new-tag", "updated"]);
+      expect(updated.data.prompt.title).toBe("Updated Title");
+      expect(updated.data.prompt.description).toBe("Updated description");
+      expect(updated.data.prompt.tags.map((t: { label: string }) => t.label).sort()).toEqual(["new-tag", "updated"]);
 
       // Verify the update persisted
       const getResponse = await fetch(`${baseUrl}/api/prompts/${promptId}`);
       const fetched = await getResponse.json();
-      expect(fetched.prompt.title).toBe("Updated Title");
+      expect(fetched.data.prompt.title).toBe("Updated Title");
     });
   });
 
@@ -144,8 +156,9 @@ describe("HTTP router", () => {
       });
       expect(response.status).toBe(400);
       const payload = await response.json();
-      expect(payload.error).toBe("Request validation failed");
-      expect(payload.requestId).toBeDefined();
+      expect(payload.error.code).toBe("VALIDATION_ERROR");
+      expect(payload.error.message).toBe("Request validation failed");
+      expect(payload.error.details.requestId).toBeDefined();
     });
   });
 
@@ -163,7 +176,7 @@ describe("HTTP router", () => {
         }),
       });
       const created = await createResponse.json();
-      const promptId = created.prompt.id as string;
+      const promptId = created.data.prompt.id as string;
 
       const tagResponse = await fetch(`${baseUrl}/api/prompts/${promptId}/tags`, {
         method: "POST",
@@ -172,7 +185,7 @@ describe("HTTP router", () => {
       });
       expect(tagResponse.status).toBe(200);
       const tagged = await tagResponse.json();
-      expect(tagged.data.tags.map((tag: { label: string }) => tag.label)).toEqual(["alpha", "beta", "gamma"]);
+      expect(tagged.data.prompt.tags.map((tag: { label: string }) => tag.label)).toEqual(["alpha", "beta", "gamma"]);
 
       const untagResponse = await fetch(`${baseUrl}/api/prompts/${promptId}/tags`, {
         method: "DELETE",
@@ -181,7 +194,7 @@ describe("HTTP router", () => {
       });
       expect(untagResponse.status).toBe(200);
       const untagged = await untagResponse.json();
-      expect(untagged.data.tags.map((tag: { label: string }) => tag.label)).toEqual(["alpha", "gamma"]);
+      expect(untagged.data.prompt.tags.map((tag: { label: string }) => tag.label)).toEqual(["alpha", "gamma"]);
     });
   });
 
@@ -190,7 +203,8 @@ describe("HTTP router", () => {
       const response = await fetch(`${baseUrl}/api/prompts/${randomUUID()}`);
       expect(response.status).toBe(404);
       const payload = await response.json();
-      expect(payload.requestId).toBeDefined();
+      expect(payload.error.code).toBe("NOT_FOUND");
+      expect(payload.error.details.requestId).toBeDefined();
     });
   });
 
@@ -203,9 +217,10 @@ describe("HTTP router", () => {
       });
       expect(response.status).toBe(400);
       const payload = await response.json();
-      expect(payload.error).toBe("Malformed JSON payload");
-      expect(payload.requestId).toBeDefined();
-      expect(response.headers.get("x-request-id")).toBe(payload.requestId);
+      expect(payload.error.code).toBe("BAD_REQUEST");
+      expect(payload.error.message).toBe("Malformed JSON payload");
+      expect(payload.error.details.requestId).toBeDefined();
+      expect(response.headers.get("x-request-id")).toBe(payload.error.details.requestId);
     });
   });
 
@@ -214,7 +229,8 @@ describe("HTTP router", () => {
       const response = await fetch(`${baseUrl}/api/prompts/not-a-uuid`);
       expect(response.status).toBe(400);
       const payload = await response.json();
-      expect(payload.error).toBe("Request validation failed");
+      expect(payload.error.code).toBe("VALIDATION_ERROR");
+      expect(payload.error.message).toBe("Request validation failed");
     });
   });
 });

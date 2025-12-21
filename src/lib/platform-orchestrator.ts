@@ -1,6 +1,11 @@
 // App-local adapter for orchestrator SDK imports.
 
-export { registerTool } from "@nw/orchestrator-sdk";
+import * as orchestratorSdk from "@nw/orchestrator-sdk";
+
+export const registerTool =
+  (orchestratorSdk as any).registerTool ??
+  (orchestratorSdk as any).default?.registerTool;
+
 export type {
   ToolDefinition,
   ToolHandler,

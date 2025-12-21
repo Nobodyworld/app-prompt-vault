@@ -192,9 +192,21 @@ export function createRateLimitMiddleware(
       }
 
       response.status(429).json({
-        error: "Too Many Requests",
-        message: `Rate limit exceeded. Maximum ${maxRequests} requests per ${windowMs / 1000} seconds.`,
-        retryAfter,
+        error: {
+          code: "RATE_LIMITED",
+          message: `Rate limit exceeded. Maximum ${maxRequests} requests per ${windowMs / 1000} seconds.`,
+          details: {
+            requestId:
+              typeof response.locals.requestId === "string"
+                ? (response.locals.requestId as string)
+                : undefined,
+            traceId:
+              typeof response.locals.traceId === "string"
+                ? (response.locals.traceId as string)
+                : undefined,
+            retryAfter,
+          },
+        },
       });
       return;
     }

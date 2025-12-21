@@ -160,14 +160,14 @@ export function createPromptVaultRouter(
       deletedAt: prompt.deletedAt,
       latestVersion: prompt.latestVersion
         ? {
-            id: prompt.latestVersion.id,
-            semanticVersion: prompt.latestVersion.semanticVersion,
-            body: prompt.latestVersion.body,
-            format: prompt.latestVersion.format,
-            changelog: prompt.latestVersion.changelog,
-            createdAt: prompt.latestVersion.createdAt,
-            updatedAt: prompt.latestVersion.updatedAt,
-          }
+          id: prompt.latestVersion.id,
+          semanticVersion: prompt.latestVersion.semanticVersion,
+          body: prompt.latestVersion.body,
+          format: prompt.latestVersion.format,
+          changelog: prompt.latestVersion.changelog,
+          createdAt: prompt.latestVersion.createdAt,
+          updatedAt: prompt.latestVersion.updatedAt,
+        }
         : undefined,
     };
   }
@@ -199,11 +199,13 @@ export function createPromptVaultRouter(
       });
 
       response.json({
-        prompts: result.prompts.map(mapPromptToResponse),
-        pagination: {
-          page: result.page,
-          pageSize: result.pageSize,
-          total: result.total,
+        data: {
+          prompts: result.prompts.map(mapPromptToResponse),
+          pagination: {
+            page: result.page,
+            pageSize: result.pageSize,
+            total: result.total,
+          },
         },
       });
     }),
@@ -254,7 +256,12 @@ export function createPromptVaultRouter(
         .parse(request.body);
 
       const result = await service.importPromptBundle(payload);
-      response.json({ result });
+      response.json({
+        data: {
+          imported: result.created + result.updated,
+          skipped: result.skipped,
+        },
+      });
     }),
   );
 
@@ -263,7 +270,7 @@ export function createPromptVaultRouter(
     asyncHandler("get-prompt", async (request, response) => {
       const { promptId } = promptIdParamSchema.parse(request.params);
       const prompt = await service.getPrompt(promptId);
-      response.json({ prompt: mapPromptToResponse(prompt) });
+      response.json({ data: { prompt: mapPromptToResponse(prompt) } });
     }),
   );
 
@@ -272,7 +279,7 @@ export function createPromptVaultRouter(
     asyncHandler("list-prompt-versions", async (request, response) => {
       const { promptId } = promptIdParamSchema.parse(request.params);
       const versions = service.listPromptVersions(promptId);
-      response.json({ versions: versions.map(mapVersionToResponse) });
+      response.json({ data: { versions: versions.map(mapVersionToResponse) } });
     }),
   );
 
@@ -292,7 +299,9 @@ export function createPromptVaultRouter(
           },
         },
       );
-      response.status(201).json({ prompt: mapPromptToResponse(prompt) });
+      response
+        .status(201)
+        .json({ data: { prompt: mapPromptToResponse(prompt) } });
     }),
   );
 
@@ -332,7 +341,7 @@ export function createPromptVaultRouter(
           requestId: response.locals?.requestId,
         },
       });
-      response.json({ prompt: mapPromptToResponse(prompt) });
+      response.json({ data: { prompt: mapPromptToResponse(prompt) } });
     }),
   );
 
@@ -348,7 +357,9 @@ export function createPromptVaultRouter(
         payload.format,
         payload.changelog,
       );
-      response.status(201).json({ version });
+      response
+        .status(201)
+        .json({ data: { version: mapVersionToResponse(version) } });
     }),
   );
 
@@ -357,14 +368,7 @@ export function createPromptVaultRouter(
     asyncHandler("list-versions", async (request, response) => {
       const { promptId } = promptIdParamSchema.parse(request.params);
       const versions = service.listPromptVersions(promptId);
-      response.json({
-        versions: versions.map((version) => ({
-          id: version.id,
-          semanticVersion: version.semanticVersion,
-          updatedAt: version.updatedAt,
-          body: version.body,
-        })),
-      });
+      response.json({ data: { versions: versions.map(mapVersionToResponse) } });
     }),
   );
 
@@ -401,7 +405,6 @@ export function createPromptVaultRouter(
         payload.variables ?? {},
       );
       response.json({
-        success: true,
         data: {
           rendered: result.rendered,
           requiredVariables: result.requiredVariables,
@@ -418,7 +421,7 @@ export function createPromptVaultRouter(
       const { promptId } = promptIdParamSchema.parse(request.params);
       await service.tagPrompt(promptId, payload.tags);
       const prompt = await service.getPrompt(promptId);
-      response.json({ data: mapPromptToResponse(prompt) });
+      response.json({ data: { prompt: mapPromptToResponse(prompt) } });
     }),
   );
 
@@ -429,7 +432,7 @@ export function createPromptVaultRouter(
       const { promptId } = promptIdParamSchema.parse(request.params);
       await service.untagPrompt(promptId, payload.tags);
       const prompt = await service.getPrompt(promptId);
-      response.json({ data: mapPromptToResponse(prompt) });
+      response.json({ data: { prompt: mapPromptToResponse(prompt) } });
     }),
   );
 
@@ -438,7 +441,7 @@ export function createPromptVaultRouter(
       error: unknown,
       request: Parameters<RequestHandler>[0],
       response: Response,
-      next: NextFunction,
+      _next: NextFunction,
     ) => {
       const requestId = response.locals?.requestId;
       const traceId = response.locals?.traceId;
@@ -448,21 +451,38 @@ export function createPromptVaultRouter(
             ? error.issues
             : error.issues.map((issue) => issue.message);
         response.status(400).json({
-          error: "Request validation failed",
-          details: issues,
-          requestId,
-          traceId,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Request validation failed",
+            details: {
+              issues,
+              requestId,
+              traceId,
+            },
+          },
         });
         return;
       }
 
       if (error instanceof PromptNotFoundError) {
-        response.status(404).json({ error: error.message, requestId, traceId });
+        response.status(404).json({
+          error: {
+            code: "NOT_FOUND",
+            message: error.message,
+            details: { requestId, traceId },
+          },
+        });
         return;
       }
 
       if (error instanceof DuplicatePromptError) {
-        response.status(409).json({ error: error.message, requestId, traceId });
+        response.status(409).json({
+          error: {
+            code: "CONFLICT",
+            message: error.message,
+            details: { requestId, traceId },
+          },
+        });
         return;
       }
 
@@ -478,7 +498,13 @@ export function createPromptVaultRouter(
         path: request.path,
       });
 
-      next(error);
+      response.status(500).json({
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Internal Server Error",
+          details: { requestId, traceId },
+        },
+      });
     },
   );
 

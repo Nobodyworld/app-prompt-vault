@@ -38,8 +38,7 @@
  */
 
 import { Command } from "commander";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import Database from "better-sqlite3";
 import chalk from "chalk";
 import { randomUUID } from "node:crypto";
@@ -57,12 +56,10 @@ import path from "path";
 const program = new Command();
 
 /**
- * Default database path resolution relative to the CLI script location.
- * Points to 'prompt-vault.db' in the project root directory.
+ * Default database path resolution relative to the current working directory.
+ * Points to 'prompt-vault.db' in the current working directory.
  */
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const defaultDbPath = resolve(__dirname, "..", "..", "prompt-vault.db");
+const defaultDbPath = resolve(process.cwd(), "prompt-vault.db");
 
 /**
  * Global observability setup for the CLI application.
@@ -425,9 +422,9 @@ program
     await useService(options.db, async (service) => {
       const tags = options.tags
         ? (options.tags as string)
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
         : [];
 
       const prompt = await service.createPrompt({
@@ -464,15 +461,15 @@ program
     await useService(options.db, async (service) => {
       const tags = options.tags
         ? (options.tags as string)
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
         : undefined;
       const formats = options.formats
         ? ((options.formats as string)
-            .split(",")
-            .map((format) => format.trim())
-            .filter(Boolean) as ("markdown" | "yaml" | "json")[])
+          .split(",")
+          .map((format) => format.trim())
+          .filter(Boolean) as ("markdown" | "yaml" | "json")[])
         : undefined;
       const result = await service.searchPrompts({
         text: options.text,
@@ -530,9 +527,9 @@ program
       const tags = parseTags(options.tags);
       const formats = options.formats
         ? ((options.formats as string)
-            .split(",")
-            .map((format) => format.trim())
-            .filter(Boolean) as ("markdown" | "yaml" | "json")[])
+          .split(",")
+          .map((format) => format.trim())
+          .filter(Boolean) as ("markdown" | "yaml" | "json")[])
         : undefined;
 
       const result = await service.advancedSearchPrompts({
@@ -693,9 +690,9 @@ program
     await useService(options.db, async (service) => {
       const tags = options.tags
         ? (options.tags as string)
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
         : [];
 
       const prompt = await service.importPromptFromFile(options.file, {
@@ -768,9 +765,9 @@ program
         .filter(Boolean);
       const tags = options.tags
         ? (options.tags as string)
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
         : [];
 
       console.log(chalk.blue(`Importing ${filePaths.length} files...`));

@@ -12,6 +12,18 @@ import {
 import type { StructuredLogger } from "../observability/logger.js";
 import { createEndpointRateLimiter } from "./rate-limit.js";
 
+function getErrorDetails(response: Response): { requestId?: string; traceId?: string } {
+  const requestId =
+    typeof response.locals.requestId === "string"
+      ? (response.locals.requestId as string)
+      : undefined;
+  const traceId =
+    typeof response.locals.traceId === "string"
+      ? (response.locals.traceId as string)
+      : undefined;
+  return { requestId, traceId };
+}
+
 export interface AuthConfig {
   /**
    * JWT expiration time (e.g., "1h", "7d", "30d").
@@ -267,8 +279,14 @@ export function createAuthRouter(options: {
 
     if (!parsed.success) {
       response.status(400).json({
-        error: "Request validation failed",
-        details: parsed.error.issues.map((issue) => issue.message),
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+          details: {
+            ...getErrorDetails(response),
+            issues: parsed.error.issues.map((issue) => issue.message),
+          },
+        },
       });
       return;
     }
@@ -278,8 +296,11 @@ export function createAuthRouter(options: {
 
     if (!apiKey) {
       response.status(401).json({
-        error: "Unauthorized",
-        message: "API key is required to obtain a token",
+        error: {
+          code: "UNAUTHORIZED",
+          message: "API key is required to obtain a token",
+          details: getErrorDetails(response),
+        },
       });
       return;
     }
@@ -319,8 +340,11 @@ export function createAuthRouter(options: {
 
     if (!tokenPayload) {
       response.status(401).json({
-        error: "Unauthorized",
-        message: "Invalid API key",
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Invalid API key",
+          details: getErrorDetails(response),
+        },
       });
       return;
     }
@@ -335,9 +359,11 @@ export function createAuthRouter(options: {
     });
 
     response.status(201).json({
-      token,
-      tokenType: "Bearer",
-      expiresInSeconds: ttlSeconds,
+      data: {
+        token,
+        tokenType: "Bearer",
+        expiresInSeconds: ttlSeconds,
+      },
     });
   });
 
@@ -388,8 +414,11 @@ export function createAuthMiddleware(options: {
         });
 
         response.status(403).json({
-          error: "Forbidden",
-          message: "API access is restricted to localhost only",
+          error: {
+            code: "FORBIDDEN",
+            message: "API access is restricted to localhost only",
+            details: getErrorDetails(response),
+          },
         });
         return;
       }
@@ -510,9 +539,12 @@ export function createAuthMiddleware(options: {
       });
 
       response.status(401).json({
-        error: "Unauthorized",
-        message:
-          "Authentication required. Provide a valid Bearer token or X-API-Key header.",
+        error: {
+          code: "UNAUTHORIZED",
+          message:
+            "Authentication required. Provide a valid Bearer token or X-API-Key header.",
+          details: getErrorDetails(response),
+        },
       });
       return;
     }
@@ -554,8 +586,11 @@ export function requireAuth(
 
     if (!response.locals.authenticated) {
       response.status(401).json({
-        error: "Unauthorized",
-        message: "Authentication required",
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Authentication required",
+          details: getErrorDetails(response),
+        },
       });
       return;
     }
@@ -569,8 +604,11 @@ export function requireAuth(
 
       if (!hasRequiredRole) {
         response.status(403).json({
-          error: "Forbidden",
-          message: `Access denied. Required roles: ${options.roles.join(", ")}`,
+          error: {
+            code: "FORBIDDEN",
+            message: `Access denied. Required roles: ${options.roles.join(", ")}`,
+            details: getErrorDetails(response),
+          },
         });
         return;
       }
@@ -589,8 +627,11 @@ export function requireAuth(
       );
       if (!hasAll) {
         response.status(403).json({
-          error: "Forbidden",
-          message: `Access denied. Missing required scopes: ${options.scopes.join(", ")}`,
+          error: {
+            code: "FORBIDDEN",
+            message: `Access denied. Missing required scopes: ${options.scopes.join(", ")}`,
+            details: getErrorDetails(response),
+          },
         });
         return;
       }

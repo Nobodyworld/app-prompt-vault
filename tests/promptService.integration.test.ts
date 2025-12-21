@@ -102,13 +102,13 @@ describe("promptService facade", () => {
     });
 
     expect(serviceStub.createPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      tags: ["t1", "t2"]
+      tags: ["t1", "t2"],
+      projectTagId: "project-demo-project",
     }));
     expect(created.id).toEqual(mockPrompt.id);
 
     expect(tagsProjects.getProjectTagBySlug).toHaveBeenCalledWith("demo-project");
     expect(tagsProjects.createProjectTag).toHaveBeenCalled();
-    expect(tagsProjects.tagPrompt).toHaveBeenCalledWith(mockPrompt.id, "project-demo-project");
   });
 
   it("updates prompt metadata and content when provided", async () => {
