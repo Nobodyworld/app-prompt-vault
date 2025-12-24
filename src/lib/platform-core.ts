@@ -10,25 +10,29 @@ import * as pagesWidgetsModule from "@nw/pages-widgets";
 import * as coreDbModule from "@nw/core-db";
 import * as tagsProjectsModule from "@nw/tags-projects";
 
+export type { LogEntry, LogLevel } from "@nw/logging";
+
 export type { PlatformEventMap } from "@nw/event-bus";
 
-type CreateLoggerFn = (typeof import("@nw/logging"))["createLogger"];
-type GetEventBusFn = (typeof import("@nw/event-bus"))["getEventBus"];
-type RegisterWidgetsFn = (typeof import("@nw/pages-widgets"))["registerWidgets"];
+type CreateLoggerFn = typeof loggingModule.createLogger;
+type GetRecentLogsFn = typeof loggingModule.getRecentLogs;
+type GetEventBusFn = typeof eventBusModule.getEventBus;
+type RegisterWidgetsFn = typeof pagesWidgetsModule.registerWidgets;
 
-type ResetCoreDbFn = (typeof import("@nw/core-db"))["resetCoreDb"];
-type VerifyCoreDbApiKeyFn = (typeof import("@nw/core-db"))["verifyCoreDbApiKey"];
-type VerifyCoreDbSessionTokenFn = (typeof import("@nw/core-db"))["verifyCoreDbSessionToken"];
+type ResetCoreDbFn = typeof coreDbModule.resetCoreDb;
+type VerifyCoreDbApiKeyFn = typeof coreDbModule.verifyCoreDbApiKey;
+type VerifyCoreDbSessionTokenFn = typeof coreDbModule.verifyCoreDbSessionToken;
+type BootstrapCoreDbAuthFromApiKeysFn = typeof coreDbModule.bootstrapCoreDbAuthFromApiKeys;
 
-type CreateProjectTagFn = (typeof import("@nw/tags-projects"))["createProjectTag"];
-type GetProjectTagBySlugFn = (typeof import("@nw/tags-projects"))["getProjectTagBySlug"];
-type CreateSharedTagFn = (typeof import("@nw/tags-projects"))["createTag"];
-type GetTagByIdFn = (typeof import("@nw/tags-projects"))["getTagById"];
-type ListSharedTagsFn = (typeof import("@nw/tags-projects"))["listTags"];
-type ListSharedTagsForEntityFn = (typeof import("@nw/tags-projects"))["listTagsForEntity"];
-type TagSharedPromptFn = (typeof import("@nw/tags-projects"))["tagPrompt"];
-type UntagSharedPromptFn = (typeof import("@nw/tags-projects"))["untagPrompt"];
-type ListSharedEntitiesByTagsFn = (typeof import("@nw/tags-projects"))["listEntitiesByTags"];
+type CreateProjectTagFn = typeof tagsProjectsModule.createProjectTag;
+type GetProjectTagBySlugFn = typeof tagsProjectsModule.getProjectTagBySlug;
+type CreateSharedTagFn = typeof tagsProjectsModule.createTag;
+type GetTagByIdFn = typeof tagsProjectsModule.getTagById;
+type ListSharedTagsFn = typeof tagsProjectsModule.listTags;
+type ListSharedTagsForEntityFn = typeof tagsProjectsModule.listTagsForEntity;
+type TagSharedPromptFn = typeof tagsProjectsModule.tagPrompt;
+type UntagSharedPromptFn = typeof tagsProjectsModule.untagPrompt;
+type ListSharedEntitiesByTagsFn = typeof tagsProjectsModule.listEntitiesByTags;
 
 type SecretsModuleShape = {
   getSecret?: (...args: any[]) => any;
@@ -69,6 +73,12 @@ export const createLogger = pickFunction(
   "createLogger",
   "@nw/logging",
 ) as unknown as CreateLoggerFn;
+
+export const getRecentLogs = pickFunction(
+  loggingModule as any,
+  "getRecentLogs",
+  "@nw/logging",
+) as unknown as GetRecentLogsFn;
 
 export const getEventBus = pickFunction(
   eventBusModule as any,
@@ -124,6 +134,12 @@ export const verifyCoreDbSessionToken = pickFunction(
   "verifyCoreDbSessionToken",
   "@nw/core-db",
 ) as unknown as VerifyCoreDbSessionTokenFn;
+
+export const bootstrapCoreDbAuthFromApiKeys = pickFunction(
+  coreDbModule as any,
+  "bootstrapCoreDbAuthFromApiKeys",
+  "@nw/core-db",
+) as unknown as BootstrapCoreDbAuthFromApiKeysFn;
 
 // NOTE: @nw/core-db exposes async WebCrypto-based integrity helpers. Prompt Vault
 // repository code is intentionally synchronous (better-sqlite3 transactions), so

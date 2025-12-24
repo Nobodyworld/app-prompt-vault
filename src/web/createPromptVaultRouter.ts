@@ -441,7 +441,7 @@ export function createPromptVaultRouter(
       error: unknown,
       request: Parameters<RequestHandler>[0],
       response: Response,
-      _next: NextFunction,
+      next: NextFunction,
     ) => {
       const requestId = response.locals?.requestId;
       const traceId = response.locals?.traceId;
@@ -505,6 +505,8 @@ export function createPromptVaultRouter(
           details: { requestId, traceId },
         },
       });
+
+      next(error);
     },
   );
 

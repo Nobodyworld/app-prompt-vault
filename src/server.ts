@@ -17,8 +17,12 @@ import {
   createOperationalTelemetryPlugin,
 } from "./extensions/index.js";
 import { createPromptVaultRouter } from "./web/createPromptVaultRouter.js";
-import { createLogger, getRecentLogs, type LogLevel } from "@nw/logging";
-import { bootstrapCoreDbAuthFromApiKeys } from "@nw/core-db";
+import {
+  bootstrapCoreDbAuthFromApiKeys,
+  createLogger,
+  getRecentLogs,
+  type LogLevel,
+} from "./lib/platform-core.js";
 import {
   bootstrapObservabilityFromEnv,
   createHttpMetricsMiddleware,
