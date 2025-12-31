@@ -1,5 +1,9 @@
 # Security Guide — Prompt Vault & Hub HTTP APIs
 
+## Doc Meta
+
+- **Tier:** 3
+
 This guide covers the security features available for network deployments of Prompt Vault and Hub HTTP APIs.
 
 ## Table of Contents

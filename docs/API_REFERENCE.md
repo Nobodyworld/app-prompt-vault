@@ -1,5 +1,9 @@
 # API Reference (app-prompt-vault)
 
+## Doc Meta
+
+- **Tier:** 3
+
 Entry-point for public integration surfaces exposed by `app-prompt-vault`.
 
 ## Where to Look
@@ -10,4 +14,3 @@ Entry-point for public integration surfaces exposed by `app-prompt-vault`.
 ## TODO
 
 - TODO: Define stable tool names and payload schemas.
-

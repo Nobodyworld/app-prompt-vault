@@ -1,5 +1,9 @@
 # Agent Instructions (app-prompt-vault)
 
+## Doc Meta
+
+- **Tier:** 3
+
 Guidance for automated changes within `apps/app-prompt-vault`.
 
 ## Where to Look
@@ -14,4 +18,3 @@ Guidance for automated changes within `apps/app-prompt-vault`.
 ## TODO
 
 - TODO: Add local “do/don’t” rules for migrations, security, and tool surfaces.
-

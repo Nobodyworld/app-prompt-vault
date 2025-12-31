@@ -1,5 +1,9 @@
 # Prompt Vault Documentation
 
+## Doc Meta
+
+- **Tier:** 3
+
 Welcome to the comprehensive documentation for Prompt Vault, a cross-platform desktop application for managing reusable prompts with versioning, tagging, and local persistence.
 
 ## Documentation Structure

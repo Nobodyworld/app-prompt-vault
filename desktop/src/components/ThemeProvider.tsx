@@ -7,11 +7,7 @@
 
 import React, { createContext, useContext } from "react";
 import type { ReactNode } from "react";
-import {
-  NwThemeProvider,
-  useNwTheme,
-  type ThemeMode,
-} from "../lib/platform-ui";
+import { applyTheme } from "../lib/platform-ui";
 
 type Theme = "dark" | "light";
 
@@ -40,32 +36,36 @@ interface ThemeProviderProps {
 }
 
 /**
- * Inner component that bridges the shared theme to legacy API
- */
-function ThemeBridge({ children }: { children: ReactNode }): React.JSX.Element {
-  const { resolvedMode, setMode } = useNwTheme();
-
-  const toggleTheme = (): void => {
-    const newMode: ThemeMode = resolvedMode === "dark" ? "light" : "dark";
-    setMode(newMode);
-  };
-
-  return (
-    <LegacyThemeContext.Provider value={{ theme: resolvedMode, toggleTheme }}>
-      {children}
-    </LegacyThemeContext.Provider>
-  );
-}
-
-/**
  * Theme provider using shared @nw/ui-theme with backwards compatible API
  */
 export function ThemeProvider({
   children,
 }: ThemeProviderProps): React.JSX.Element {
+  const [theme, setTheme] = React.useState<Theme>(() => {
+    try {
+      const stored = window.localStorage.getItem("prompt-vault-theme");
+      return stored === "light" || stored === "dark" ? stored : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  React.useEffect(() => {
+    applyTheme(theme);
+    try {
+      window.localStorage.setItem("prompt-vault-theme", theme);
+    } catch {
+      // ignore
+    }
+  }, [theme]);
+
+  const toggleTheme = React.useCallback(() => {
+    setTheme((current) => (current === "dark" ? "light" : "dark"));
+  }, []);
+
   return (
-    <NwThemeProvider defaultMode="dark" storageKey="prompt-vault-theme">
-      <ThemeBridge>{children}</ThemeBridge>
-    </NwThemeProvider>
+    <LegacyThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </LegacyThemeContext.Provider>
   );
 }

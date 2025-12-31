@@ -1,5 +1,9 @@
 # Integrations Plan (app-prompt-vault)
 
+## Doc Meta
+
+- **Tier:** 3
+
 This document tracks how `app-prompt-vault` integrates with the Nobodyworld OS platform and `app-hub`.
 
 ## Identifiers
@@ -18,4 +22,3 @@ This document tracks how `app-prompt-vault` integrates with the Nobodyworld OS p
 
 - Deeper integration docs live under `docs/developer-guide/`.
 - TODO: Document the stable cross-app contracts (events + tool payload schemas).
-

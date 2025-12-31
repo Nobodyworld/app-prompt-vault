@@ -1,5 +1,9 @@
 # Architecture (app-prompt-vault)
 
+## Doc Meta
+
+- **Tier:** 3
+
 High-level architecture entrypoint for `app-prompt-vault` (Windows desktop, Tauri).
 
 ## Where to Look
@@ -10,4 +14,3 @@ High-level architecture entrypoint for `app-prompt-vault` (Windows desktop, Taur
 ## TODO
 
 - TODO: Add a short module map of `src/` vs `desktop/src/`.
-
