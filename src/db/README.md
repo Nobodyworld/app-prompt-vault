@@ -3,5 +3,6 @@
 Database adapters, migrations, and persistence helpers.
 
 - Prefer explicit migrations and stable schemas.
-- TODO: Document which tables are app-local vs shared.
 
+Tables in this app are Prompt Vault-local (e.g. `prompts`, `prompt_versions`, tags, and search/fts helpers).
+Migrations live in `src/db/migrations/` and are applied by the repository layer.

@@ -1,4 +1,3 @@
 # Unit Tests (app-prompt-vault)
 
-- TODO: Add unit tests for prompt rendering and validation helpers.
-
+Reserved for fast unit tests covering domain helpers, validation, and templating.

@@ -1,4 +1,3 @@
 # Accessibility Tests (app-prompt-vault)
 
-- TODO: Add accessibility smoke tests for key UI flows.
-
+Reserved for accessibility-focused tests (e.g. axe rules) against key UI flows.

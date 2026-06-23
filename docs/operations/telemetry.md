@@ -1,8 +1,8 @@
-## Telemetry logs (renderer)
+# Telemetry logs (renderer)
 
 This repository persists renderer telemetry events produced by the app (via the ErrorBoundary) into a small telemetry directory under the application local data directory.
 
-Where to find the telemetry files (examples)
+## Where to find the telemetry files (examples)
 
 - Windows (PowerShell):
   - %LOCALAPPDATA%\prompt-vault-telemetry\telemetry-YYYY-MM-DD.log
@@ -16,7 +16,7 @@ Where to find the telemetry files (examples)
   - $XDG_DATA_HOME/prompt-vault-telemetry/telemetry-YYYY-MM-DD.log or ~/.local/share/prompt-vault-telemetry/
   - Example: tail -n 200 ~/.local/share/prompt-vault-telemetry/telemetry-$(date +%F).log
 
-Notes
+## Notes
 
 - Files are rotated daily and capped at ~5 MiB per file. When a file grows beyond the cap it is renamed to `telemetry-YYYY-MM-DD.N.log` and a new file is started.
 - Each line in the log files is a single JSON object (ndjson) representing the telemetry payload forwarded from the renderer.
@@ -24,10 +24,22 @@ Notes
 - HTTP surfaces expose additional metrics at `/observability/metrics` when `PROMPT_VAULT_METRICS=true`. Counters include `prompt_vault_http_requests_total`, `prompt_vault_http_request_duration_seconds`, and `prompt_vault_prompt_writes_total` (emitted by the operational telemetry plugin).
 - When metrics/tracing are enabled, each HTTP response also includes an `x-trace-id` header and JSON error bodies mirror a `traceId` field so operators can stitch together logs, spans, and client reports without shell access.
 
-Configuration
+## Configuration
 
 - Retention window: You can configure how many days of telemetry to keep using the environment variable
   `PROMPT_VAULT_TELEMETRY_RETENTION_DAYS` (positive integer). If unset or invalid the app defaults to 30 days.
+
+- Opt-out: Disable renderer telemetry persistence by setting one of:
+
+  - `PROMPT_VAULT_TELEMETRY_OPTOUT=1` (app-specific)
+  - `NW_TELEMETRY_OPTOUT=1` (repo-wide)
+  - `PROMPT_VAULT_TELEMETRY_ENABLED=false`
+
+  When disabled, the Tauri command `record_telemetry_event` is a no-op.
+
+- PII/secret guardrails: Before writing telemetry payloads, the Tauri backend redacts any object keys whose
+  name contains common sensitive markers (examples: `token`, `secret`, `password`, `api_key`, `authorization`,
+  `cookie`, `session`). Large strings are truncated.
 
   Examples (PowerShell):
 
@@ -46,7 +58,7 @@ Configuration
   export PROMPT_VAULT_TELEMETRY_RETENTION_DAYS=14
   ```
 
-Dumping logs locally
+## Dumping logs locally
 
 From the repository root you can use the included CLI binary (build with cargo) to dump recent telemetry files:
 

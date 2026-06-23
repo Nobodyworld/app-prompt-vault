@@ -1,4 +1,3 @@
 # Integration Tests (app-prompt-vault)
 
-- TODO: Add integration tests for DB persistence and migrations.
-
+Reserved for higher-level tests that exercise DB persistence and migrations end-to-end.

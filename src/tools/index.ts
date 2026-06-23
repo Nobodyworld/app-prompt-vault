@@ -13,6 +13,7 @@ import type {
 import * as promptService from "../lib/promptService.js";
 import type { PromptImportItem } from "../lib/promptService.js";
 import type { PlannerBucketDraft } from "../domain/interop.js";
+import { extractKbDocIds, formatKbDocLink } from "../domain/kbLinking.js";
 // =============================================================================
 // Tool Definitions
 // =============================================================================
@@ -359,6 +360,54 @@ export const pvImportPlannerBucketDefinition: ToolDefinition = {
   ontologyEntities: ["prompt", "aido", "tag"],
 };
 
+export const pvKbLinkDefinition: ToolDefinition = {
+  name: "pv_kb_link",
+  description:
+    "Format and/or extract Knowledge Base document references for use inside prompts.",
+  parameters: [
+    {
+      name: "docId",
+      type: "string",
+      description: "Knowledge Base document ID",
+      required: false,
+    },
+    {
+      name: "title",
+      type: "string",
+      description: "Optional link title (used when format=markdown)",
+      required: false,
+    },
+    {
+      name: "anchor",
+      type: "string",
+      description: "Optional fragment anchor",
+      required: false,
+    },
+    {
+      name: "format",
+      type: "string",
+      description: "Output format: token or markdown (default: token)",
+      required: false,
+      default: "token",
+    },
+    {
+      name: "text",
+      type: "string",
+      description:
+        "Optional text to scan for kb_doc:<id> references; returns extracted doc IDs.",
+      required: false,
+    },
+  ],
+  returns: {
+    type: "object",
+    description:
+      "Object with { link?: string, docIds?: string[] } depending on inputs.",
+  },
+  category: "interop",
+  source: "prompt-vault",
+  ontologyEntities: ["document", "prompt"],
+};
+
 // =============================================================================
 // Tool Handlers (placeholders - connect to actual prompt-vault logic)
 // =============================================================================
@@ -686,6 +735,41 @@ export const pvImportPlannerBucketHandler: ToolHandler = async (
   }
 };
 
+export const pvKbLinkHandler: ToolHandler = async (
+  args,
+): Promise<ToolResult> => {
+  const { docId, title, anchor, format, text } = args as {
+    docId?: string;
+    title?: string;
+    anchor?: string;
+    format?: "token" | "markdown";
+    text?: string;
+  };
+
+  try {
+    const result: { link?: string; docIds?: string[] } = {};
+    if (typeof docId === "string" && docId.trim()) {
+      result.link = formatKbDocLink(docId, { title, anchor, format });
+    }
+    if (typeof text === "string" && text.trim()) {
+      result.docIds = extractKbDocIds(text);
+    }
+
+    if (!result.link && !result.docIds) {
+      return {
+        success: false,
+        code: "VALIDATION_ERROR",
+        error: "Provide docId and/or text",
+      };
+    }
+
+    return { success: true, data: result };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+};
+
 // =============================================================================
 // Registration
 // =============================================================================
@@ -706,6 +790,7 @@ export function registerPromptVaultTools(): void {
   registerTool(pvExportPlannerBucketDefinition, pvExportPlannerBucketHandler);
   registerTool(pvImportPromptsDefinition, pvImportPromptsHandler);
   registerTool(pvImportPlannerBucketDefinition, pvImportPlannerBucketHandler);
+  registerTool(pvKbLinkDefinition, pvKbLinkHandler);
 }
 
 /**
@@ -724,4 +809,5 @@ export const promptVaultToolDefinitions = [
   pvExportPlannerBucketDefinition,
   pvImportPromptsDefinition,
   pvImportPlannerBucketDefinition,
+  pvKbLinkDefinition,
 ];

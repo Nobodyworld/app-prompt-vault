@@ -327,9 +327,15 @@ async fn record_telemetry_event(
     app: tauri::AppHandle,
     payload: serde_json::Value,
 ) -> Result<(), String> {
+    if !telemetry_is_enabled() {
+        return Ok(());
+    }
+
     // Persist telemetry payload to a rolling daily file under the application's local data directory.
     // Rotation strategy: per-day files rotated when exceeding MAX_BYTES.
     const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MiB per file before rotation
+
+    let sanitized = sanitize_telemetry_payload(payload);
 
     let dir = match app.path().app_local_data_dir() {
         Ok(d) => d.join("prompt-vault-telemetry"),
@@ -347,8 +353,105 @@ async fn record_telemetry_event(
     };
 
     // Use the helper to persist with the configured MAX_BYTES
-    let _ = persist_telemetry_to_dir(&dir, &payload, MAX_BYTES);
+    let _ = persist_telemetry_to_dir(&dir, &sanitized, MAX_BYTES);
     Ok(())
+}
+
+fn telemetry_is_enabled() -> bool {
+    fn truthy(value: &str) -> bool {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "y" | "on"
+        )
+    }
+
+    // Explicit app opt-out envs.
+    if let Ok(v) = std::env::var("PROMPT_VAULT_TELEMETRY_OPTOUT") {
+        if truthy(&v) {
+            return false;
+        }
+    }
+
+    // Repo-wide opt-out env.
+    if let Ok(v) = std::env::var("NW_TELEMETRY_OPTOUT") {
+        if truthy(&v) {
+            return false;
+        }
+    }
+
+    // Allow explicitly disabling telemetry.
+    if let Ok(v) = std::env::var("PROMPT_VAULT_TELEMETRY_ENABLED") {
+        if v.trim().eq_ignore_ascii_case("false") || v.trim() == "0" {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn should_redact_key(key: &str) -> bool {
+    let k = key.to_ascii_lowercase();
+    k.contains("token")
+        || k.contains("secret")
+        || k.contains("password")
+        || k.contains("passwd")
+        || k.contains("apikey")
+        || k.contains("api_key")
+        || k.contains("authorization")
+        || k.contains("cookie")
+        || k.contains("session")
+        || k.contains("private")
+}
+
+fn truncate_string(value: &str, max_len: usize) -> String {
+    if value.chars().count() <= max_len {
+        return value.to_string();
+    }
+    let mut out = String::new();
+    for (i, ch) in value.chars().enumerate() {
+        if i >= max_len {
+            break;
+        }
+        out.push(ch);
+    }
+    out.push_str("…(truncated)");
+    out
+}
+
+fn sanitize_telemetry_payload(payload: serde_json::Value) -> serde_json::Value {
+    const MAX_DEPTH: usize = 6;
+    const MAX_STRING: usize = 8_192;
+
+    fn walk(value: serde_json::Value, depth: usize) -> serde_json::Value {
+        if depth >= MAX_DEPTH {
+            return serde_json::Value::String("…(depth-truncated)".to_string());
+        }
+
+        match value {
+            serde_json::Value::Object(map) => {
+                let mut out = serde_json::Map::new();
+                for (k, v) in map {
+                    if should_redact_key(&k) {
+                        out.insert(k, serde_json::Value::String("[REDACTED]".to_string()));
+                        continue;
+                    }
+                    out.insert(k, walk(v, depth + 1));
+                }
+                serde_json::Value::Object(out)
+            }
+            serde_json::Value::Array(values) => {
+                let out: Vec<serde_json::Value> = values
+                    .into_iter()
+                    .map(|v| walk(v, depth + 1))
+                    .collect();
+                serde_json::Value::Array(out)
+            }
+            serde_json::Value::String(s) => serde_json::Value::String(truncate_string(&s, MAX_STRING)),
+            other => other,
+        }
+    }
+
+    walk(payload, 0)
 }
 
 // Retention: delete telemetry files older than `days` in the telemetry directory.

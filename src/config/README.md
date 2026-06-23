@@ -2,5 +2,10 @@
 
 Runtime configuration, defaults, and validation.
 
-- TODO: Centralize app config schema and env handling here.
+Entry point: `src/config/index.ts` (`getPromptVaultConfig`).
 
+Notes:
+
+- Reads from Node `process.env` and Vite `import.meta.env` (merged).
+- Normalizes log level via `PROMPT_VAULT_LOG_LEVEL` / `VITE_LOG_LEVEL` / `LOG_LEVEL`.
+- Delegates server settings to `src/config/serverConfig.ts`.

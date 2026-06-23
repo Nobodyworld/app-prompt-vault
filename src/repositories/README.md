@@ -2,5 +2,8 @@
 
 Repository interfaces + implementations for prompts/templates and related state.
 
-- TODO: Introduce repository contracts to decouple persistence from services.
+Current implementation:
 
+- `PromptRepository`: SQLite-backed repository (BetterSqlite3) that applies migrations on construction and provides CRUD + search APIs.
+
+Services should depend on repositories (and domain types), not on raw SQL.
