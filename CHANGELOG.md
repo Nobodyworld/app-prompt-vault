@@ -6,6 +6,10 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ### Added
 
+- Dependency-free `repository:audit` validation for public-release metadata and invariants.
+- A full-SHA-pinned GitHub Actions workflow that runs the repository audit and uploads its report.
+- GitHub issues #22–#26 as the permanent public-showcase release plan and gate.
+- `tauri:build` as the explicit native packaging command.
 - `scripts/metrics-snapshot.ts` for agent-tagged complexity, dependency, and latency reporting alongside `docs/reports/stewards-report.md` and `docs/operations/automation-roles.md` guidance.
 - Regression test asserting every SQL migration is executed and required indexes are present on new databases.
 - Express observability middleware emitting Prometheus-compatible HTTP counters/histograms and an `/observability` router exposing health and metrics endpoints.
@@ -21,6 +25,13 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ### Changed
 
+- Replaced the public README with an accurate pre-release statement, supported workspace topology, current feature inventory, and explicit release gate.
+- Corrected `.env.example` so variable names match the runtime configuration loader and safer local-first defaults are demonstrated.
+- Aligned package, Tauri, and Cargo versions at `0.2.0` and updated the Tauri identifier.
+- Changed `web:build` to terminate after generating production assets instead of starting the development server.
+- Added type checking and the repository audit to the quality gate.
+- Published a usable security contact and clarified proprietary source-available review terms.
+- Replaced broken documentation navigation and the stale project-stage snapshot.
 - Consolidated documentation into topic-specific directories under `docs/` to keep the repository root focused on source, tooling, and required governance files.
 - Simplified repository transactions by delegating to `better-sqlite3`'s transaction helper and deduplicating tags before persistence.
 - Express server now enforces request correlation IDs, sanitises user-provided identifiers, and returns JSON-formatted parse errors alongside the `x-request-id` header.
@@ -32,6 +43,8 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ### Fixed
 
+- Removed the invalid `.local` security-reporting address and unresolved jurisdiction placeholder.
+- Removed contradictory public claims that the current repository is already independently installable or release-ready.
 - Tag upserts now reuse the persisted identifier returned from SQLite, preventing foreign key errors when reapplying shared labels.
 - Search, tag assignment, and tag removal operations benefit from new SQLite indexes, reducing query latency on vaults with larger datasets.
 - Server configuration loader now de-duplicates repeated `PROMPT_VAULT_ALLOWED_ORIGINS` entries while still surfacing warnings so CORS policies stay deterministic.
