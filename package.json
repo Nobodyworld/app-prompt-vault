@@ -1,7 +1,7 @@
 {
   "name": "prompt-vault",
   "version": "0.2.0",
-  "description": "A modular prompt vault domain layer with CLI utilities and SQLite persistence.",
+  "description": "A local-first prompt vault with versioning, search, desktop, CLI, HTTP, and automation surfaces.",
   "license": "Proprietary",
   "type": "module",
   "scripts": {
@@ -13,7 +13,8 @@
     "coverage:summary": "tsx scripts/report-coverage.ts",
     "security:scan": "tsx scripts/security-scan.ts",
     "metrics:snapshot": "tsx scripts/metrics-snapshot.ts",
-    "quality:gate": "pnpm lint && pnpm build && pnpm test:coverage && pnpm coverage:summary && pnpm security:scan",
+    "repository:audit": "node scripts/repository-audit.mjs",
+    "quality:gate": "pnpm repository:audit && pnpm lint && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm coverage:summary && pnpm security:scan",
     "validate": "pnpm quality:gate",
     "test:watch": "vitest",
     "dev": "tsx src/cli/index.ts",
@@ -30,8 +31,9 @@
     "desktop:dev": "vite --config desktop/vite.config.ts",
     "desktop:build": "vite build --config desktop/vite.config.ts",
     "web:dev": "tsx src/server.ts",
-    "web:build": "pnpm desktop:build && pnpm web:dev",
-    "tauri:dev": "tsx scripts/tauri-run.ts dev"
+    "web:build": "pnpm desktop:build",
+    "tauri:dev": "tsx scripts/tauri-run.ts dev",
+    "tauri:build": "tsx scripts/tauri-run.ts build"
   },
   "keywords": [
     "prompt",
