@@ -1,0 +1,123 @@
+import { readFileSync } from "node:fs";
+
+function read(path) {
+  return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+}
+
+function fail(message) {
+  console.error(`repository-audit: ${message}`);
+  process.exitCode = 1;
+}
+
+function requireCondition(condition, message) {
+  if (!condition) fail(message);
+}
+
+const packageJson = JSON.parse(read("package.json"));
+const tauriConfig = JSON.parse(read("src-tauri/tauri.conf.json"));
+const cargoToml = read("src-tauri/Cargo.toml");
+const readme = read("README.md");
+const securityPolicy = read("docs/security/policies/security.md");
+const license = read("LICENSE");
+const envExample = read(".env.example");
+const workflow = read(".github/workflows/repository-audit.yml");
+
+const cargoVersion = cargoToml.match(
+  /\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m,
+)?.[1];
+
+requireCondition(Boolean(cargoVersion), "could not read the Cargo package version");
+requireCondition(
+  packageJson.version === tauriConfig.version &&
+    packageJson.version === cargoVersion,
+  `version mismatch: package=${packageJson.version}, tauri=${tauriConfig.version}, cargo=${cargoVersion}`,
+);
+
+requireCondition(
+  packageJson.scripts?.["web:build"] &&
+    !packageJson.scripts["web:build"].includes("web:dev"),
+  "web:build must terminate instead of starting the development server",
+);
+requireCondition(
+  packageJson.scripts?.["tauri:build"],
+  "package.json must expose tauri:build",
+);
+requireCondition(
+  packageJson.scripts?.["quality:gate"]?.includes("typecheck"),
+  "quality:gate must include typecheck",
+);
+requireCondition(
+  packageJson.scripts?.["quality:gate"]?.includes("repository:audit"),
+  "quality:gate must include repository:audit",
+);
+
+requireCondition(
+  readme.includes("**Release status:** pre-release"),
+  "README must state the pre-release status",
+);
+requireCondition(
+  readme.includes("issue #26"),
+  "README must link the public-showcase release tracker",
+);
+requireCondition(
+  !readme.includes("security@prompt-vault.local"),
+  "README contains the obsolete local-only security address",
+);
+requireCondition(
+  securityPolicy.includes("security@nobodyworld.com"),
+  "security policy must contain the public reporting address",
+);
+requireCondition(
+  !securityPolicy.includes("security@prompt-vault.local"),
+  "security policy contains the obsolete local-only reporting address",
+);
+requireCondition(
+  !license.includes("[Jurisdiction]"),
+  "LICENSE still contains a jurisdiction placeholder",
+);
+requireCondition(
+  license.includes("source code and documentation") &&
+    license.includes("review and evaluation"),
+  "LICENSE must explicitly describe source-available review terms",
+);
+
+const envLines = new Set(
+  envExample
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => line.split("=", 1)[0]),
+);
+
+for (const key of [
+  "PROMPT_VAULT_ALLOWED_ORIGINS",
+  "PROMPT_VAULT_METRICS",
+  "PROMPT_VAULT_METRICS_PORT",
+  "RATE_LIMIT_AUTH_MAX_REQUESTS",
+  "RATE_LIMIT_AUTH_WINDOW_MS",
+]) {
+  requireCondition(envLines.has(key), `.env.example is missing ${key}`);
+}
+
+for (const obsolete of ["ALLOWED_ORIGINS", "METRICS_ENABLED", "METRICS_PORT"]) {
+  requireCondition(!envLines.has(obsolete), `.env.example still defines ${obsolete}`);
+}
+
+const usesLines = workflow
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter((line) => line.startsWith("uses:"));
+
+requireCondition(usesLines.length > 0, "repository audit workflow contains no actions");
+for (const line of usesLines) {
+  requireCondition(
+    /uses:\s+[^\s@]+@[0-9a-f]{40}(?:\s+#.*)?$/i.test(line),
+    `workflow action is not pinned to a full commit SHA: ${line}`,
+  );
+}
+
+if (!process.exitCode) {
+  console.log(
+    `repository-audit: passed for Prompt Vault ${packageJson.version} (${usesLines.length} pinned actions)`,
+  );
+}
