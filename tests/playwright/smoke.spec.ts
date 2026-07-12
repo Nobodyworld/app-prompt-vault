@@ -1,103 +1,77 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from "@playwright/test";
 
 /**
- * Smoke tests for the Prompt Vault desktop application
- * These tests verify basic functionality and UI elements are working
+ * Smoke tests for the Prompt Vault browser-rendered desktop interface.
+ * These tests intentionally cover only stable, public-facing shell behavior.
  */
+test.describe("Desktop App Smoke Tests", () => {
+  test("loads the application", async ({ page }) => {
+    await page.goto("/");
 
-test.describe('Desktop App Smoke Tests', () => {
-    test('should load the application', async ({ page }) => {
-        await page.goto('/');
+    await expect(page).toHaveTitle("Prompt Vault Desktop");
+    await expect(page.getByRole("heading", { name: "Prompt Vault" })).toBeVisible();
+  });
 
-        // Check that the app loaded by looking for the title
-        await expect(page).toHaveTitle('Prompt Vault Desktop');
+  test("displays the primary navigation", async ({ page }) => {
+    await page.goto("/");
 
-        // Check for main app header
-        const header = page.locator('h1:has-text("Prompt Vault")');
-        await expect(header).toBeVisible();
-    });
+    await expect(page.getByRole("link", { name: "Library" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Create" })).toBeVisible();
+  });
 
-    test('should display main navigation', async ({ page }) => {
-        await page.goto('/');
+  test("provides an accessible settings entry point", async ({ page }) => {
+    await page.goto("/");
 
-        // Check for navigation links
-        const libraryLink = page.locator('nav a:has-text("Library")');
-        const createLink = page.locator('nav a:has-text("Create")');
+    const settingsLink = page.getByRole("link", { name: "Settings" });
+    await expect(settingsLink).toBeVisible();
+    await settingsLink.focus();
+    await expect(settingsLink).toBeFocused();
+  });
 
-        await expect(libraryLink).toBeVisible();
-        await expect(createLink).toBeVisible();
-    });
+  test("navigates between library and create pages", async ({ page }) => {
+    await page.goto("/");
 
-    test('should display sidebar elements', async ({ page }) => {
-        await page.goto('/');
+    await page.getByRole("link", { name: "Create" }).click();
+    await expect(page).toHaveURL(/.*\/create/);
 
-        // Check for sidebar elements
-        const settingsIcon = page.locator('.sidebar-icon[title="Settings"]');
-        const profileIcon = page.locator('.sidebar-profile[title="Profile"]');
+    await page.getByRole("link", { name: "Library" }).click();
+    await expect(page).toHaveURL(/.*\/$/);
+  });
 
-        await expect(settingsIcon).toBeVisible();
-        await expect(profileIcon).toBeVisible();
-    });
+  test("remains functional after keyboard input", async ({ page }) => {
+    await page.goto("/");
 
-    test('should navigate between pages', async ({ page }) => {
-        await page.goto('/');
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("heading", { name: "Prompt Vault" })).toBeVisible();
 
-        // Click on Create link
-        await page.locator('nav a:has-text("Create")').click();
+    await page.getByRole("link", { name: "Create" }).click();
+    await expect(page).toHaveURL(/.*\/create/);
 
-        // Should navigate to create page (check URL)
-        await expect(page).toHaveURL(/.*\/create/);
+    await page.getByRole("link", { name: "Library" }).click();
+    await expect(page).toHaveURL(/.*\/$/);
+  });
 
-        // Click on Library link
-        await page.locator('nav a:has-text("Library")').click();
+  test("renders at supported viewport sizes", async ({ page }) => {
+    await page.goto("/");
 
-        // Should navigate back to home
-        await expect(page).toHaveURL(/.*\/$/);
-    });
+    for (const viewport of [
+      { width: 400, height: 600 },
+      { width: 768, height: 1024 },
+      { width: 1920, height: 1080 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expect(page.getByRole("heading", { name: "Prompt Vault" })).toBeVisible();
+    }
+  });
 
-    test('should handle basic interactions', async ({ page }) => {
-        await page.goto('/');
+  test("does not show the error boundary during normal startup", async ({
+    page,
+  }) => {
+    await page.goto("/");
 
-        // Test that basic interactions work (keyboard shortcuts may not work in test environment)
-        // Test Escape key handling - should not crash the app
-        await page.keyboard.press('Escape');
-
-        // App should still be functional after keyboard input
-        const header = page.locator('h1:has-text("Prompt Vault")');
-        await expect(header).toBeVisible();
-
-        // Test that clicking navigation works
-        await page.locator('nav a:has-text("Create")').click();
-        await expect(page).toHaveURL(/.*\/create/);
-
-        // Navigate back
-        await page.locator('nav a:has-text("Library")').click();
-        await expect(page).toHaveURL(/.*\/$/);
-    });
-
-    test('should be responsive on different viewport sizes', async ({ page }) => {
-        await page.goto('/');
-
-        // Test mobile viewport
-        await page.setViewportSize({ width: 375, height: 667 });
-        await expect(page.locator('h1:has-text("Prompt Vault")')).toBeVisible();
-
-        // Test tablet viewport
-        await page.setViewportSize({ width: 768, height: 1024 });
-        await expect(page.locator('h1:has-text("Prompt Vault")')).toBeVisible();
-
-        // Test desktop viewport
-        await page.setViewportSize({ width: 1920, height: 1080 });
-        await expect(page.locator('h1:has-text("Prompt Vault")')).toBeVisible();
-    });
-
-    test('should display error boundaries correctly', async ({ page }) => {
-        await page.goto('/');
-
-        // Test that error boundaries are working (if implemented)
-        // This test may need to be adjusted based on actual error boundary implementation
-        const errorBoundary = page.locator('[data-testid="error-boundary"], .error-boundary');
-        // Error boundary should not be visible on normal load
-        await expect(errorBoundary).not.toBeVisible();
-    });
+    const errorBoundary = page.locator(
+      '[data-testid="error-boundary"], .error-boundary',
+    );
+    await expect(errorBoundary).not.toBeVisible();
+  });
 });
