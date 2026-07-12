@@ -1,40 +1,55 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-The project is currently pre-release (`0.1.x`). All security issues affecting the default branch will be addressed as soon as poss
-ible. Formal support matrix will be published alongside the first stable release.
+Prompt Vault is currently pre-release. Security fixes are applied to the default branch and the most recent published pre-release only. A formal support matrix will be added with the first stable release.
 
-## Reporting a Vulnerability
+| Version | Supported |
+| --- | --- |
+| `main` | Yes |
+| `0.2.x` | Yes, while it is the latest pre-release |
+| `< 0.2.0` | No |
 
-1. **Do not open a public issue.** Instead, email security reports to `security@prompt-vault.local`.
-2. Include the following information:
-   - Description of the vulnerability and potential impact.
-   - Steps to reproduce or proof-of-concept.
-   - Suggested mitigations if known.
-3. You will receive acknowledgement within 48 hours. We aim to provide an initial assessment within 5 business days.
+## Reporting a vulnerability
 
-## Disclosure Process
+Do **not** open a public issue for a suspected vulnerability.
 
-- We will work with you to verify the issue and determine a remediation plan.
-- Coordinated disclosure is preferred. We kindly request a 30-day embargo after the fix is available before public disclosure.
-- Credit will be given in release notes unless anonymity is requested.
+Email `security@nobodyworld.com` with:
 
-## Hardening Checklist
+- a concise description and expected impact;
+- affected version, commit, surface, or configuration;
+- reproduction steps or a proof of concept;
+- any known mitigation;
+- whether public disclosure has already occurred.
 
-- Run `npm run security:scan` (wrapper around `npm audit --omit=dev`) before releases and address high/critical issues prior to shipping.
-- Keep dependencies up to date (see `docs/DEPENDENCIES.md`).
-- Enable SQLite `PRAGMA foreign_keys = ON`, `busy_timeout`, and `journal_mode = WAL` on writable databases (handled by `ConnectionFactory`).
-- Ensure SQLite databases are stored in user-controlled directories with appropriate permissions.
-- Validate all user input using the Zod schemas provided in `src/domain/validation.ts`.
-- Redact secrets or API tokens from logs; Prompt Vault intentionally avoids logging prompt bodies.
-- Review release artifacts against `docs/releases/notes.md` for migration or operational calls to action.
-- Enable observability endpoints only when required and ensure metric exports do not include sensitive prompt content.
+We aim to acknowledge a report within 48 hours and provide an initial assessment within five business days. These targets are best-effort during the pre-release period and are not a service-level agreement.
 
-## Residual Risks
+## Disclosure process
 
-- Local databases are not encrypted; rely on full-disk encryption and OS permissions for confidentiality.
-- Prompt content is stored in plaintext. Scrub sensitive data before importing prompts into the vault.
-- Dependency scanning depends on npm registry availability; capture audit logs during releases and mirror advisories for air-gapped environments.
+- We will verify the issue and define a remediation plan.
+- Coordinated disclosure is preferred.
+- Please avoid publishing exploit details until a fix or mitigation is available.
+- Credit will be included in release notes unless anonymity is requested.
 
-Thank you for helping keep Prompt Vault users safe!
+## Release hardening checklist
+
+Before publishing a release candidate:
+
+- run the repository quality gate and the full hosted CI matrix;
+- review runtime and development dependency advisories;
+- run Rust formatting, Clippy, tests, and Tauri packaging;
+- verify SQLite foreign keys, busy timeout, and WAL behavior;
+- validate all HTTP input and keep request-body limits enabled;
+- require authentication and explicit CORS origins for network deployments;
+- confirm logs and telemetry contain no prompt bodies, credentials, tokens, or personal data;
+- manually test backup, restore, restart, and migration behavior;
+- review generated installers and release artifacts before publication.
+
+## Known residual risks
+
+- Prompt content and local SQLite databases are stored in plaintext.
+- The local-first threat model relies on operating-system permissions and full-disk encryption.
+- Authentication is optional by default for local use; network deployments must explicitly enable it.
+- Audit events are held in memory and are not a durable compliance log.
+- Dependency scanning may be incomplete when package registries are unavailable; release CI must not silently treat an unavailable audit as proof of safety.
+- The repository currently depends on shared Nobodyworld workspace packages; clean-clone reproducibility is tracked in issue #22.
