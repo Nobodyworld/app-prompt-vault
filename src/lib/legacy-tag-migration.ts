@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 export interface LegacyTagMigrationOptions {
@@ -66,6 +66,54 @@ function tableExists(database: Database.Database, table: string): boolean {
     )
     .get(table) as { name?: string } | undefined;
   return row?.name === table;
+}
+
+function tableColumns(database: Database.Database, table: string): Set<string> {
+  const rows = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+    name: string;
+  }>;
+  return new Set(rows.map((row) => row.name));
+}
+
+function assertLegacySource(database: Database.Database): void {
+  if (tableExists(database, "prompts") || tableExists(database, "prompt_versions")) {
+    throw new Error(
+      "Source appears to be the main Prompt Vault database; refusing migration",
+    );
+  }
+  if (!tableExists(database, "tags") || !tableExists(database, "taggings")) {
+    throw new Error(
+      "Legacy sidecar must contain both tags and taggings tables; refusing to modify any database",
+    );
+  }
+}
+
+function assertSafeTarget(path: string): void {
+  if (!existsSync(path)) return;
+  const targetProbe = new Database(path, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  try {
+    if (
+      tableExists(targetProbe, "prompts") ||
+      tableExists(targetProbe, "prompt_versions")
+    ) {
+      throw new Error(
+        "Target appears to be the main Prompt Vault database; refusing migration",
+      );
+    }
+    if (tableExists(targetProbe, "tags")) {
+      const columns = tableColumns(targetProbe, "tags");
+      if (!columns.has("kind")) {
+        throw new Error(
+          "Target contains a legacy tags schema. Choose a new app-owned target path instead of migrating in place",
+        );
+      }
+    }
+  } finally {
+    targetProbe.close();
+  }
 }
 
 function normalizeTag(row: UnknownRow): NormalizedTag {
@@ -158,11 +206,7 @@ export function migrateLegacyTagSidecar(
   });
 
   try {
-    if (!tableExists(source, "tags") || !tableExists(source, "taggings")) {
-      throw new Error(
-        "Legacy sidecar must contain both tags and taggings tables; refusing to modify any database",
-      );
-    }
+    assertLegacySource(source);
 
     const tags = (source.prepare("SELECT * FROM tags").all() as UnknownRow[]).map(
       normalizeTag,
@@ -186,6 +230,7 @@ export function migrateLegacyTagSidecar(
 
     if (dryRun) return result;
 
+    assertSafeTarget(targetPath);
     mkdirSync(dirname(targetPath), { recursive: true });
     const target = new Database(targetPath);
     try {
