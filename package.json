@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && tsx scripts/copy-migrations.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "eslint . --ext .ts",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "coverage:summary": "tsx scripts/report-coverage.ts",
