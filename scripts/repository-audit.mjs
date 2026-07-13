@@ -1,4 +1,8 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 
 function read(path) {
   return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -11,6 +15,37 @@ function fail(message) {
 
 function requireCondition(condition, message) {
   if (!condition) fail(message);
+}
+
+function checkPublicMarkdownLinks(path) {
+  const markdown = read(path);
+  const linkPattern = /\[[^\]]*\]\(([^)]+)\)/g;
+
+  for (const match of markdown.matchAll(linkPattern)) {
+    const rawTarget = match[1].trim();
+    if (
+      !rawTarget ||
+      rawTarget.startsWith("#") ||
+      /^[a-z][a-z0-9+.-]*:/i.test(rawTarget) ||
+      rawTarget.startsWith("../../issues/") ||
+      rawTarget.startsWith("../../pull/")
+    ) {
+      continue;
+    }
+
+    const target = decodeURIComponent(rawTarget.split("#", 1)[0].split("?", 1)[0]);
+    const sourcePath = resolve(repositoryRoot, path);
+    const resolvedTarget = resolve(dirname(sourcePath), target);
+
+    requireCondition(
+      resolvedTarget.startsWith(repositoryRoot),
+      `${path} links outside the repository: ${rawTarget}`,
+    );
+    requireCondition(
+      existsSync(resolvedTarget),
+      `${path} links to a missing path: ${rawTarget}`,
+    );
+  }
 }
 
 const packageJson = JSON.parse(read("package.json"));
@@ -130,6 +165,10 @@ requireCondition(
     license.includes("review and evaluation"),
   "LICENSE must explicitly describe source-available review terms",
 );
+
+for (const markdownPath of ["README.md", "CONTRIBUTING.md", "docs/README.md"]) {
+  checkPublicMarkdownLinks(markdownPath);
+}
 
 const envLines = new Set(
   envExample
