@@ -33,7 +33,9 @@ function checkPublicMarkdownLinks(path) {
       continue;
     }
 
-    const target = decodeURIComponent(rawTarget.split("#", 1)[0].split("?", 1)[0]);
+    const target = decodeURIComponent(
+      rawTarget.split("#", 1)[0].split("?", 1)[0],
+    );
     const sourcePath = resolve(repositoryRoot, path);
     const resolvedTarget = resolve(dirname(sourcePath), target);
 
@@ -61,6 +63,7 @@ const rootTsconfig = read("tsconfig.json");
 const desktopTsconfig = read("desktop/tsconfig.json");
 const httpAdapter = read("src/lib/platform-connectors.ts");
 const themeAdapter = read("desktop/src/lib/platform-ui.ts");
+const platformCore = read("src/lib/platform-core.ts");
 
 const cargoVersion = cargoToml.match(
   /\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m,
@@ -119,14 +122,19 @@ requireCondition(
   !cargoToml.includes("../../../packages"),
   "Cargo still references a parent workspace package",
 );
-requireCondition(
-  !packageJson.dependencies?.["@nw/connectors-http"],
-  "package.json still declares the localized HTTP connector",
-);
-requireCondition(
-  !packageJson.dependencies?.["@nw/ui-theme"],
-  "package.json still declares the localized theme package",
-);
+
+for (const removedDependency of [
+  "@nw/connectors-http",
+  "@nw/ui-theme",
+  "@nw/ui-kit",
+  "@nw/secrets",
+]) {
+  requireCondition(
+    !packageJson.dependencies?.[removedDependency],
+    `package.json still declares localized or stale dependency ${removedDependency}`,
+  );
+}
+
 requireCondition(
   !httpAdapter.includes("@nw/"),
   "HTTP adapter still imports a workspace package",
@@ -134,6 +142,18 @@ requireCondition(
 requireCondition(
   !themeAdapter.includes("@nw/"),
   "theme adapter still imports a workspace package",
+);
+requireCondition(
+  !platformCore.includes('from "@nw/secrets"'),
+  "platform core still imports the localized JavaScript secrets package",
+);
+requireCondition(
+  platformCore.includes("const localSecretStore = new Map"),
+  "platform core must provide the app-local process secret fallback",
+);
+requireCondition(
+  platformCore.includes("Secure secret persistence is unavailable in production"),
+  "app-local secret fallback must refuse insecure production use",
 );
 
 requireCondition(
@@ -189,7 +209,10 @@ for (const key of [
 }
 
 for (const obsolete of ["ALLOWED_ORIGINS", "METRICS_ENABLED", "METRICS_PORT"]) {
-  requireCondition(!envLines.has(obsolete), `.env.example still defines ${obsolete}`);
+  requireCondition(
+    !envLines.has(obsolete),
+    `.env.example still defines ${obsolete}`,
+  );
 }
 
 const usesLines = workflow
