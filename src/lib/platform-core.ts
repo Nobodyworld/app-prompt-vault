@@ -1,8 +1,10 @@
 // App-local compatibility layer for Prompt Vault platform contracts.
-// The remaining direct @nw/* import is isolated here until shared tags are optional.
+// Nobodyworld integrations can consume these app-owned contracts through adapters.
 
-import { createHash } from "node:crypto";
-import * as tagsProjectsModule from "@nw/tags-projects";
+import Database from "better-sqlite3";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -22,9 +24,27 @@ export interface Logger {
   child(context: Record<string, unknown>): Logger;
 }
 
+export interface SharedTag {
+  id: string;
+  name: string;
+  kind: string;
+  color?: string;
+  description?: string;
+  isArchived: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectTag {
+  id: string;
+  slug: string;
+  label: string;
+  color?: string;
+}
+
 export interface PlatformEventMap {
-  "tag:created": { tag: { id: string | number; [key: string]: unknown } };
-  "tag:updated": { tag: { id: string | number; [key: string]: unknown } };
+  "tag:created": { tag: SharedTag };
+  "tag:updated": { tag: SharedTag };
   "tag:deleted": { tagId: string | number };
   "pv:prompt_created": {
     promptId: string;
@@ -298,10 +318,6 @@ export async function verifyCoreDbSessionToken(
   return null;
 }
 
-export async function resetCoreDb(): Promise<void> {
-  localApiKeys.clear();
-}
-
 export interface IntegrityCheckResult {
   isValid: boolean;
   expectedChecksum: string;
@@ -326,86 +342,291 @@ export function checkDataIntegrity(
   };
 }
 
-type CreateProjectTagFn = typeof tagsProjectsModule.createProjectTag;
-type GetProjectTagBySlugFn = typeof tagsProjectsModule.getProjectTagBySlug;
-type CreateSharedTagFn = typeof tagsProjectsModule.createTag;
-type GetTagByIdFn = typeof tagsProjectsModule.getTagById;
-type ListSharedTagsFn = typeof tagsProjectsModule.listTags;
-type ListSharedTagsForEntityFn = typeof tagsProjectsModule.listTagsForEntity;
-type TagSharedPromptFn = typeof tagsProjectsModule.tagPrompt;
-type UntagSharedPromptFn = typeof tagsProjectsModule.untagPrompt;
-type ListSharedEntitiesByTagsFn = typeof tagsProjectsModule.listEntitiesByTags;
+type TagRow = {
+  id: string;
+  name: string;
+  kind: string;
+  color: string | null;
+  description: string | null;
+  is_archived: number;
+  created_at: string;
+  updated_at: string;
+};
 
-type ModuleWithDefault<T> = T & { default?: T };
+type TaggingRow = {
+  id: string;
+  tag_id: string;
+  entity_type: string;
+  entity_id: string;
+  context: string;
+  created_at: string;
+};
 
-function pickFunction<T extends object, K extends keyof any>(
-  mod: ModuleWithDefault<T>,
-  key: K,
-  label: string,
-): (...args: any[]) => any {
-  return (...args: any[]) => {
-    const candidate = (mod as any)[key] ?? (mod as any).default?.[key];
-    if (typeof candidate !== "function") {
-      throw new Error(
-        `${label} does not provide a callable export named '${String(key)}'`,
-      );
-    }
-    return (candidate as (...inner: any[]) => any)(...args);
+const DEFAULT_TAG_COLOR = "#808080";
+const PROJECT_TAG_PREFIX = "project:";
+let platformDatabase: Database.Database | null = null;
+let platformDatabasePath: string | null = null;
+
+function resolvePlatformDatabasePath(): string {
+  return (
+    process.env.PROMPT_VAULT_TAG_DB_PATH ??
+    process.env.NW_CORE_DB_PATH ??
+    resolve(process.cwd(), "prompt-vault-platform.db")
+  );
+}
+
+function getPlatformDatabase(): Database.Database {
+  const nextPath = resolvePlatformDatabasePath();
+  if (platformDatabase && platformDatabasePath === nextPath) {
+    return platformDatabase;
+  }
+
+  if (platformDatabase) platformDatabase.close();
+  if (nextPath !== ":memory:") mkdirSync(dirname(nextPath), { recursive: true });
+
+  platformDatabase = new Database(nextPath);
+  platformDatabasePath = nextPath;
+  platformDatabase.pragma("foreign_keys = ON");
+  platformDatabase.pragma("busy_timeout = 5000");
+  if (nextPath !== ":memory:") platformDatabase.pragma("journal_mode = WAL");
+  platformDatabase.exec(`
+    CREATE TABLE IF NOT EXISTS tags (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'label',
+      color TEXT,
+      description TEXT,
+      is_archived INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(name, kind)
+    );
+    CREATE TABLE IF NOT EXISTS taggings (
+      id TEXT PRIMARY KEY,
+      tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      context TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      UNIQUE(tag_id, entity_type, entity_id, context)
+    );
+    CREATE INDEX IF NOT EXISTS idx_platform_tags_name_kind
+      ON tags(name, kind);
+    CREATE INDEX IF NOT EXISTS idx_platform_taggings_entity
+      ON taggings(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_platform_taggings_tag
+      ON taggings(tag_id);
+  `);
+  return platformDatabase;
+}
+
+function mapSharedTag(row: TagRow): SharedTag {
+  return {
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    color: row.color ?? undefined,
+    description: row.description ?? undefined,
+    isArchived: row.is_archived === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
-export const createProjectTag = pickFunction(
-  tagsProjectsModule as any,
-  "createProjectTag",
-  "@nw/tags-projects",
-) as unknown as CreateProjectTagFn;
+function normalizeProjectSlug(slug: string): string {
+  return slug
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
-export const getProjectTagBySlug = pickFunction(
-  tagsProjectsModule as any,
-  "getProjectTagBySlug",
-  "@nw/tags-projects",
-) as unknown as GetProjectTagBySlugFn;
+function projectTagName(slug: string): string {
+  return `${PROJECT_TAG_PREFIX}${slug}`;
+}
 
-export type { Tag as SharedTag } from "@nw/tags-projects";
+function toProjectTag(tag: SharedTag): ProjectTag {
+  const slug = tag.name.startsWith(PROJECT_TAG_PREFIX)
+    ? tag.name.slice(PROJECT_TAG_PREFIX.length)
+    : normalizeProjectSlug(tag.name);
+  return {
+    id: tag.id,
+    slug,
+    label: tag.description ?? slug,
+    color: tag.color,
+  };
+}
 
-export const createSharedTag = pickFunction(
-  tagsProjectsModule as any,
-  "createTag",
-  "@nw/tags-projects",
-) as unknown as CreateSharedTagFn;
+export async function createSharedTag(input: {
+  name: string;
+  color?: string;
+  description?: string;
+  kind?: string;
+}): Promise<SharedTag> {
+  const trimmed = input.name.trim();
+  if (!trimmed) throw new Error("Tag name is required");
+  const kind = input.kind ?? "label";
+  const database = getPlatformDatabase();
+  const existing = database
+    .prepare(
+      "SELECT id, name, kind, color, description, is_archived, created_at, updated_at FROM tags WHERE LOWER(name) = LOWER(?) AND kind = ? LIMIT 1",
+    )
+    .get(trimmed, kind) as TagRow | undefined;
+  if (existing) return mapSharedTag(existing);
 
-export const getTagById = pickFunction(
-  tagsProjectsModule as any,
-  "getTagById",
-  "@nw/tags-projects",
-) as unknown as GetTagByIdFn;
+  const now = new Date().toISOString();
+  const id = randomUUID();
+  database
+    .prepare(
+      "INSERT INTO tags (id, name, kind, color, description, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+    )
+    .run(
+      id,
+      trimmed,
+      kind,
+      input.color ?? DEFAULT_TAG_COLOR,
+      input.description ?? null,
+      now,
+      now,
+    );
+  const created = (await getTagById(id)) as SharedTag;
+  eventBus.emit("tag:created", { tag: created });
+  return created;
+}
 
-export const listSharedTags = pickFunction(
-  tagsProjectsModule as any,
-  "listTags",
-  "@nw/tags-projects",
-) as unknown as ListSharedTagsFn;
+export async function getTagById(id: string): Promise<SharedTag | null> {
+  const row = getPlatformDatabase()
+    .prepare(
+      "SELECT id, name, kind, color, description, is_archived, created_at, updated_at FROM tags WHERE id = ? LIMIT 1",
+    )
+    .get(id) as TagRow | undefined;
+  return row ? mapSharedTag(row) : null;
+}
 
-export const listSharedTagsForEntity = pickFunction(
-  tagsProjectsModule as any,
-  "listTagsForEntity",
-  "@nw/tags-projects",
-) as unknown as ListSharedTagsForEntityFn;
+export async function listSharedTags(): Promise<SharedTag[]> {
+  const rows = getPlatformDatabase()
+    .prepare(
+      "SELECT id, name, kind, color, description, is_archived, created_at, updated_at FROM tags WHERE is_archived = 0 ORDER BY name COLLATE NOCASE ASC",
+    )
+    .all() as TagRow[];
+  return rows.map(mapSharedTag);
+}
 
-export const tagSharedPrompt = pickFunction(
-  tagsProjectsModule as any,
-  "tagPrompt",
-  "@nw/tags-projects",
-) as unknown as TagSharedPromptFn;
+export async function createProjectTag(input: {
+  slug: string;
+  label?: string;
+  color?: string;
+  description?: string;
+}): Promise<ProjectTag> {
+  const slug = normalizeProjectSlug(input.slug);
+  if (!slug) throw new Error("Project slug is required");
+  const existing = await getProjectTagBySlug(slug);
+  if (existing) return existing;
+  const tag = await createSharedTag({
+    name: projectTagName(slug),
+    kind: "project",
+    color: input.color,
+    description: input.label ?? input.description ?? slug,
+  });
+  return toProjectTag(tag);
+}
 
-export const untagSharedPrompt = pickFunction(
-  tagsProjectsModule as any,
-  "untagPrompt",
-  "@nw/tags-projects",
-) as unknown as UntagSharedPromptFn;
+export async function getProjectTagBySlug(
+  slug: string,
+): Promise<ProjectTag | null> {
+  const normalized = normalizeProjectSlug(slug);
+  if (!normalized) return null;
+  const row = getPlatformDatabase()
+    .prepare(
+      "SELECT id, name, kind, color, description, is_archived, created_at, updated_at FROM tags WHERE name = ? AND kind = 'project' AND is_archived = 0 LIMIT 1",
+    )
+    .get(projectTagName(normalized)) as TagRow | undefined;
+  return row ? toProjectTag(mapSharedTag(row)) : null;
+}
 
-export const listSharedEntitiesByTags = pickFunction(
-  tagsProjectsModule as any,
-  "listEntitiesByTags",
-  "@nw/tags-projects",
-) as unknown as ListSharedEntitiesByTagsFn;
+export async function tagSharedPrompt(
+  promptId: string,
+  tagId: string,
+): Promise<{ id: string; tagId: string; entityType: string; entityId: string }> {
+  const database = getPlatformDatabase();
+  const tag = await getTagById(tagId);
+  if (!tag) throw new Error(`Tag not found: ${tagId}`);
+  const existing = database
+    .prepare(
+      "SELECT id, tag_id, entity_type, entity_id, context, created_at FROM taggings WHERE tag_id = ? AND entity_type = 'prompts' AND entity_id = ? AND context = '' LIMIT 1",
+    )
+    .get(tagId, promptId) as TaggingRow | undefined;
+  if (existing) {
+    return {
+      id: existing.id,
+      tagId: existing.tag_id,
+      entityType: existing.entity_type,
+      entityId: existing.entity_id,
+    };
+  }
+
+  const id = randomUUID();
+  database
+    .prepare(
+      "INSERT INTO taggings (id, tag_id, entity_type, entity_id, context, created_at) VALUES (?, ?, 'prompts', ?, '', ?)",
+    )
+    .run(id, tagId, promptId, new Date().toISOString());
+  return { id, tagId, entityType: "prompts", entityId: promptId };
+}
+
+export async function untagSharedPrompt(
+  promptId: string,
+  tagId: string,
+): Promise<boolean> {
+  const result = getPlatformDatabase()
+    .prepare(
+      "DELETE FROM taggings WHERE tag_id = ? AND entity_type = 'prompts' AND entity_id = ? AND context = ''",
+    )
+    .run(tagId, promptId);
+  return result.changes > 0;
+}
+
+export async function listSharedTagsForEntity(input: {
+  entityType: string;
+  entityId: string;
+}): Promise<SharedTag[]> {
+  const rows = getPlatformDatabase()
+    .prepare(
+      `SELECT t.id, t.name, t.kind, t.color, t.description, t.is_archived, t.created_at, t.updated_at
+       FROM taggings tg
+       JOIN tags t ON t.id = tg.tag_id
+       WHERE tg.entity_type = ? AND tg.entity_id = ? AND t.is_archived = 0
+       ORDER BY t.name COLLATE NOCASE ASC`,
+    )
+    .all(input.entityType, input.entityId) as TagRow[];
+  return rows.map(mapSharedTag);
+}
+
+export async function listSharedEntitiesByTags(input: {
+  entityType: string;
+  tagIds: string[];
+  match?: "any" | "all";
+}): Promise<string[]> {
+  if (input.tagIds.length === 0) return [];
+  const placeholders = input.tagIds.map(() => "?").join(", ");
+  const match = input.match ?? "any";
+  const base = `SELECT entity_id, COUNT(DISTINCT tag_id) AS tag_count
+    FROM taggings
+    WHERE entity_type = ? AND tag_id IN (${placeholders})
+    GROUP BY entity_id`;
+  const sql =
+    match === "all" ? `${base} HAVING tag_count = ?` : `${base} HAVING tag_count > 0`;
+  const params: Array<string | number> = [input.entityType, ...input.tagIds];
+  if (match === "all") params.push(input.tagIds.length);
+  const rows = getPlatformDatabase().prepare(sql).all(...params) as Array<{
+    entity_id: string;
+  }>;
+  return rows.map((row) => row.entity_id);
+}
+
+export async function resetCoreDb(): Promise<void> {
+  if (platformDatabase) platformDatabase.close();
+  platformDatabase = null;
+  platformDatabasePath = null;
+  localApiKeys.clear();
+}
