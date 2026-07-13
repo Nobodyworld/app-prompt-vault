@@ -4,20 +4,22 @@ Prompt Vault is proprietary source-available software maintained by Nobody Produ
 
 ## Current repository topology
 
-This repository is maintained as an application component of the Nobodyworld workspace. It currently imports private/shared `@nw/*` packages, parent-level Vitest configuration, and a native secrets package outside this repository.
+The source tree is now self-contained: it declares no `workspace:*` dependencies, private `@nw/*` packages, parent-level configuration, or native package paths outside this repository.
 
-Until issue #22 is complete, the supported development path is the internal Nobodyworld workspace checkout:
+A standalone release is still **not proven**. The repository currently lacks a reviewed `pnpm-lock.yaml`, and the complete Node, Playwright, Rust, Tauri, Windows artifact, restart, and persistence validation matrix remains open in issues #22 and #23.
+
+The intended bootstrap path is:
 
 ```bash
-# From the Nobodyworld workspace root
+corepack enable
 pnpm install
-pnpm --filter prompt-vault repository:audit
-pnpm --filter prompt-vault typecheck
-pnpm --filter prompt-vault test
-pnpm --filter prompt-vault desktop:build
+pnpm repository:audit
+pnpm typecheck
+pnpm test
+pnpm desktop:build
 ```
 
-Do not claim that a standalone clone is supported unless the clean-clone acceptance criteria in issue #22 pass in hosted CI.
+Do not claim that a standalone clone or downloadable release is supported until the clean-clone acceptance criteria pass with a frozen lockfile in hosted CI.
 
 ## Before opening a pull request
 
@@ -42,7 +44,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-When the parent workspace is unavailable, state exactly which checks could not run and why. Do not replace missing verification with a claim that the change is production-ready.
+State exactly which checks ran, their results, and which checks could not run. Do not replace missing verification with a claim that the change is production-ready.
 
 ## Change requirements
 
@@ -51,12 +53,14 @@ When the parent workspace is unavailable, state exactly which checks could not r
 - Preserve local-first behavior and make network exposure opt-in and explicit.
 - Add tests for changes to validation, persistence, migrations, HTTP contracts, Tauri commands, or import/export formats.
 - Keep public documentation aligned with actual scripts and supported installation paths.
+- Do not introduce private workspace packages or parent-repository paths into the standalone source boundary.
 - Record confirmed out-of-scope defects in GitHub issues and link them from the pull request.
 
 ## Documentation
 
 - [Repository overview](README.md)
 - [Documentation index](docs/README.md)
+- [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
 - [Developer workflows](docs/developer-guide/workflows.md)
 - [Security policy](docs/security/policies/security.md)
 - [Public showcase tracker](../../issues/26)
