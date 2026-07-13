@@ -6,13 +6,16 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ### Added
 
-- Dependency-free `repository:audit` validation for public-release metadata, action pinning, versions, and standalone-boundary regressions.
+- Dependency-free `repository:audit` validation for public-release metadata, action pinning, versions, public links, and standalone-boundary regressions.
 - A full-SHA-pinned GitHub Actions workflow that runs the repository audit and uploads its report.
+- A standalone Node validation job that generates a candidate lockfile and is configured to run lint, typecheck, build, and tests once GitHub runner startup is restored.
 - GitHub issues #22–#26 as the permanent public-showcase release plan and gate.
 - `tauri:build` as the explicit native packaging command.
 - App-local `vitest.shared.ts` coverage configuration.
 - A vendored native secrets crate under `src-tauri/crates/nw-secrets`.
-- `docs/developer-guide/standalone-dependency-matrix.md` with confirmed remaining platform contracts and extraction order.
+- App-owned logging, event-bus, tool-registry, widget-registry, API-key compatibility, tag, and project adapters.
+- Persistent tag/project associations in an app-owned SQLite sidecar with `PROMPT_VAULT_TAG_DB_PATH` override support.
+- `docs/developer-guide/standalone-dependency-matrix.md` documenting the resolved source boundary and remaining validation order.
 - `scripts/metrics-snapshot.ts` for agent-tagged complexity, dependency, and latency reporting alongside `docs/reports/stewards-report.md` and `docs/operations/automation-roles.md` guidance.
 - Regression test asserting every SQL migration is executed and required indexes are present on new databases.
 - Express observability middleware emitting Prometheus-compatible HTTP counters/histograms and an `/observability` router exposing health and metrics endpoints.
@@ -22,21 +25,24 @@ All notable changes to Prompt Vault will be documented in this file.
 - Express tracing middleware that opens `http.server.request` spans, decorates responses with `x-trace-id`, and ships dedicated tests to guard the instrumentation contract.
 - Directory-level README files across source, desktop, Tauri, script, test, and documentation folders to guide navigation after the restructure.
 - Additional configuration regression test covering fallback behaviour when defaults supply allowed origins.
-- Hardened orchestrator tools integration, aligning `src/lib/promptService.ts` with `PromptVaultService` and `@nw/tags-projects`.
 - Refactored `src/lib/promptService.ts` to be a thin wrapper around `PromptVaultService`, eliminating redundant logic and connection management.
-- Fixed tag handling in orchestrator tools to correctly support tag names by leveraging `PromptVaultService`'s built-in resolution.
 
 ### Changed
 
-- Replaced the public README with an accurate pre-release statement, supported workspace topology, current feature inventory, and explicit release gate.
-- Corrected `.env.example` so variable names match the runtime configuration loader and safer local-first defaults are demonstrated.
+- Replaced the public README with an accurate pre-release statement, standalone source-boundary status, current feature inventory, and explicit release gate.
+- Corrected `.env.example` so variable names match runtime configuration and the tag/project sidecar override is documented.
 - Aligned package, Tauri, and Cargo versions at `0.2.0` and updated the Tauri identifier.
 - Changed `web:build` to terminate after generating production assets instead of starting the development server.
 - Added type checking and the repository audit to the quality gate.
-- Pinned the supported package manager as pnpm 10.24.0 and marked the package private.
-- Removed parent-only TypeScript type roots.
+- Pinned the supported package manager as pnpm 10.24.0, marked the package private, and explicitly allowed required `better-sqlite3` and `esbuild` build scripts.
+- Removed every declared private `@nw/*` and `workspace:*` dependency from the app package.
+- Removed parent-only TypeScript type roots and parent Vitest configuration.
 - Replaced the shared HTTP wrapper with an equivalent app-local timeout-aware fetch adapter.
 - Replaced the shared placeholder theme package with app-local document theme application.
+- Replaced shared logging and event packages with bounded app-local implementations.
+- Replaced shared orchestrator and widget registration with app-local registries and direct tests.
+- Replaced Core DB authentication compatibility with app-local scoped environment API-key handling while retaining Prompt Vault JWTs.
+- Replaced shared tags/projects with app-owned SQLite sidecar persistence while preserving project-scoped filtering contracts.
 - Changed the Tauri secrets dependency from a parent workspace path to the vendored crate.
 - Published a usable security contact and clarified proprietary source-available review terms.
 - Replaced broken documentation navigation and the stale project-stage snapshot.
@@ -56,8 +62,9 @@ All notable changes to Prompt Vault will be documented in this file.
 - Removed contradictory public claims that the current repository is already independently installable or release-ready.
 - Corrected the UI Vitest coverage threshold property for the current configuration shape.
 - Theme switching now updates `data-theme` and the document color scheme instead of only logging.
+- Replaced tests that mocked private platform packages with tests of the app-local registries and tag/project adapter.
 - Tag upserts now reuse the persisted identifier returned from SQLite, preventing foreign key errors when reapplying shared labels.
-- Search, tag assignment, and tag removal operations benefit from new SQLite indexes, reducing query latency on vaults with larger datasets.
+- Search, tag assignment, and tag removal operations benefit from SQLite indexes, reducing query latency on vaults with larger datasets.
 - Server configuration loader now de-duplicates repeated `PROMPT_VAULT_ALLOWED_ORIGINS` entries while still surfacing warnings so CORS policies stay deterministic.
 
 ## [0.2.0] - 2025-10-26
