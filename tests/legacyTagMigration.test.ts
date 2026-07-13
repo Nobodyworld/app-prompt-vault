@@ -15,8 +15,32 @@ function createFixture(): { directory: string; source: string; target: string } 
 
   const database = new Database(source);
   database.exec(`
+    CREATE TABLE schema_migrations (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT
+    );
+    CREATE TABLE settings (
+      key TEXT PRIMARY KEY,
+      value_json TEXT,
+      updated_at TEXT
+    );
+    CREATE TABLE pages (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL
+    );
+    CREATE TABLE prompts (
+      id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL
+    );
+    CREATE TABLE prompt_versions (
+      id TEXT PRIMARY KEY,
+      prompt_id TEXT NOT NULL
+    );
     CREATE TABLE tags (
       id TEXT PRIMARY KEY,
+      label TEXT,
       name TEXT NOT NULL,
       type TEXT NOT NULL,
       color TEXT,
@@ -36,10 +60,11 @@ function createFixture(): { directory: string; source: string; target: string } 
   `);
   database
     .prepare(
-      "INSERT INTO tags (id, name, type, color, description, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO tags (id, label, name, type, color, description, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
       "tag-alpha",
+      "alpha",
       "alpha",
       "label",
       "#111111",
@@ -50,10 +75,11 @@ function createFixture(): { directory: string; source: string; target: string } 
     );
   database
     .prepare(
-      "INSERT INTO tags (id, name, type, color, description, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO tags (id, label, name, type, color, description, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
       "tag-project",
+      "project:demo-project",
       "project:demo-project",
       "project",
       "#222222",
@@ -102,6 +128,14 @@ function createMainDatabase(path: string): void {
       id TEXT PRIMARY KEY,
       prompt_id TEXT NOT NULL
     );
+    CREATE TABLE tags (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL
+    );
+    CREATE TABLE taggings (
+      prompt_id TEXT NOT NULL,
+      tag_id TEXT NOT NULL
+    );
   `);
   database.close();
 }
@@ -114,7 +148,7 @@ afterEach(() => {
 });
 
 describe("legacy tag sidecar migration", () => {
-  it("reports a dry run without creating the target", () => {
+  it("recognizes the full legacy Core DB and reports a dry run without creating the target", () => {
     const { source, target } = createFixture();
 
     const result = migrateLegacyTagSidecar({
@@ -194,7 +228,7 @@ describe("legacy tag sidecar migration", () => {
     expect(second.skippedTaggings).toBe(2);
   });
 
-  it("refuses to read from the main Prompt Vault database", () => {
+  it("refuses a standalone Prompt Vault database that lacks Core DB markers", () => {
     const directory = mkdtempSync(join(tmpdir(), "prompt-vault-tag-safety-"));
     temporaryDirectories.push(directory);
     const mainDatabase = join(directory, "prompt-vault.db");
@@ -206,7 +240,7 @@ describe("legacy tag sidecar migration", () => {
         sourcePath: mainDatabase,
         targetPath: target,
       }),
-    ).toThrow(/main Prompt Vault database/i);
+    ).toThrow(/not a recognized legacy Nobodyworld Core DB/i);
     expect(existsSync(target)).toBe(false);
   });
 
@@ -223,12 +257,10 @@ describe("legacy tag sidecar migration", () => {
     ).toThrow(/target appears to be the main Prompt Vault database/i);
 
     const verification = new Database(mainDatabase, { readonly: true });
-    const unexpectedTaggings = verification
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'taggings'",
-      )
-      .get();
+    const columns = verification
+      .prepare("PRAGMA table_info(tags)")
+      .all() as Array<{ name: string }>;
     verification.close();
-    expect(unexpectedTaggings).toBeUndefined();
+    expect(columns.map((column) => column.name)).toEqual(["id", "label"]);
   });
 });
