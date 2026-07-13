@@ -4,7 +4,7 @@
 
 Prompt Vault is a local-first application for storing, versioning, finding, and reusing prompts. It combines a React interface, a Tauri desktop shell, SQLite persistence, a CLI, an optional HTTP API, and automation/tool integrations.
 
-> **Release status:** pre-release. The product has substantial working functionality, but this repository is not yet independently distributable from a clean clone. It currently depends on shared Nobodyworld workspace packages and parent configuration. Track the release gate in [issue #26](../../issues/26) and the clean-clone work in [issue #22](../../issues/22).
+> **Release status:** pre-release. The product has substantial working functionality, but a clean standalone installation is not yet proven. PR #27 has localized test configuration, type roots, HTTP behavior, theme behavior, and the native secrets crate; the remaining blocker is a defined set of shared Nobodyworld platform contracts. Track the release gate in [issue #26](../../issues/26), the clean-clone work in [issue #22](../../issues/22), and the [standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md).
 
 ## Core workflow
 
@@ -46,41 +46,43 @@ The Node service, desktop HTTP client, and native Tauri backend are being aligne
 
 ## Supported development topology
 
-This repository is currently maintained as an application component of the Nobodyworld workspace. The present dependency graph includes private/shared `@nw/*` workspace packages and parent-level configuration.
+This repository is currently maintained as an application component of the Nobodyworld workspace. The parent-only Vitest configuration, type roots, HTTP wrapper, UI theme wrapper, and native secrets path have been removed. The remaining workspace requirements are explicit platform integrations listed in the [standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md).
 
 For the supported internal checkout:
 
 ```bash
 # From the Nobodyworld workspace root
 pnpm install
+pnpm --filter prompt-vault repository:audit
 pnpm --filter prompt-vault typecheck
 pnpm --filter prompt-vault test
 pnpm --filter prompt-vault desktop:build
 ```
 
-A standalone clean-clone installation is a release blocker and is not claimed to work yet.
+A standalone clean-clone installation remains a release blocker until the remaining platform contracts are optional or independently installable and hosted CI proves the checkout.
 
 ## Commands
 
-Run these from this repository only after its workspace dependencies are available:
+Run these from this repository only after its remaining workspace dependencies are available:
 
 ```bash
-pnpm typecheck          # TypeScript validation
-pnpm lint               # ESLint
-pnpm test               # Unit and integration tests
-pnpm test:coverage      # Tests with coverage
-pnpm test:ui            # Playwright browser smoke tests
-pnpm build              # Compile the Node/TypeScript surface
-pnpm desktop:dev        # Start the React desktop UI
-pnpm desktop:build      # Build static React assets
-pnpm web:dev            # Start the Express API and serve built assets when present
-pnpm web:build          # Build production web assets
-pnpm tauri:dev          # Start the Tauri desktop application
-pnpm tauri:build        # Build native Tauri bundles
-pnpm quality:gate       # Repository quality gate
+pnpm repository:audit    # Dependency-free metadata and boundary audit
+pnpm typecheck           # TypeScript validation
+pnpm lint                # ESLint
+pnpm test                # Unit and integration tests
+pnpm test:coverage       # Tests with coverage
+pnpm test:ui             # Playwright browser smoke tests
+pnpm build               # Compile the Node/TypeScript surface
+pnpm desktop:dev         # Start the React desktop UI
+pnpm desktop:build       # Build static React assets
+pnpm web:dev             # Start the Express API and serve built assets when present
+pnpm web:build           # Build production web assets
+pnpm tauri:dev           # Start the Tauri desktop application
+pnpm tauri:build         # Build native Tauri bundles
+pnpm quality:gate        # Repository quality gate
 ```
 
-Node 24 and pnpm 10 are required. Rust and the Tauri platform prerequisites are required for native builds.
+Node 24 and pnpm 10.24.0 are required. Rust and the Tauri platform prerequisites are required for native builds.
 
 ## Configuration
 
@@ -109,6 +111,7 @@ A public release requires all items in [issue #26](../../issues/26), including:
 ## Documentation
 
 - [Documentation index](docs/README.md)
+- [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
 - [Architecture overview](docs/architecture/overview.md)
 - [Developer workflows](docs/developer-guide/workflows.md)
 - [HTTP and security guide](docs/SECURITY.md)
