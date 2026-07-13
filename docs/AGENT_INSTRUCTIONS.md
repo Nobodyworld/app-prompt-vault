@@ -1,40 +1,75 @@
-# Agent Instructions (app-prompt-vault)
+# Agent Instructions
 
-## Doc Meta
-
-- **Tier:** 3
-
-Guidance for automated changes within `apps/app-prompt-vault`.
-
-## Where to Look
-
-- Developer guide: `docs/developer-guide/`
+Use these rules for automated changes in `app-prompt-vault`.
 
 ## Non-negotiables
 
-- Desktop-first: Windows + Tauri is the primary target.
-- Avoid cross-app imports; integrate via shared `@nw/*` packages/contracts.
+- Windows + Tauri is the primary packaged target.
+- Preserve local-first behavior and make network exposure explicit.
+- Do not add private `@nw/*`, `workspace:*`, parent-repository paths, or hidden monorepo prerequisites.
+- Optional Hub/Nobodyworld integrations must consume app-owned contracts through separate adapters.
+- Do not claim checks passed unless their command actually ran on the current head.
+- Record confirmed out-of-scope defects in GitHub issues rather than burying them in handoff prose.
 
-## Local Rules
+## Start here
 
-### Migrations
+- `README.md`
+- `CONTRIBUTING.md`
+- `docs/developer-guide/standalone-dependency-matrix.md`
+- `docs/developer-guide/legacy-tag-migration.md`
+- `docs/developer-guide/workflows.md`
+- Issues #22, #23, #25, #26, and #28
 
-- **DO**: Run migrations automatically on service startup with proper error handling and rollback capabilities.
-- **DON'T**: Modify database schema directly; always use migration scripts with version tracking.
-- **DO**: Include migration tests that validate schema changes and data integrity.
-- **DON'T**: Skip migration validation in production; always test migrations on staging data first.
+## Required workflow
 
-### Security
+1. Inspect current PR/issue state before changing files.
+2. Keep the branch synchronized without rewriting unrelated work.
+3. Prefer the smallest change that preserves the standalone boundary.
+4. Add or update tests for persistence, migration, auth, tools, widgets, HTTP contracts, or native behavior.
+5. Run the relevant checks when execution is available.
+6. Report exact commands, exit results, current SHA, and any unavailable verification.
+7. Keep the PR and governing issues synchronized with what is actually complete.
 
-- **DO**: Implement JWT-based authentication with configurable secrets and API key fallbacks.
-- **DON'T**: Store secrets in plaintext; use secure backends (Tauri, environment variables) with encryption.
-- **DO**: Apply rate limiting to all API endpoints with configurable limits and proper error responses.
-- **DON'T**: Expose sensitive operations without authentication; all admin endpoints require auth.
-- **DO**: Log security events (auth failures, rate limit hits) to audit trails without exposing PII.
+## Database rules
 
-### Tool Surfaces
+- Use versioned migrations for the main Prompt Vault database.
+- Keep tag/project associations in the app-owned sidecar.
+- Never open the main Prompt Vault database or a legacy Core DB as the new sidecar.
+- Legacy Core DB migration must use a separate target, start with `--dry-run`, open the source read-only, and remain transactional/idempotent.
+- Test fresh creation, upgrades, malformed inputs, repeat execution, restart, and persistence.
 
-- **DO**: Register tools with descriptive names (pv_* prefix) and clear parameter schemas.
-- **DON'T**: Expose internal implementation details in tool interfaces; maintain stable contracts.
-- **DO**: Include input validation and error handling in all tool implementations.
-- **DON'T**: Allow tools to modify data without proper authorization checks.
+## Security rules
+
+- Production network deployments inject `JWT_SECRET`; do not rely on the insecure process-local fallback.
+- Keep prompt bodies, credentials, tokens, and personal data out of logs, events, telemetry, screenshots, and fixtures.
+- Preserve authentication, scoped API keys, rate limits, request IDs, and explicit CORS origins.
+- Do not expose write tools or administrative routes without authorization and confirmation controls.
+
+## Tool and widget rules
+
+- Keep `pv_*` tool names and parameter/result contracts stable.
+- Register tools through `src/lib/platform-orchestrator.ts`.
+- Register widget metadata through `src/lib/platform-pages-widgets.ts`.
+- External transports translate these app-owned registries; Prompt Vault must not import a platform SDK to function.
+
+## Validation target
+
+When a runner or local checkout is available:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm repository:audit
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm test
+pnpm test:coverage
+pnpm test:ui
+pnpm desktop:build
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
+pnpm tauri:build
+```
+
+The repository currently lacks a reviewed lockfile and GitHub runner startup is blocked. Do not substitute static review for these execution results.
