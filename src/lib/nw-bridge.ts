@@ -1,8 +1,10 @@
 /**
- * NW Bridge - Integration layer between Prompt Vault and @nw/* shared packages
+ * Prompt Vault compatibility bridge.
  *
- * This module provides adapters to bridge Prompt Vault's domain models
- * with the shared Nobodyworld OS packages.
+ * The historical filename and exported function names are retained for existing
+ * callers. The implementation now uses app-owned logging, events, tags, tool
+ * registration, and widget registration. Optional external adapters may consume
+ * these contracts without becoming Prompt Vault installation dependencies.
  */
 
 import {
@@ -13,29 +15,22 @@ import {
 } from "./platform-core.js";
 import type { Tag as PvTag } from "../domain/models.js";
 
-// Create a logger for Prompt Vault operations
 export const pvLogger = createLogger({
   context: {
     app: "prompt-vault",
-    package: "nw-bridge",
+    package: "compatibility-bridge",
   },
 });
 
-// Get the shared event bus
 export const eventBus: ReturnType<typeof getEventBus> = getEventBus();
 
-/**
- * Convert a Prompt Vault Tag to the shared NW Tag format
- *
- * Note: PV Tags use string UUIDs, NW Tags use numeric IDs.
- * This adapter creates a bridge but the underlying storage remains separate.
- */
+/** Convert a Prompt Vault domain tag to the app-owned shared-tag contract. */
 export function pvTagToNwTag(pvTag: PvTag): Omit<NwTag, "id"> & { id: string } {
   return {
-    id: pvTag.id, // Keep as string - apps can use their own ID scheme
+    id: pvTag.id,
     name: pvTag.label,
     kind: "label",
-    color: "#6366f1", // Default color - PV tags don't have color
+    color: "#6366f1",
     description: pvTag.description,
     isArchived: false,
     createdAt: pvTag.createdAt.toISOString(),
@@ -43,23 +38,17 @@ export function pvTagToNwTag(pvTag: PvTag): Omit<NwTag, "id"> & { id: string } {
   };
 }
 
-/**
- * Convert an NW Tag to Prompt Vault Tag format
- */
+/** Convert the app-owned shared-tag contract to a Prompt Vault domain tag. */
 export function nwTagToPvTag(nwTag: NwTag): PvTag {
   return {
     id: String(nwTag.id),
     label: nwTag.name,
-    description: undefined,
+    description: nwTag.description,
     createdAt: new Date(nwTag.createdAt ?? Date.now()),
   };
 }
 
-/**
- * Subscribe to cross-app tag events
- *
- * This allows Prompt Vault to react to tag changes from other apps
- */
+/** Subscribe to tag events emitted through Prompt Vault's local event bus. */
 export function subscribeToTagEvents(handlers: {
   onTagCreated?: (tag: NwTag) => void;
   onTagUpdated?: (tag: NwTag) => void;
@@ -72,22 +61,13 @@ export function subscribeToTagEvents(handlers: {
       "tag:created",
       (data: PlatformEventMap["tag:created"]) => {
         const tag = data.tag;
-        pvLogger.info("External tag created", { tagId: tag.id });
+        pvLogger.info("Tag created", { tagId: tag.id });
         const fallbackTimestamp = new Date().toISOString();
-        const createdAt =
-          "createdAt" in tag && tag.createdAt
-            ? tag.createdAt
-            : fallbackTimestamp;
-        const updatedAt =
-          "updatedAt" in tag && tag.updatedAt
-            ? tag.updatedAt
-            : fallbackTimestamp;
-        const fullTag: NwTag = {
+        handlers.onTagCreated?.({
           ...tag,
-          createdAt,
-          updatedAt,
-        } as NwTag;
-        handlers.onTagCreated!(fullTag);
+          createdAt: tag.createdAt ?? fallbackTimestamp,
+          updatedAt: tag.updatedAt ?? fallbackTimestamp,
+        });
       },
     );
     subscriptions.push(unsubscribe);
@@ -98,22 +78,13 @@ export function subscribeToTagEvents(handlers: {
       "tag:updated",
       (data: PlatformEventMap["tag:updated"]) => {
         const tag = data.tag;
-        pvLogger.info("External tag updated", { tagId: tag.id });
+        pvLogger.info("Tag updated", { tagId: tag.id });
         const fallbackTimestamp = new Date().toISOString();
-        const createdAt =
-          "createdAt" in tag && tag.createdAt
-            ? tag.createdAt
-            : fallbackTimestamp;
-        const updatedAt =
-          "updatedAt" in tag && tag.updatedAt
-            ? tag.updatedAt
-            : fallbackTimestamp;
-        const fullTag: NwTag = {
+        handlers.onTagUpdated?.({
           ...tag,
-          createdAt,
-          updatedAt,
-        } as NwTag;
-        handlers.onTagUpdated!(fullTag);
+          createdAt: tag.createdAt ?? fallbackTimestamp,
+          updatedAt: tag.updatedAt ?? fallbackTimestamp,
+        });
       },
     );
     subscriptions.push(unsubscribe);
@@ -123,23 +94,19 @@ export function subscribeToTagEvents(handlers: {
     const unsubscribe = eventBus.on(
       "tag:deleted",
       (data: PlatformEventMap["tag:deleted"]) => {
-        const tagId = data.tagId;
-        pvLogger.info("External tag deleted", { tagId });
-        handlers.onTagDeleted!(tagId);
+        pvLogger.info("Tag deleted", { tagId: data.tagId });
+        handlers.onTagDeleted?.(data.tagId);
       },
     );
     subscriptions.push(unsubscribe);
   }
 
-  // Return cleanup function
   return () => {
     subscriptions.forEach((unsubscribe) => unsubscribe());
   };
 }
 
-/**
- * Emit Prompt Vault events to the shared event bus
- */
+/** Emit a minimal Prompt Vault lifecycle event without prompt content. */
 export function emitPromptEvent(
   type: "pv:prompt_created" | "pv:prompt_updated" | "pv:prompt_deleted",
   data: { promptId: string; actorUserId?: string; requestId?: string },
@@ -149,36 +116,31 @@ export function emitPromptEvent(
 }
 
 /**
- * Log levels exposed for app configuration
- */
-/**
- * Initialize all Prompt Vault integrations with the NW platform
+ * Register Prompt Vault's app-local tools and widgets.
  *
- * Call this at app startup to register tools with the orchestrator
+ * The legacy function name is retained for compatibility. External platforms
+ * should consume the resulting registries through explicit optional adapters.
  */
 export async function initializeNwIntegrations(): Promise<void> {
-  pvLogger.info("Initializing NW integrations");
+  pvLogger.info("Initializing Prompt Vault registries");
 
-  // Dynamically import tools to avoid circular dependencies
   try {
     const { registerPromptVaultTools } = await import("../tools/index.js");
     registerPromptVaultTools();
-    pvLogger.info("Prompt Vault tools registered with orchestrator");
+    pvLogger.info("Prompt Vault tools registered locally");
   } catch (error) {
-    pvLogger.warn("Failed to register orchestrator tools", { error });
+    pvLogger.warn("Failed to register Prompt Vault tools", { error });
   }
 
-  // Register Prompt Vault widgets with the shared pages-widgets registry
   try {
     const { registerPromptVaultWidgetsWithPagesWidgets } = await import(
       "../widgets/register.js"
     );
     registerPromptVaultWidgetsWithPagesWidgets();
-    pvLogger.info("Prompt Vault widgets registered with pages-widgets");
+    pvLogger.info("Prompt Vault widgets registered locally");
   } catch (error) {
     pvLogger.warn("Failed to register Prompt Vault widgets", { error });
   }
 }
 
-// Re-export tools module for direct access
 export * from "../tools/index.js";
