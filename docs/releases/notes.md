@@ -1,75 +1,118 @@
 # Prompt Vault Release Notes
 
-## Unreleased
+## Unreleased standalone-boundary work
+
+This section describes draft PR #27. It is not a published release and has not passed the full release gate.
 
 ### Highlights
+
+- Removed all declared private `@nw/*`, `workspace:*`, parent configuration, parent type-root, and external native-package dependencies.
+- Added app-owned implementations for logging, events, scoped environment API keys, secret fallback, tags/projects, tool registration, and widget registration.
+- Added an app-owned SQLite tag/project sidecar and explicit legacy Nobodyworld Core DB migration utility.
+- Added dry-run, transactional, idempotence, schema-recognition, and main-database refusal tests for legacy migration.
+- Added runtime sidecar guards that derive a new `.platform.db` from the historical Core DB path rather than opening the legacy database.
+- Added a standalone Node CI job configured to install pinned pnpm, generate a candidate lockfile, and run audit, lint, typecheck, build, and tests.
+- Expanded the dependency-free repository audit to reject private-package imports/declarations, unsafe migration regressions, broken public links, and unpinned actions.
+- Corrected public documentation, versioning, security contact, environment names, build scripts, and source-available license language.
+- Removed inactivity hiding and placeholder shell controls while improving accessible labels and stable Playwright expectations.
+
+### Intended upgrade steps
+
+These steps are **not yet execution-validated on the current head**:
+
+1. Back up the main Prompt Vault database and any legacy `*.core.db` file.
+2. Generate and review the repository `pnpm-lock.yaml` using Node 24 and pnpm 10.24.0.
+3. Run:
+   ```bash
+   pnpm install --frozen-lockfile
+   pnpm repository:audit
+   pnpm lint
+   pnpm typecheck
+   pnpm build
+   pnpm test
+   pnpm test:coverage
+   pnpm test:ui
+   pnpm desktop:build
+   ```
+4. For existing internal tag/project data, run the documented migration dry run into a separate target:
+   ```bash
+   pnpm tags:migrate-legacy -- \
+     --source ./prompt-vault.db.core.db \
+     --target ./prompt-vault-platform.db \
+     --dry-run
+   ```
+5. Review counts, run the migration without `--dry-run`, then set:
+   ```bash
+   PROMPT_VAULT_TAG_DB_PATH=./prompt-vault-platform.db
+   ```
+6. Verify labels, project-scoped search, tag/untag, restart, persistence, and export before archiving the legacy source.
+7. Run Rust/Tauri checks and manually validate the Windows artifact.
+
+See `docs/developer-guide/legacy-tag-migration.md` for the full procedure.
+
+### Breaking and compatibility changes
+
+- Private Nobodyworld packages are no longer installation dependencies.
+- The historical `NW_CORE_DB_PATH` is treated only as a location hint; Prompt Vault derives a separate `.platform.db` and does not open the legacy Core DB as its new sidecar.
+- Legacy Core DB session tokens are not accepted by the standalone compatibility layer. Prompt Vault JWTs and configured API keys remain the supported HTTP authentication paths.
+- Production deployments must inject `JWT_SECRET`. The process-local secret fallback refuses production use unless `NW_SECRETS_ALLOW_INSECURE=1` is explicitly set for emergency diagnostics.
+- External Hub, orchestrator, widget, event, and platform integrations now require optional adapters built against Prompt Vault's app-owned contracts.
+- Existing legacy tag/project data requires the explicit migration procedure; it is not silently upgraded in place.
+
+### Current validation limitation
+
+The last successful hosted repository audit predates the final extraction. GitHub currently fails even a no-action diagnostic job before its first step, so the current branch has no executed install, lint, typecheck, build, test, Playwright, Rust, or Tauri result. Issues #22, #23, #25, #26, and #28 remain open.
+
+## Earlier unreleased observability work
+
+### Highlights
+
 - Added Prometheus-compatible HTTP instrumentation and an `/observability` router exposing liveness, readiness, and metrics endpoints for all entry points.
 - Introduced an operational telemetry plugin to count prompt mutations and mirror lifecycle events into structured logs.
-- Shipped `npm run extension:scaffold` to generate plugin templates alongside updated docs for agents and maintainers.
+- Added `pnpm extension:scaffold` to generate plugin templates alongside updated docs for agents and maintainers.
 - Extended the Vitest suite with observability integration tests to guard metrics and health regressions.
 - Hardened HTTP bootstrap with a validated configuration loader, explicit logging of startup warnings, and regression tests for environment parsing.
 - Normalised duplicate entries in `PROMPT_VAULT_ALLOWED_ORIGINS` to keep CORS filters tight while preserving warning signals for operators.
-- Instrumented every HTTP request with an `http.server.request` span and corresponding `x-trace-id` response header so support teams can pivot from incidents to precise log segments in seconds.
-- Reorganised documentation into topic-based directories (`docs/architecture`, `docs/operations`, `docs/releases`, etc.) to keep the repository root focused on code and essential metadata.
-- Added directory-level README files (including `docs/README.md`, `src/README.md`, and `scripts/README.md`) so contributors can quickly locate relevant guides after the restructure.
-- Improved `scripts/metrics-snapshot.ts` to close SQLite handles safely and surface actionable errors during metric generation.
+- Instrumented HTTP requests with `http.server.request` spans and `x-trace-id` response headers.
+- Reorganised documentation into topic-based directories and added directory-level navigation files.
+- Improved `scripts/metrics-snapshot.ts` to close SQLite handles safely and surface actionable errors.
 
-### Upgrade Steps
-1. Run `npm install` if dependencies drift (no new runtime packages were added).
-2. Execute `npm run quality:gate` to exercise the updated observability tests.
-3. Enable `PROMPT_VAULT_METRICS=true` and optionally set `PROMPT_VAULT_METRICS_PORT` so `/observability/metrics` can be scraped by your platform monitors.
-4. Set `PROMPT_VAULT_STATIC_DIR` when serving a custom web build and review startup logs for configuration warnings.
-5. Review `docs/operations/automation.md`, `docs/guides/extension-guide.md`, and `AGENTS.md` for the latest automation and plugin guidance before delegating work.
+### Operational notes
 
-### Breaking Changes
-- None.
-
-### Operational Notes
-- HTTP metrics now include request duration histograms (`prompt_vault_http_request_duration_seconds`) and counters for prompt write activity. Add alerting thresholds that reflect your SLOs.
-- The operational telemetry plugin records lifecycle events; disable it only if you replace it with an equivalent handler to avoid losing write metrics.
-- Coverage reporting still requires a V8 provider—expect warnings until `@vitest/coverage-v8` (or similar) is available in restricted registries.
-- Every API response returns an `x-request-id` header mirrored in JSON error payloads; when metrics/tracing are enabled the payloads also expose `traceId` and the HTTP layer emits `x-trace-id` for span correlation.
+- HTTP metrics include request duration histograms and counters for prompt write activity.
+- The operational telemetry plugin records lifecycle events; replace it with an equivalent handler before disabling it.
+- Every API response returns an `x-request-id`; tracing-enabled responses also expose `traceId` and `x-trace-id`.
 
 ## 0.2.0 (2025-10-26)
 
 ### Highlights
-- Introduced a full observability stack (structured logger, Prometheus metrics, health server) with CLI integration and a `doctor` command.
-- Added plugin host architecture with an audit trail example and new contributor docs (`docs/architecture/overview.md`, `docs/guides/extension-guide.md`, `docs/operations/automation.md`).
-- Established CI/Dependabot automation, quality gate tooling, and new operational playbooks (incident response, performance, future-proofing).
 
-### Upgrade Steps
-1. Run `npm install` to capture the updated scripts (no new runtime dependencies).
-2. Execute `npm run quality:gate` to lint, build, run tests with coverage enforcement, and perform the security scan.
-3. Enable metrics by exporting `PROMPT_VAULT_METRICS=true` (and optionally `PROMPT_VAULT_METRICS_PORT`) before invoking the CLI or observability script.
-4. Review the new documentation artifacts to align operational procedures and plugin development workflows.
+- Introduced structured logging, Prometheus metrics, a health server, CLI integration, and a doctor command.
+- Added plugin host architecture with an audit trail example and contributor documentation.
+- Established CI/Dependabot automation, quality-gate tooling, and operational playbooks.
 
-### Breaking Changes
-- None. APIs remain backward compatible; observability and plugins are opt-in via constructor options or environment variables.
+### Upgrade steps
 
-### Operational Notes
-- Busy timeouts honour `PROMPT_VAULT_BUSY_TIMEOUT`, letting operators tune contention without code changes.
-- Health endpoints expose `/healthz`, `/readyz`, and `/metrics`; pair them with CI/CD or container probes for long-lived deployments.
-- Reference `docs/incident-response.md`, `docs/performance-notes.md`, and `docs/future-proofing.md` for troubleshooting and scaling guidance.
+1. Install the declared dependencies with the package manager supported by that release.
+2. Execute the release validation command.
+3. Enable metrics with `PROMPT_VAULT_METRICS=true` and optionally configure `PROMPT_VAULT_METRICS_PORT`.
+4. Review the current documentation before enabling plugins or network access.
 
+### Operational notes
+
+- Busy timeouts honour `PROMPT_VAULT_BUSY_TIMEOUT`.
+- Health endpoints expose `/healthz`, `/readyz`, and `/metrics`.
 
 ## 0.1.1 (2025-10-25)
 
 ### Highlights
-- Hardened SQLite connections now enforce foreign keys, use WAL journaling for writable databases, and wait up to 5 seconds before surfacing busy errors.
-- Prompt workflows received additional regression coverage around pagination, tag idempotency, and timestamp updates; repository tests guard tag metadata retention.
-- Added coverage workflow (`npm run test:coverage`) with summarised reporting (`npm run coverage:summary`) and a consolidated validation pipeline (`npm run validate`).
-- Security guidance expanded with an explicit residual-risk register and operational checklist.
 
-### Upgrade Steps
-1. Run `npm install` to ensure local toolchain alignment (no new runtime dependencies were added).
-2. Execute `npm run validate` to lint, type-check, run tests with coverage, and produce the summary report.
-3. If you maintain existing SQLite databases, no schema migrations are required. The new connection defaults (foreign keys, busy timeout, WAL) are applied automatically on next launch.
-4. Review the `coverage/` artifacts emitted by the validation step and archive them for CI/CD traceability.
+- Enabled SQLite foreign keys, WAL journaling for writable databases, and a five-second busy timeout.
+- Added regression coverage around pagination, tag idempotency, timestamps, and tag metadata.
+- Added coverage reporting and a consolidated validation pipeline.
+- Expanded the residual-risk register and operational checklist.
 
-### Breaking Changes
-- None. All APIs remain backward compatible.
+### Operational notes
 
-### Operational Notes
-- Coverage data is collected using Node's V8 instrumentation (`NODE_V8_COVERAGE`). Ensure CI environments retain the generated `coverage/*.json` files for auditing. Install `@vitest/coverage-v8` (or another provider) when registry access is available so that `npm run coverage:summary` can include project source metrics.
-- The desktop client remains unchanged in this iteration; roadmap items are tracked in `README.md`.
-- Known risks (unencrypted local storage, manual dependency audits) are documented in `docs/policies/security.md`.
+- Prompt version creation uses a single timestamp to keep metadata consistent.
+- Tag queries sort case-insensitively and reuse descriptions when labels are reapplied.
