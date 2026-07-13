@@ -78,6 +78,7 @@ pnpm desktop:dev         # Start the React desktop UI
 pnpm desktop:build       # Build static React assets
 pnpm web:dev             # Start the Express API and serve built assets when present
 pnpm web:build           # Build production web assets
+pnpm tags:migrate-legacy # Explicit legacy tag/project sidecar migration
 pnpm tauri:dev           # Start the Tauri desktop application
 pnpm tauri:build         # Build native Tauri bundles
 pnpm quality:gate        # Repository quality gate
@@ -95,6 +96,7 @@ Important defaults:
 - HTTP authentication is optional unless `REQUIRE_AUTH=true`.
 - Network deployments should set `REQUIRE_AUTH=true`, a strong `JWT_SECRET`, and an explicit `PROMPT_VAULT_ALLOWED_ORIGINS` list.
 - `PROMPT_VAULT_TAG_DB_PATH` may override the app-owned tag/project sidecar path when embedding or diagnosing the service.
+- Existing internal `*.core.db` tag/project data must be migrated into a separate target using the [legacy sidecar migration procedure](docs/developer-guide/legacy-tag-migration.md); never point the new runtime at an unreviewed legacy database.
 - Prompt content and local databases are stored in plaintext; use operating-system permissions and full-disk encryption, and do not store secrets in prompts.
 
 ## Verification and release status
@@ -114,6 +116,7 @@ A public release requires all items in [issue #26](../../issues/26), including:
 
 - [Documentation index](docs/README.md)
 - [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
+- [Legacy tag/project migration](docs/developer-guide/legacy-tag-migration.md)
 - [Architecture overview](docs/developer-guide/architecture/overview.md)
 - [Developer workflows](docs/developer-guide/workflows.md)
 - [HTTP and security guide](docs/SECURITY.md)
