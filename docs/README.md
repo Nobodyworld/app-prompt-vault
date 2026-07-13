@@ -8,6 +8,7 @@ This directory contains product, development, operations, security, and release 
 
 - [Repository overview and release status](../README.md)
 - [Getting started index](getting-started/README.md)
+- [Standalone dependency matrix](developer-guide/standalone-dependency-matrix.md)
 - [Developer workflows](developer-guide/workflows.md)
 - [Architecture overview](architecture/overview.md)
 - [API specification](api-reference/SPEC.md)
@@ -42,7 +43,7 @@ This directory contains product, development, operations, security, and release 
 
 ## Current release blockers
 
-- Issue #22: clean-clone reproducibility
+- Issue #22: clean-clone reproducibility and remaining platform contracts
 - Issue #23: release-grade CI and artifacts
 - Issue #24: public documentation, versioning, security contact, and license
 - Issue #25: showcase UX and end-to-end validation
