@@ -80,9 +80,12 @@ export function registerTool(
     );
   }
 
-  const { handler: _embedded, ...definition } = definitionOrTool as ToolDefinition & {
-    handler?: ToolHandler;
-  };
+  const definitionWithOptionalHandler = {
+    ...definitionOrTool,
+  } as ToolDefinition & { handler?: ToolHandler };
+  delete definitionWithOptionalHandler.handler;
+  const definition: ToolDefinition = definitionWithOptionalHandler;
+
   toolRegistry.set(definition.name, {
     id: definition.name,
     definition,
