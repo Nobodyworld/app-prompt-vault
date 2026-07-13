@@ -21,6 +21,11 @@ const securityPolicy = read("docs/security/policies/security.md");
 const license = read("LICENSE");
 const envExample = read(".env.example");
 const workflow = read(".github/workflows/repository-audit.yml");
+const vitestConfig = read("vitest.config.ts");
+const rootTsconfig = read("tsconfig.json");
+const desktopTsconfig = read("desktop/tsconfig.json");
+const httpAdapter = read("src/lib/platform-connectors.ts");
+const themeAdapter = read("desktop/src/lib/platform-ui.ts");
 
 const cargoVersion = cargoToml.match(
   /\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m,
@@ -49,6 +54,51 @@ requireCondition(
 requireCondition(
   packageJson.scripts?.["quality:gate"]?.includes("repository:audit"),
   "quality:gate must include repository:audit",
+);
+requireCondition(
+  packageJson.packageManager === "pnpm@10.24.0",
+  "packageManager must pin the supported pnpm version",
+);
+
+requireCondition(
+  vitestConfig.includes('from "./vitest.shared"'),
+  "Vitest must use the app-local shared coverage config",
+);
+requireCondition(
+  !vitestConfig.includes("../../vitest.shared"),
+  "Vitest still references a parent workspace config",
+);
+requireCondition(
+  !rootTsconfig.includes("../../node_modules"),
+  "root tsconfig still references parent node_modules",
+);
+requireCondition(
+  !desktopTsconfig.includes("../../node_modules"),
+  "desktop tsconfig still references parent node_modules",
+);
+requireCondition(
+  cargoToml.includes('nw-secrets = { path = "crates/nw-secrets" }'),
+  "Cargo must use the vendored native secrets crate",
+);
+requireCondition(
+  !cargoToml.includes("../../../packages"),
+  "Cargo still references a parent workspace package",
+);
+requireCondition(
+  !packageJson.dependencies?.["@nw/connectors-http"],
+  "package.json still declares the localized HTTP connector",
+);
+requireCondition(
+  !packageJson.dependencies?.["@nw/ui-theme"],
+  "package.json still declares the localized theme package",
+);
+requireCondition(
+  !httpAdapter.includes("@nw/"),
+  "HTTP adapter still imports a workspace package",
+);
+requireCondition(
+  !themeAdapter.includes("@nw/"),
+  "theme adapter still imports a workspace package",
 );
 
 requireCondition(
