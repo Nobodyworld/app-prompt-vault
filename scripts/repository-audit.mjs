@@ -96,6 +96,11 @@ const themeAdapter = read("desktop/src/lib/platform-ui.ts");
 const platformCore = read("src/lib/platform-core.ts");
 const platformOrchestrator = read("src/lib/platform-orchestrator.ts");
 const platformWidgets = read("src/lib/platform-pages-widgets.ts");
+const legacyMigration = read("src/lib/legacy-tag-migration.ts");
+const legacyMigrationCli = read("scripts/migrate-legacy-tags.ts");
+const legacyMigrationGuide = read(
+  "docs/developer-guide/legacy-tag-migration.md",
+);
 
 const cargoVersion = cargoToml.match(
   /\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m,
@@ -116,6 +121,11 @@ requireCondition(
 requireCondition(
   packageJson.scripts?.["tauri:build"],
   "package.json must expose tauri:build",
+);
+requireCondition(
+  packageJson.scripts?.["tags:migrate-legacy"] ===
+    "tsx scripts/migrate-legacy-tags.ts",
+  "package.json must expose the reviewed legacy tag migration command",
 );
 requireCondition(
   packageJson.scripts?.["quality:gate"]?.includes("typecheck"),
@@ -218,12 +228,50 @@ requireCondition(
 );
 
 requireCondition(
+  legacyMigration.includes("export function migrateLegacyTagSidecar"),
+  "legacy tag migration module must expose the reviewed migration entry point",
+);
+requireCondition(
+  legacyMigration.includes("readonly: true") &&
+    legacyMigration.includes("fileMustExist: true"),
+  "legacy tag migration must open its source read-only and require an existing file",
+);
+requireCondition(
+  legacyMigration.includes("Source appears to be the main Prompt Vault database") &&
+    legacyMigration.includes("Target appears to be the main Prompt Vault database"),
+  "legacy tag migration must refuse the main Prompt Vault database as source or target",
+);
+requireCondition(
+  legacyMigration.includes("target.transaction"),
+  "legacy tag migration writes must remain transactional",
+);
+requireCondition(
+  legacyMigration.includes("dryRun") &&
+    legacyMigrationCli.includes("--dry-run"),
+  "legacy tag migration must retain an explicit dry-run path",
+);
+requireCondition(
+  legacyMigrationCli.includes("PROMPT_VAULT_LEGACY_TAG_DB_PATH") &&
+    legacyMigrationCli.includes("PROMPT_VAULT_TAG_DB_PATH"),
+  "legacy tag migration CLI must retain documented environment overrides",
+);
+requireCondition(
+  legacyMigrationGuide.includes("Do not point the new runtime directly") &&
+    legacyMigrationGuide.includes("--dry-run"),
+  "legacy tag migration guide must document isolation and dry-run safeguards",
+);
+
+requireCondition(
   readme.includes("**Release status:** pre-release"),
   "README must state the pre-release status",
 );
 requireCondition(
   readme.includes("issue #26"),
   "README must link the public-showcase release tracker",
+);
+requireCondition(
+  readme.includes("legacy sidecar migration procedure"),
+  "README must link the legacy sidecar migration procedure",
 );
 requireCondition(
   !readme.includes("security@prompt-vault.local"),
@@ -247,7 +295,12 @@ requireCondition(
   "LICENSE must explicitly describe source-available review terms",
 );
 
-for (const markdownPath of ["README.md", "CONTRIBUTING.md", "docs/README.md"]) {
+for (const markdownPath of [
+  "README.md",
+  "CONTRIBUTING.md",
+  "docs/README.md",
+  "docs/developer-guide/legacy-tag-migration.md",
+]) {
   checkPublicMarkdownLinks(markdownPath);
 }
 
@@ -263,6 +316,7 @@ for (const key of [
   "PROMPT_VAULT_ALLOWED_ORIGINS",
   "PROMPT_VAULT_METRICS",
   "PROMPT_VAULT_METRICS_PORT",
+  "PROMPT_VAULT_TAG_DB_PATH",
   "RATE_LIMIT_AUTH_MAX_REQUESTS",
   "RATE_LIMIT_AUTH_WINDOW_MS",
 ]) {
@@ -291,6 +345,6 @@ for (const line of usesLines) {
 
 if (!process.exitCode) {
   console.log(
-    `repository-audit: passed for Prompt Vault ${packageJson.version} (${usesLines.length} pinned actions, standalone dependency boundary)`,
+    `repository-audit: passed for Prompt Vault ${packageJson.version} (${usesLines.length} pinned actions, standalone dependency and migration boundary)`,
   );
 }
