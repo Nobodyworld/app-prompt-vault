@@ -44,3 +44,75 @@ jobs:
           path: repository-audit.txt
           if-no-files-found: warn
           retention-days: 14
+
+  node-validation:
+    name: Standalone Node validation
+    needs: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          check-latest: false
+
+      - name: Install pinned pnpm
+        shell: bash
+        run: npm install --global pnpm@10.24.0
+
+      - name: Install standalone dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm install --no-frozen-lockfile 2>&1 | tee install.txt
+
+      - name: Run repository audit
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm repository:audit 2>&1 | tee audit-validation.txt
+
+      - name: Run lint
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm lint 2>&1 | tee lint.txt
+
+      - name: Run typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm typecheck 2>&1 | tee typecheck.txt
+
+      - name: Build Node surface
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm build 2>&1 | tee build.txt
+
+      - name: Run unit and integration tests
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test 2>&1 | tee tests.txt
+
+      - name: Upload standalone validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: standalone-node-validation
+          path: |
+            pnpm-lock.yaml
+            install.txt
+            audit-validation.txt
+            lint.txt
+            typecheck.txt
+            build.txt
+            tests.txt
+          if-no-files-found: warn
+          retention-days: 14
