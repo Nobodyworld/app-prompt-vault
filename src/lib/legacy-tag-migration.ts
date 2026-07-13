@@ -75,17 +75,54 @@ function tableColumns(database: Database.Database, table: string): Set<string> {
   return new Set(rows.map((row) => row.name));
 }
 
-function assertLegacySource(database: Database.Database): void {
-  if (tableExists(database, "prompts") || tableExists(database, "prompt_versions")) {
+function assertColumns(
+  columns: Set<string>,
+  required: string[],
+  table: string,
+): void {
+  const missing = required.filter((column) => !columns.has(column));
+  if (missing.length > 0) {
     throw new Error(
-      "Source appears to be the main Prompt Vault database; refusing migration",
+      `Legacy ${table} table is missing required columns: ${missing.join(", ")}`,
     );
   }
+}
+
+function assertLegacySource(database: Database.Database): void {
   if (!tableExists(database, "tags") || !tableExists(database, "taggings")) {
     throw new Error(
-      "Legacy sidecar must contain both tags and taggings tables; refusing to modify any database",
+      "Legacy Core DB must contain both tags and taggings tables; refusing migration",
     );
   }
+
+  // The historical Nobodyworld Core DB contains these platform tables in
+  // addition to Prompt Vault's prompts. Requiring the markers distinguishes it
+  // from the standalone Prompt Vault database, which also has prompt/tag tables.
+  const coreMarkers = ["schema_migrations", "settings", "pages"];
+  const missingMarkers = coreMarkers.filter(
+    (table) => !tableExists(database, table),
+  );
+  if (missingMarkers.length > 0) {
+    throw new Error(
+      `Source is not a recognized legacy Nobodyworld Core DB; missing marker tables: ${missingMarkers.join(", ")}`,
+    );
+  }
+
+  const tagColumns = tableColumns(database, "tags");
+  assertColumns(
+    tagColumns,
+    ["id", "type", "color", "description", "is_archived", "created_at", "updated_at"],
+    "tags",
+  );
+  if (!tagColumns.has("name") && !tagColumns.has("label")) {
+    throw new Error("Legacy tags table must contain name or label");
+  }
+
+  assertColumns(
+    tableColumns(database, "taggings"),
+    ["id", "tag_id", "entity_type", "entity_id", "created_at"],
+    "taggings",
+  );
 }
 
 function assertSafeTarget(path: string): void {
