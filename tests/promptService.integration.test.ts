@@ -1,26 +1,14 @@
-import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
-
-vi.mock("@nw/tags-projects", () => {
-  return {
-    createProjectTag: vi.fn(async (input: { slug: string }) => ({
-      id: `project-${input.slug}`,
-      slug: input.slug,
-      label: input.slug,
-      color: "#fff",
-    })),
-    getProjectTagBySlug: vi.fn(async () => null),
-    listEntitiesByTags: vi.fn(async () => [] as string[]),
-    listEntitiesWithProject: vi.fn(async () => [] as string[]),
-    listTagsForEntity: vi.fn(async () => [] as any[]),
-    tagPrompt: vi.fn(async () => ({})),
-    untagPrompt: vi.fn(async () => true),
-  };
-});
-
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Prompt } from "../src/domain/models.js";
+import {
+  createProjectTag,
+  createSharedTag,
+  getProjectTagBySlug,
+  listSharedTagsForEntity,
+  resetCoreDb,
+  tagSharedPrompt,
+} from "../src/lib/platform-core.js";
 import * as promptService from "../src/lib/promptService.js";
-
-type TagsProjectsModule = typeof import("@nw/tags-projects");
 
 describe("promptService facade", () => {
   const mockPrompt: Prompt = {
@@ -46,7 +34,12 @@ describe("promptService facade", () => {
 
   const serviceStub = {
     listAllPrompts: vi.fn((): readonly Prompt[] => [mockPrompt]),
-    searchPrompts: vi.fn(() => ({ prompts: [mockPrompt], page: 0, pageSize: 50, total: 1 })),
+    searchPrompts: vi.fn(() => ({
+      prompts: [mockPrompt],
+      page: 0,
+      pageSize: 50,
+      total: 1,
+    })),
     getPrompt: vi.fn((id: string) => {
       if (id === mockPrompt.id) return mockPrompt;
       throw new Error("not found");
@@ -58,9 +51,10 @@ describe("promptService facade", () => {
     softDeletePrompt: vi.fn(),
   } as any;
 
-  beforeEach(() => {
-    // Reset mocks so per-test overrides do not leak (e.g., getProjectTagBySlug returning a cached value)
-    vi.resetAllMocks();
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    process.env.PROMPT_VAULT_TAG_DB_PATH = ":memory:";
+    await resetCoreDb();
     promptService.setPromptVaultServiceForTests(serviceStub as any);
   });
 
@@ -74,26 +68,20 @@ describe("promptService facade", () => {
     expect(serviceStub.searchPrompts).toHaveBeenCalled();
   });
 
-  it("filters prompts by project slug via projectTagId", async () => {
-    const tagsProjects = (await import("@nw/tags-projects")) as TagsProjectsModule;
-    (tagsProjects.getProjectTagBySlug as unknown as Mock).mockResolvedValue({
-      id: "project-123",
+  it("filters prompts by project slug via the app-local project tag", async () => {
+    const project = await createProjectTag({
       slug: "demo-project",
       label: "Demo",
-      color: "#fff",
     });
 
     await promptService.listPrompts({ projectSlug: "demo-project" });
 
-    expect(tagsProjects.getProjectTagBySlug).toHaveBeenCalledWith("demo-project");
-    expect(serviceStub.searchPrompts).toHaveBeenCalledWith(expect.objectContaining({
-      projectTagId: "project-123",
-    }));
+    expect(serviceStub.searchPrompts).toHaveBeenCalledWith(
+      expect.objectContaining({ projectTagId: project.id }),
+    );
   });
 
-  it("creates prompts and wires project/tag IDs via tags-projects", async () => {
-    const tagsProjects = (await import("@nw/tags-projects")) as TagsProjectsModule;
-
+  it("creates prompts and resolves an app-local project tag", async () => {
     const created = await promptService.createPrompt({
       title: "New Prompt",
       body: "Body content",
@@ -101,14 +89,15 @@ describe("promptService facade", () => {
       tags: ["t1", "t2"],
     });
 
-    expect(serviceStub.createPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      tags: ["t1", "t2"],
-      projectTagId: "project-demo-project",
-    }));
+    const project = await getProjectTagBySlug("demo-project");
+    expect(project).not.toBeNull();
+    expect(serviceStub.createPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tags: ["t1", "t2"],
+        projectTagId: project?.id,
+      }),
+    );
     expect(created.id).toEqual(mockPrompt.id);
-
-    expect(tagsProjects.getProjectTagBySlug).toHaveBeenCalledWith("demo-project");
-    expect(tagsProjects.createProjectTag).toHaveBeenCalled();
   });
 
   it("updates prompt metadata and content when provided", async () => {
@@ -125,16 +114,24 @@ describe("promptService facade", () => {
     expect(serviceStub.addVersion).toHaveBeenCalled();
   });
 
-  it("deletes prompts and best-effort cleans taggings", async () => {
-    const tagsProjects = (await import("@nw/tags-projects")) as TagsProjectsModule;
+  it("deletes prompts and cleans app-local tag associations", async () => {
+    const tag = await createSharedTag({ name: "cleanup" });
+    await tagSharedPrompt("prompt-1", tag.id);
+    expect(
+      await listSharedTagsForEntity({
+        entityType: "prompts",
+        entityId: "prompt-1",
+      }),
+    ).toHaveLength(1);
 
     await promptService.deletePrompt("prompt-1");
 
-    expect(tagsProjects.listTagsForEntity).toHaveBeenCalledWith({
-      entityType: "prompts",
-      entityId: "prompt-1",
-    });
+    expect(
+      await listSharedTagsForEntity({
+        entityType: "prompts",
+        entityId: "prompt-1",
+      }),
+    ).toHaveLength(0);
     expect(serviceStub.permanentlyDeletePrompt).toHaveBeenCalledWith("prompt-1");
   });
 });
-
