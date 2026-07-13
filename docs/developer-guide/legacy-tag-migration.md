@@ -1,17 +1,20 @@
 # Legacy tag/project sidecar migration
 
-PR #27 replaces the private Nobodyworld tags/Core DB dependency with an app-owned SQLite sidecar. Existing internal installations may have tag and project relationships in a legacy `*.core.db` database.
+PR #27 replaces the private Nobodyworld tags/Core DB dependency with an app-owned SQLite sidecar. Existing internal installations may have tag and project relationships in a legacy Nobodyworld Core DB such as `*.core.db`.
+
+The historical Core DB is not a tag-only file. It may legitimately contain `prompts`, `prompt_versions`, settings, pages, and other platform tables alongside `tags` and `taggings`. The migration reads only the tag tables and writes into a separate app-owned target.
 
 Do not point the new runtime directly at an unreviewed legacy database. Migrate into a separate target file first.
 
 ## Safety rules
 
 1. Stop Prompt Vault before copying or migrating databases.
-2. Back up the main prompt database and legacy sidecar.
+2. Back up the main prompt database and legacy Core DB.
 3. Keep the source and target paths different.
 4. Run a dry run before writing.
 5. Inspect the JSON counts and preserve the original source until restart/persistence verification is complete.
-6. Never pass the main Prompt Vault database as the migration source. The command requires legacy `tags` and `taggings` tables and refuses incompatible input.
+6. Never pass the standalone Prompt Vault database as the migration source. A recognized legacy Core DB must contain `schema_migrations`, `settings`, `pages`, `tags`, and `taggings` with the expected legacy columns.
+7. Never use the main Prompt Vault database or the legacy Core DB itself as the target. Use a new app-owned sidecar path.
 
 ## Dry run
 
@@ -22,7 +25,7 @@ pnpm tags:migrate-legacy -- \
   --dry-run
 ```
 
-The dry run opens the source read-only, validates the required tables, reports source counts, and does not create or modify the target.
+The dry run opens the source read-only, validates the Core DB marker tables and legacy tag columns, reports source counts, and does not create or modify the target.
 
 Environment variables may be used instead:
 
@@ -44,9 +47,10 @@ pnpm tags:migrate-legacy -- \
 
 The migration:
 
+- reads only legacy `tags` and `taggings` rows from the broader Core DB;
 - preserves tag IDs when possible;
-- maps legacy `type` to the app-owned `kind` field;
-- preserves names, project prefixes, labels/descriptions, colors, archive state, and timestamps;
+- accepts legacy `name` or `label` and maps legacy `type` to the app-owned `kind` field;
+- preserves project-prefixed names, labels/descriptions, colors, archive state, and timestamps;
 - preserves prompt/entity associations and normalizes a missing context to an empty context;
 - reuses an existing target tag with the same case-insensitive name and kind;
 - runs target writes inside a transaction;
