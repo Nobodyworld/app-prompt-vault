@@ -1,9 +1,8 @@
-// App-local adapter for @nw/* imports.
-// Keep direct @nw/* imports out of app code per repo conventions.
+// App-local adapter for remaining @nw/* platform imports.
+// Keep direct @nw/* imports out of app code per repository conventions.
 
 import { createHash } from "node:crypto";
 import type { IntegrityCheckResult } from "@nw/core-db";
-import * as secretsModule from "@nw/secrets";
 import * as loggingModule from "@nw/logging";
 import * as eventBusModule from "@nw/event-bus";
 import * as pagesWidgetsModule from "@nw/pages-widgets";
@@ -11,8 +10,9 @@ import * as coreDbModule from "@nw/core-db";
 import * as tagsProjectsModule from "@nw/tags-projects";
 
 export type { LogEntry, LogLevel } from "@nw/logging";
-
 export type { PlatformEventMap } from "@nw/event-bus";
+
+const localSecretStore = new Map<string, string>();
 
 type CreateLoggerFn = typeof loggingModule.createLogger;
 type GetRecentLogsFn = typeof loggingModule.getRecentLogs;
@@ -22,7 +22,8 @@ type RegisterWidgetsFn = typeof pagesWidgetsModule.registerWidgets;
 type ResetCoreDbFn = typeof coreDbModule.resetCoreDb;
 type VerifyCoreDbApiKeyFn = typeof coreDbModule.verifyCoreDbApiKey;
 type VerifyCoreDbSessionTokenFn = typeof coreDbModule.verifyCoreDbSessionToken;
-type BootstrapCoreDbAuthFromApiKeysFn = typeof coreDbModule.bootstrapCoreDbAuthFromApiKeys;
+type BootstrapCoreDbAuthFromApiKeysFn =
+  typeof coreDbModule.bootstrapCoreDbAuthFromApiKeys;
 
 type CreateProjectTagFn = typeof tagsProjectsModule.createProjectTag;
 type GetProjectTagBySlugFn = typeof tagsProjectsModule.getProjectTagBySlug;
@@ -33,17 +34,6 @@ type ListSharedTagsForEntityFn = typeof tagsProjectsModule.listTagsForEntity;
 type TagSharedPromptFn = typeof tagsProjectsModule.tagPrompt;
 type UntagSharedPromptFn = typeof tagsProjectsModule.untagPrompt;
 type ListSharedEntitiesByTagsFn = typeof tagsProjectsModule.listEntitiesByTags;
-
-type SecretsModuleShape = {
-  getSecret?: (...args: any[]) => any;
-  storeSecret?: (...args: any[]) => any;
-  default?: {
-    getSecret?: (...args: any[]) => any;
-    storeSecret?: (...args: any[]) => any;
-  };
-};
-
-const secretsCompat = secretsModule as unknown as SecretsModuleShape;
 
 type ModuleWithDefault<T> = T & { default?: T };
 
@@ -61,11 +51,21 @@ function pickFunction<T extends object, K extends keyof any>(
     }
 
     if (typeof candidate !== "function") {
-      throw new Error(`${label} does not provide a callable export named '${String(key)}'`);
+      throw new Error(
+        `${label} does not provide a callable export named '${String(key)}'`,
+      );
     }
 
     return (candidate as (...inner: any[]) => any)(...args);
   };
+}
+
+function insecureSecretFallbackAllowed(): boolean {
+  return (
+    process.env.NODE_ENV !== "production" ||
+    process.env.NW_SECRETS_ALLOW_INSECURE === "1" ||
+    process.env.NW_SECRETS_ALLOW_INSECURE === "true"
+  );
 }
 
 export const createLogger = pickFunction(
@@ -92,27 +92,21 @@ export const registerWidgets = pickFunction(
   "@nw/pages-widgets",
 ) as unknown as RegisterWidgetsFn;
 
-export async function getSecret(
-  ref: string,
-  options?: unknown,
-): Promise<string | null> {
-  const fn = secretsCompat.getSecret ?? secretsCompat.default?.getSecret;
-  if (typeof fn !== "function") {
-    throw new Error("[@nw/secrets] getSecret is not available in this runtime");
-  }
-  return fn(ref, options);
+/**
+ * Process-local fallback used only when JWT_SECRET is not injected.
+ * Production refuses this fallback unless explicitly overridden.
+ */
+export async function getSecret(ref: string): Promise<string | null> {
+  return localSecretStore.get(ref) ?? null;
 }
 
-export async function storeSecret(
-  ref: string,
-  value: string,
-  options?: unknown,
-): Promise<void> {
-  const fn = secretsCompat.storeSecret ?? secretsCompat.default?.storeSecret;
-  if (typeof fn !== "function") {
-    throw new Error("[@nw/secrets] storeSecret is not available in this runtime");
+export async function storeSecret(ref: string, value: string): Promise<void> {
+  if (!insecureSecretFallbackAllowed()) {
+    throw new Error(
+      "Secure secret persistence is unavailable in production. Set JWT_SECRET or explicitly set NW_SECRETS_ALLOW_INSECURE=1 for emergency diagnostics.",
+    );
   }
-  await fn(ref, value, options);
+  localSecretStore.set(ref, value);
 }
 
 export type { CoreDbAuthContext } from "@nw/core-db";
@@ -141,9 +135,8 @@ export const bootstrapCoreDbAuthFromApiKeys = pickFunction(
   "@nw/core-db",
 ) as unknown as BootstrapCoreDbAuthFromApiKeysFn;
 
-// NOTE: @nw/core-db exposes async WebCrypto-based integrity helpers. Prompt Vault
-// repository code is intentionally synchronous (better-sqlite3 transactions), so
-// we provide node-only sync wrappers here.
+// Prompt Vault repository code is intentionally synchronous
+// (better-sqlite3 transactions), so provide Node-only sync integrity wrappers.
 export function generateIntegrityChecksum(data: string): string {
   return createHash("sha256").update(data).digest("hex");
 }
