@@ -112,7 +112,7 @@ A public release requires all items in [issue #26](../../issues/26), including:
 
 - [Documentation index](docs/README.md)
 - [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
-- [Architecture overview](docs/architecture/overview.md)
+- [Architecture overview](docs/developer-guide/architecture/overview.md)
 - [Developer workflows](docs/developer-guide/workflows.md)
 - [HTTP and security guide](docs/SECURITY.md)
 - [Security policy](docs/security/policies/security.md)
