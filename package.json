@@ -49,6 +49,12 @@
     "node": ">=24.0.0 <25.0.0",
     "pnpm": ">=10.0.0"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
     "@tauri-apps/api": "^2.0.0",
