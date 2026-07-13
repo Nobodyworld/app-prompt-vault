@@ -12,7 +12,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node"],
-    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"]
+    "typeRoots": ["./node_modules/@types"]
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "server.ts", "scripts/**/*.ts"],
   "exclude": [
