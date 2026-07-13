@@ -367,12 +367,56 @@ const PROJECT_TAG_PREFIX = "project:";
 let platformDatabase: Database.Database | null = null;
 let platformDatabasePath: string | null = null;
 
+function derivePlatformPathFromLegacyPath(legacyPath: string): string {
+  if (/\.core\.db$/i.test(legacyPath)) {
+    return legacyPath.replace(/\.core\.db$/i, ".platform.db");
+  }
+  return `${legacyPath}.platform.db`;
+}
+
 function resolvePlatformDatabasePath(): string {
-  return (
-    process.env.PROMPT_VAULT_TAG_DB_PATH ??
-    process.env.NW_CORE_DB_PATH ??
-    resolve(process.cwd(), "prompt-vault-platform.db")
-  );
+  const explicitPath = process.env.PROMPT_VAULT_TAG_DB_PATH?.trim();
+  if (explicitPath) return explicitPath;
+
+  // PromptVaultService historically set NW_CORE_DB_PATH. Treat it only as a
+  // location hint and derive a new file; never open the legacy Core DB itself.
+  const legacyPathHint = process.env.NW_CORE_DB_PATH?.trim();
+  if (legacyPathHint) return derivePlatformPathFromLegacyPath(legacyPathHint);
+
+  return resolve(process.cwd(), "prompt-vault-platform.db");
+}
+
+function hasTable(database: Database.Database, table: string): boolean {
+  const row = database
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+    )
+    .get(table) as { name?: string } | undefined;
+  return row?.name === table;
+}
+
+function hasColumn(
+  database: Database.Database,
+  table: string,
+  column: string,
+): boolean {
+  const rows = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+    name: string;
+  }>;
+  return rows.some((row) => row.name === column);
+}
+
+function assertSafePlatformDatabase(database: Database.Database): void {
+  if (hasTable(database, "prompts") || hasTable(database, "prompt_versions")) {
+    throw new Error(
+      "Configured tag database appears to be the main Prompt Vault database. Set PROMPT_VAULT_TAG_DB_PATH to a separate app-owned sidecar.",
+    );
+  }
+  if (hasTable(database, "tags") && !hasColumn(database, "tags", "kind")) {
+    throw new Error(
+      "Configured tag database uses the legacy Core DB schema. Run the documented legacy migration into a separate app-owned target.",
+    );
+  }
 }
 
 function getPlatformDatabase(): Database.Database {
@@ -384,39 +428,47 @@ function getPlatformDatabase(): Database.Database {
   if (platformDatabase) platformDatabase.close();
   if (nextPath !== ":memory:") mkdirSync(dirname(nextPath), { recursive: true });
 
-  platformDatabase = new Database(nextPath);
+  const nextDatabase = new Database(nextPath);
+  try {
+    assertSafePlatformDatabase(nextDatabase);
+    nextDatabase.pragma("foreign_keys = ON");
+    nextDatabase.pragma("busy_timeout = 5000");
+    if (nextPath !== ":memory:") nextDatabase.pragma("journal_mode = WAL");
+    nextDatabase.exec(`
+      CREATE TABLE IF NOT EXISTS tags (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'label',
+        color TEXT,
+        description TEXT,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(name, kind)
+      );
+      CREATE TABLE IF NOT EXISTS taggings (
+        id TEXT PRIMARY KEY,
+        tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        context TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        UNIQUE(tag_id, entity_type, entity_id, context)
+      );
+      CREATE INDEX IF NOT EXISTS idx_platform_tags_name_kind
+        ON tags(name, kind);
+      CREATE INDEX IF NOT EXISTS idx_platform_taggings_entity
+        ON taggings(entity_type, entity_id);
+      CREATE INDEX IF NOT EXISTS idx_platform_taggings_tag
+        ON taggings(tag_id);
+    `);
+  } catch (error) {
+    nextDatabase.close();
+    throw error;
+  }
+
+  platformDatabase = nextDatabase;
   platformDatabasePath = nextPath;
-  platformDatabase.pragma("foreign_keys = ON");
-  platformDatabase.pragma("busy_timeout = 5000");
-  if (nextPath !== ":memory:") platformDatabase.pragma("journal_mode = WAL");
-  platformDatabase.exec(`
-    CREATE TABLE IF NOT EXISTS tags (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      kind TEXT NOT NULL DEFAULT 'label',
-      color TEXT,
-      description TEXT,
-      is_archived INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(name, kind)
-    );
-    CREATE TABLE IF NOT EXISTS taggings (
-      id TEXT PRIMARY KEY,
-      tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-      entity_type TEXT NOT NULL,
-      entity_id TEXT NOT NULL,
-      context TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      UNIQUE(tag_id, entity_type, entity_id, context)
-    );
-    CREATE INDEX IF NOT EXISTS idx_platform_tags_name_kind
-      ON tags(name, kind);
-    CREATE INDEX IF NOT EXISTS idx_platform_taggings_entity
-      ON taggings(entity_type, entity_id);
-    CREATE INDEX IF NOT EXISTS idx_platform_taggings_tag
-      ON taggings(tag_id);
-  `);
   return platformDatabase;
 }
 
