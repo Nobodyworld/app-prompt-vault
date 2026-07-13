@@ -1,14 +1,11 @@
-import { describe, expect, it, beforeAll, beforeEach, vi } from "vitest";
-
-vi.mock("@nw/orchestrator-sdk", () => ({
-  registerTool: vi.fn(),
-}));
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 let tools: typeof import("../src/tools/index.js");
 
 beforeAll(async () => {
   tools = await import("../src/tools/index.js");
 });
+
 let promptService: {
   listPrompts: ReturnType<typeof vi.fn>;
   getPrompt: ReturnType<typeof vi.fn>;
@@ -40,23 +37,23 @@ vi.mock("../src/lib/promptService.js", async () => {
     getPrompt: vi.fn(async (id: string) =>
       id === "p1"
         ? {
-          id: "p1",
-          slug: "p1",
-          title: "Prompt 1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          tags: [],
-          latestVersion: {
-            id: "v1",
-            promptId: "p1",
-            semanticVersion: "1.0.0",
-            body: "Body",
-            format: "markdown",
+            id: "p1",
+            slug: "p1",
+            title: "Prompt 1",
             createdAt: new Date(),
             updatedAt: new Date(),
-          },
-        }
-        : null
+            tags: [],
+            latestVersion: {
+              id: "v1",
+              promptId: "p1",
+              semanticVersion: "1.0.0",
+              body: "Body",
+              format: "markdown",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          }
+        : null,
     ),
     createPrompt: vi.fn(async () => ({
       id: "created",
@@ -109,10 +106,10 @@ describe("Prompt Vault tools", () => {
   it("pv_search_prompts calls promptService.listPrompts", async () => {
     const result = await tools.pvSearchPromptsHandler(
       { query: "hello", limit: 10 },
-      { projectSlug: null }
+      { projectSlug: null },
     );
     expect(result.success).toBe(true);
-    expect((promptService.listPrompts as any)).toHaveBeenCalledWith({
+    expect(promptService.listPrompts).toHaveBeenCalledWith({
       query: "hello",
       tags: undefined,
     });
@@ -127,10 +124,10 @@ describe("Prompt Vault tools", () => {
   it("pv_create_prompt prefers projectSlug from context", async () => {
     const result = await tools.pvCreatePromptHandler(
       { title: "T", content: "C" },
-      { projectSlug: "ctx-project" }
+      { projectSlug: "ctx-project" },
     );
     expect(result.success).toBe(true);
-    expect((promptService.createPrompt as any)).toHaveBeenCalledWith({
+    expect(promptService.createPrompt).toHaveBeenCalledWith({
       title: "T",
       body: "C",
       projectSlug: "ctx-project",
@@ -147,7 +144,6 @@ describe("Prompt Vault tools", () => {
   it("pv_delete_prompt calls promptService.deletePrompt when found", async () => {
     const result = await tools.pvDeletePromptHandler({ id: "p1" }, {});
     expect(result.success).toBe(true);
-    expect((promptService.deletePrompt as any)).toHaveBeenCalledWith("p1");
+    expect(promptService.deletePrompt).toHaveBeenCalledWith("p1");
   });
 });
-
