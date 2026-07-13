@@ -1,9 +1,7 @@
 // App-local compatibility layer for Prompt Vault platform contracts.
-// Keep direct @nw/* imports isolated here until the remaining integrations are optional.
+// The remaining direct @nw/* import is isolated here until shared tags are optional.
 
 import { createHash } from "node:crypto";
-import * as pagesWidgetsModule from "@nw/pages-widgets";
-import * as coreDbModule from "@nw/core-db";
 import * as tagsProjectsModule from "@nw/tags-projects";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -70,9 +68,7 @@ class PromptVaultEventBus {
   emit<K extends EventKey>(event: K, payload: PlatformEventMap[K]): void {
     const listeners = this.listeners.get(event);
     if (!listeners) return;
-    for (const listener of [...listeners]) {
-      listener(payload);
-    }
+    for (const listener of [...listeners]) listener(payload);
   }
 }
 
@@ -164,47 +160,6 @@ export function createLogger(options: {
 
 const localSecretStore = new Map<string, string>();
 
-type RegisterWidgetsFn = typeof pagesWidgetsModule.registerWidgets;
-type ResetCoreDbFn = typeof coreDbModule.resetCoreDb;
-type VerifyCoreDbApiKeyFn = typeof coreDbModule.verifyCoreDbApiKey;
-type VerifyCoreDbSessionTokenFn = typeof coreDbModule.verifyCoreDbSessionToken;
-type BootstrapCoreDbAuthFromApiKeysFn =
-  typeof coreDbModule.bootstrapCoreDbAuthFromApiKeys;
-type CreateProjectTagFn = typeof tagsProjectsModule.createProjectTag;
-type GetProjectTagBySlugFn = typeof tagsProjectsModule.getProjectTagBySlug;
-type CreateSharedTagFn = typeof tagsProjectsModule.createTag;
-type GetTagByIdFn = typeof tagsProjectsModule.getTagById;
-type ListSharedTagsFn = typeof tagsProjectsModule.listTags;
-type ListSharedTagsForEntityFn = typeof tagsProjectsModule.listTagsForEntity;
-type TagSharedPromptFn = typeof tagsProjectsModule.tagPrompt;
-type UntagSharedPromptFn = typeof tagsProjectsModule.untagPrompt;
-type ListSharedEntitiesByTagsFn = typeof tagsProjectsModule.listEntitiesByTags;
-
-type ModuleWithDefault<T> = T & { default?: T };
-
-function pickFunction<T extends object, K extends keyof any>(
-  mod: ModuleWithDefault<T>,
-  key: K,
-  label: string,
-): (...args: any[]) => any {
-  return (...args: any[]) => {
-    let candidate: unknown;
-    try {
-      candidate = (mod as any)[key] ?? (mod as any).default?.[key];
-    } catch {
-      candidate = undefined;
-    }
-
-    if (typeof candidate !== "function") {
-      throw new Error(
-        `${label} does not provide a callable export named '${String(key)}'`,
-      );
-    }
-
-    return (candidate as (...inner: any[]) => any)(...args);
-  };
-}
-
 function insecureSecretFallbackAllowed(): boolean {
   return (
     process.env.NODE_ENV !== "production" ||
@@ -212,12 +167,6 @@ function insecureSecretFallbackAllowed(): boolean {
     process.env.NW_SECRETS_ALLOW_INSECURE === "true"
   );
 }
-
-export const registerWidgets = pickFunction(
-  pagesWidgetsModule as any,
-  "registerWidgets",
-  "@nw/pages-widgets",
-) as unknown as RegisterWidgetsFn;
 
 /**
  * Process-local fallback used only when JWT_SECRET is not injected.
@@ -236,31 +185,122 @@ export async function storeSecret(ref: string, value: string): Promise<void> {
   localSecretStore.set(ref, value);
 }
 
-export type { CoreDbAuthContext } from "@nw/core-db";
+export type CoreDbAuthKind = "api-key" | "session";
 
-export const resetCoreDb = pickFunction(
-  coreDbModule as any,
-  "resetCoreDb",
-  "@nw/core-db",
-) as unknown as ResetCoreDbFn;
+export interface CoreDbAuthContext {
+  kind: CoreDbAuthKind;
+  userId: string;
+  displayName?: string;
+  roles: string[];
+  scopes: string[];
+  apiKeyId?: string;
+  sessionId?: string;
+}
 
-export const verifyCoreDbApiKey = pickFunction(
-  coreDbModule as any,
-  "verifyCoreDbApiKey",
-  "@nw/core-db",
-) as unknown as VerifyCoreDbApiKeyFn;
+export interface CoreDbAuthRequirements {
+  roles?: string[];
+  scopes?: string[];
+}
 
-export const verifyCoreDbSessionToken = pickFunction(
-  coreDbModule as any,
-  "verifyCoreDbSessionToken",
-  "@nw/core-db",
-) as unknown as VerifyCoreDbSessionTokenFn;
+type LocalApiKeyRecord = {
+  id: string;
+  hash: string;
+  context: CoreDbAuthContext;
+};
 
-export const bootstrapCoreDbAuthFromApiKeys = pickFunction(
-  coreDbModule as any,
-  "bootstrapCoreDbAuthFromApiKeys",
-  "@nw/core-db",
-) as unknown as BootstrapCoreDbAuthFromApiKeysFn;
+const localApiKeys = new Map<string, LocalApiKeyRecord>();
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function scopeAllows(granted: string, required: string): boolean {
+  if (granted === "*" || granted === required) return true;
+  return granted.endsWith("*") && required.startsWith(granted.slice(0, -1));
+}
+
+function meetsAuthRequirements(
+  context: CoreDbAuthContext,
+  requirements: CoreDbAuthRequirements,
+): boolean {
+  const requiredRoles = requirements.roles ?? [];
+  const requiredScopes = requirements.scopes ?? [];
+  const roleAllowed =
+    requiredRoles.length === 0 ||
+    requiredRoles.some((role) => context.roles.includes(role));
+  const scopesAllowed = requiredScopes.every((required) =>
+    context.scopes.some((granted) => scopeAllows(granted, required)),
+  );
+  return roleAllowed && scopesAllowed;
+}
+
+/** Seed the standalone auth compatibility store from environment API keys. */
+export async function bootstrapCoreDbAuthFromApiKeys(
+  apiKeys: Record<string, string>,
+  options: {
+    ownerUserId?: string;
+    ownerDisplayName?: string;
+    scopes?: string[];
+    idPrefix?: string;
+  } = {},
+): Promise<{ ownerUserId: string; apiKeyIds: string[] }> {
+  const ownerUserId = options.ownerUserId ?? "user-owner";
+  const displayName = options.ownerDisplayName ?? "Owner";
+  const scopes = options.scopes ?? ["*"];
+  const idPrefix = options.idPrefix ?? "env";
+  const apiKeyIds: string[] = [];
+
+  for (const [name, value] of Object.entries(apiKeys)) {
+    if (!value) continue;
+    const id = `apikey-${idPrefix}-${name}`;
+    const hash = sha256(value);
+    localApiKeys.set(hash, {
+      id,
+      hash,
+      context: {
+        kind: "api-key",
+        userId: ownerUserId,
+        displayName,
+        roles: ["owner"],
+        scopes: [...scopes],
+        apiKeyId: id,
+      },
+    });
+    apiKeyIds.push(id);
+  }
+
+  return { ownerUserId, apiKeyIds };
+}
+
+export async function verifyCoreDbApiKey(
+  presentedKey: string | undefined,
+  requirements: CoreDbAuthRequirements = {},
+): Promise<CoreDbAuthContext | null> {
+  if (!presentedKey) return null;
+  const record = localApiKeys.get(sha256(presentedKey));
+  if (!record || !meetsAuthRequirements(record.context, requirements)) return null;
+  return {
+    ...record.context,
+    roles: [...record.context.roles],
+    scopes: [...record.context.scopes],
+  };
+}
+
+/**
+ * Standalone Prompt Vault issues and validates its own JWTs in AuthManager.
+ * Shared Core DB session tokens are intentionally unavailable without an adapter.
+ */
+export async function verifyCoreDbSessionToken(
+  _token: string | undefined,
+  _secret: string | undefined,
+  _requirements: CoreDbAuthRequirements = {},
+): Promise<CoreDbAuthContext | null> {
+  return null;
+}
+
+export async function resetCoreDb(): Promise<void> {
+  localApiKeys.clear();
+}
 
 export interface IntegrityCheckResult {
   isValid: boolean;
@@ -270,7 +310,7 @@ export interface IntegrityCheckResult {
 }
 
 export function generateIntegrityChecksum(data: string): string {
-  return createHash("sha256").update(data).digest("hex");
+  return sha256(data);
 }
 
 export function checkDataIntegrity(
@@ -283,6 +323,34 @@ export function checkDataIntegrity(
     expectedChecksum,
     actualChecksum,
     data,
+  };
+}
+
+type CreateProjectTagFn = typeof tagsProjectsModule.createProjectTag;
+type GetProjectTagBySlugFn = typeof tagsProjectsModule.getProjectTagBySlug;
+type CreateSharedTagFn = typeof tagsProjectsModule.createTag;
+type GetTagByIdFn = typeof tagsProjectsModule.getTagById;
+type ListSharedTagsFn = typeof tagsProjectsModule.listTags;
+type ListSharedTagsForEntityFn = typeof tagsProjectsModule.listTagsForEntity;
+type TagSharedPromptFn = typeof tagsProjectsModule.tagPrompt;
+type UntagSharedPromptFn = typeof tagsProjectsModule.untagPrompt;
+type ListSharedEntitiesByTagsFn = typeof tagsProjectsModule.listEntitiesByTags;
+
+type ModuleWithDefault<T> = T & { default?: T };
+
+function pickFunction<T extends object, K extends keyof any>(
+  mod: ModuleWithDefault<T>,
+  key: K,
+  label: string,
+): (...args: any[]) => any {
+  return (...args: any[]) => {
+    const candidate = (mod as any)[key] ?? (mod as any).default?.[key];
+    if (typeof candidate !== "function") {
+      throw new Error(
+        `${label} does not provide a callable export named '${String(key)}'`,
+      );
+    }
+    return (candidate as (...inner: any[]) => any)(...args);
   };
 }
 
