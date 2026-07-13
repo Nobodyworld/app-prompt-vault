@@ -6,10 +6,13 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ### Added
 
-- Dependency-free `repository:audit` validation for public-release metadata and invariants.
+- Dependency-free `repository:audit` validation for public-release metadata, action pinning, versions, and standalone-boundary regressions.
 - A full-SHA-pinned GitHub Actions workflow that runs the repository audit and uploads its report.
 - GitHub issues #22–#26 as the permanent public-showcase release plan and gate.
 - `tauri:build` as the explicit native packaging command.
+- App-local `vitest.shared.ts` coverage configuration.
+- A vendored native secrets crate under `src-tauri/crates/nw-secrets`.
+- `docs/developer-guide/standalone-dependency-matrix.md` with confirmed remaining platform contracts and extraction order.
 - `scripts/metrics-snapshot.ts` for agent-tagged complexity, dependency, and latency reporting alongside `docs/reports/stewards-report.md` and `docs/operations/automation-roles.md` guidance.
 - Regression test asserting every SQL migration is executed and required indexes are present on new databases.
 - Express observability middleware emitting Prometheus-compatible HTTP counters/histograms and an `/observability` router exposing health and metrics endpoints.
@@ -30,8 +33,14 @@ All notable changes to Prompt Vault will be documented in this file.
 - Aligned package, Tauri, and Cargo versions at `0.2.0` and updated the Tauri identifier.
 - Changed `web:build` to terminate after generating production assets instead of starting the development server.
 - Added type checking and the repository audit to the quality gate.
+- Pinned the supported package manager as pnpm 10.24.0 and marked the package private.
+- Removed parent-only TypeScript type roots.
+- Replaced the shared HTTP wrapper with an equivalent app-local timeout-aware fetch adapter.
+- Replaced the shared placeholder theme package with app-local document theme application.
+- Changed the Tauri secrets dependency from a parent workspace path to the vendored crate.
 - Published a usable security contact and clarified proprietary source-available review terms.
 - Replaced broken documentation navigation and the stale project-stage snapshot.
+- Simplified the desktop shell by removing inactivity hiding and nonfunctional sidebar/profile controls.
 - Consolidated documentation into topic-specific directories under `docs/` to keep the repository root focused on source, tooling, and required governance files.
 - Simplified repository transactions by delegating to `better-sqlite3`'s transaction helper and deduplicating tags before persistence.
 - Express server now enforces request correlation IDs, sanitises user-provided identifiers, and returns JSON-formatted parse errors alongside the `x-request-id` header.
@@ -45,6 +54,8 @@ All notable changes to Prompt Vault will be documented in this file.
 
 - Removed the invalid `.local` security-reporting address and unresolved jurisdiction placeholder.
 - Removed contradictory public claims that the current repository is already independently installable or release-ready.
+- Corrected the UI Vitest coverage threshold property for the current configuration shape.
+- Theme switching now updates `data-theme` and the document color scheme instead of only logging.
 - Tag upserts now reuse the persisted identifier returned from SQLite, preventing foreign key errors when reapplying shared labels.
 - Search, tag assignment, and tag removal operations benefit from new SQLite indexes, reducing query latency on vaults with larger datasets.
 - Server configuration loader now de-duplicates repeated `PROMPT_VAULT_ALLOWED_ORIGINS` entries while still surfacing warnings so CORS policies stay deterministic.
@@ -67,33 +78,3 @@ All notable changes to Prompt Vault will be documented in this file.
 
 - Documented incident response, performance baselines, and future-proofing strategy to guide recovery and scaling decisions.
 - Busy timeout now honours `PROMPT_VAULT_BUSY_TIMEOUT`, allowing operators to tune contention limits without code changes.
-
-## [0.1.1] - 2025-10-25
-
-### Added
-
-- Coverage workflow powered by V8 instrumentation (`npm run test:coverage`) and summary script (`npm run coverage:summary`).
-- Repository-level regression tests for tag metadata preservation and service tests for pagination, timestamp updates, and no-op tag handling.
-- Release notes (`docs/releases/notes.md`) and expanded security guidance for operational readiness.
-
-### Changed
-
-- SQLite connections now enable foreign keys and busy timeouts by default while preserving WAL mode for writable databases.
-- Prompt version creation uses a single timestamp to keep metadata consistent across records.
-- Tag queries sort case-insensitively and reuse existing descriptions when labels are re-applied.
-
-## [0.1.0] - 2024-04-11
-
-### Added
-
-- Codex automation chain definition (`codex_chain.json`).
-- TypeScript project scaffolding including package scripts, tsconfig, ESLint, and Vitest configuration.
-- Domain models, validation schemas, repositories, and services powering prompt management.
-- Commander-based CLI for creating, listing, tagging, and versioning prompts.
-- SQLite schema migrations stored alongside source code.
-- Comprehensive documentation set (architecture, workflows, dependencies, policies).
-- Initial Vitest suite covering prompt workflows.
-
-### Notes
-
-- Desktop UI work (React + Tauri) remains in planning; CLI acts as developer interface in the interim.
