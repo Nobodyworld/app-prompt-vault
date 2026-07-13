@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +15,36 @@ function fail(message) {
 
 function requireCondition(condition, message) {
   if (!condition) fail(message);
+}
+
+function collectSourceFiles(directory) {
+  const absolute = resolve(repositoryRoot, directory);
+  if (!existsSync(absolute)) return [];
+  const files = [];
+  for (const entry of readdirSync(absolute)) {
+    const path = resolve(absolute, entry);
+    const relative = path.slice(repositoryRoot.length).replaceAll("\\", "/");
+    if (statSync(path).isDirectory()) {
+      files.push(...collectSourceFiles(relative));
+    } else if (/\.(?:ts|tsx|js|mjs|cjs)$/.test(entry)) {
+      files.push(relative);
+    }
+  }
+  return files;
+}
+
+function checkNoWorkspaceImports() {
+  const importPattern =
+    /(?:from\s+|import\s*\(|require\s*\()\s*["']@nw\//;
+  for (const root of ["src", "desktop/src", "tests"]) {
+    for (const path of collectSourceFiles(root)) {
+      const content = read(path);
+      requireCondition(
+        !importPattern.test(content),
+        `${path} still imports a private @nw/* workspace package`,
+      );
+    }
+  }
 }
 
 function checkPublicMarkdownLinks(path) {
@@ -64,6 +94,8 @@ const desktopTsconfig = read("desktop/tsconfig.json");
 const httpAdapter = read("src/lib/platform-connectors.ts");
 const themeAdapter = read("desktop/src/lib/platform-ui.ts");
 const platformCore = read("src/lib/platform-core.ts");
+const platformOrchestrator = read("src/lib/platform-orchestrator.ts");
+const platformWidgets = read("src/lib/platform-pages-widgets.ts");
 
 const cargoVersion = cargoToml.match(
   /\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m,
@@ -98,6 +130,23 @@ requireCondition(
   "packageManager must pin the supported pnpm version",
 );
 
+const declaredDependencies = {
+  ...(packageJson.dependencies ?? {}),
+  ...(packageJson.devDependencies ?? {}),
+  ...(packageJson.optionalDependencies ?? {}),
+};
+for (const [name, version] of Object.entries(declaredDependencies)) {
+  requireCondition(
+    !String(version).startsWith("workspace:"),
+    `package.json still declares workspace dependency ${name}@${version}`,
+  );
+  requireCondition(
+    !name.startsWith("@nw/"),
+    `package.json still declares private Nobodyworld dependency ${name}`,
+  );
+}
+checkNoWorkspaceImports();
+
 requireCondition(
   vitestConfig.includes('from "./vitest.shared"'),
   "Vitest must use the app-local shared coverage config",
@@ -123,18 +172,6 @@ requireCondition(
   "Cargo still references a parent workspace package",
 );
 
-for (const removedDependency of [
-  "@nw/connectors-http",
-  "@nw/ui-theme",
-  "@nw/ui-kit",
-  "@nw/secrets",
-]) {
-  requireCondition(
-    !packageJson.dependencies?.[removedDependency],
-    `package.json still declares localized or stale dependency ${removedDependency}`,
-  );
-}
-
 requireCondition(
   !httpAdapter.includes("@nw/"),
   "HTTP adapter still imports a workspace package",
@@ -144,8 +181,8 @@ requireCondition(
   "theme adapter still imports a workspace package",
 );
 requireCondition(
-  !platformCore.includes('from "@nw/secrets"'),
-  "platform core still imports the localized JavaScript secrets package",
+  !platformCore.includes("@nw/"),
+  "platform core still references a workspace package",
 );
 requireCondition(
   platformCore.includes("const localSecretStore = new Map"),
@@ -154,6 +191,30 @@ requireCondition(
 requireCondition(
   platformCore.includes("Secure secret persistence is unavailable in production"),
   "app-local secret fallback must refuse insecure production use",
+);
+requireCondition(
+  platformCore.includes("CREATE TABLE IF NOT EXISTS taggings"),
+  "platform core must provide app-owned persistent tag associations",
+);
+requireCondition(
+  platformCore.includes("bootstrapCoreDbAuthFromApiKeys"),
+  "platform core must provide standalone API-key compatibility",
+);
+requireCondition(
+  !platformOrchestrator.includes("@nw/"),
+  "orchestrator adapter still references a workspace package",
+);
+requireCondition(
+  platformOrchestrator.includes("const toolRegistry = new Map"),
+  "orchestrator adapter must provide an app-local tool registry",
+);
+requireCondition(
+  !platformWidgets.includes("@nw/"),
+  "widget adapter still references a workspace package",
+);
+requireCondition(
+  platformWidgets.includes("const widgetRegistry = new Map"),
+  "widget adapter must provide an app-local widget registry",
 );
 
 requireCondition(
@@ -230,6 +291,6 @@ for (const line of usesLines) {
 
 if (!process.exitCode) {
   console.log(
-    `repository-audit: passed for Prompt Vault ${packageJson.version} (${usesLines.length} pinned actions)`,
+    `repository-audit: passed for Prompt Vault ${packageJson.version} (${usesLines.length} pinned actions, standalone dependency boundary)`,
   );
 }
