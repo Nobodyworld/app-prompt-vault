@@ -237,9 +237,13 @@ requireCondition(
   "legacy tag migration must open its source read-only and require an existing file",
 );
 requireCondition(
-  legacyMigration.includes("Source appears to be the main Prompt Vault database") &&
-    legacyMigration.includes("Target appears to be the main Prompt Vault database"),
-  "legacy tag migration must refuse the main Prompt Vault database as source or target",
+  legacyMigration.includes('const coreMarkers = ["schema_migrations", "settings", "pages"]') &&
+    legacyMigration.includes("Source is not a recognized legacy Nobodyworld Core DB"),
+  "legacy tag migration must distinguish the full Core DB from the standalone Prompt Vault database",
+);
+requireCondition(
+  legacyMigration.includes("Target appears to be the main Prompt Vault database"),
+  "legacy tag migration must refuse the main Prompt Vault database as its target",
 );
 requireCondition(
   legacyMigration.includes("target.transaction"),
@@ -257,8 +261,9 @@ requireCondition(
 );
 requireCondition(
   legacyMigrationGuide.includes("Do not point the new runtime directly") &&
-    legacyMigrationGuide.includes("--dry-run"),
-  "legacy tag migration guide must document isolation and dry-run safeguards",
+    legacyMigrationGuide.includes("--dry-run") &&
+    legacyMigrationGuide.includes("schema_migrations"),
+  "legacy tag migration guide must document Core DB identification, isolation, and dry-run safeguards",
 );
 
 requireCondition(
