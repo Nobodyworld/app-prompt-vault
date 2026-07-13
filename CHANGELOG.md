@@ -78,3 +78,33 @@ All notable changes to Prompt Vault will be documented in this file.
 
 - Documented incident response, performance baselines, and future-proofing strategy to guide recovery and scaling decisions.
 - Busy timeout now honours `PROMPT_VAULT_BUSY_TIMEOUT`, allowing operators to tune contention limits without code changes.
+
+## [0.1.1] - 2025-10-25
+
+### Added
+
+- Coverage workflow powered by V8 instrumentation (`npm run test:coverage`) and summary script (`npm run coverage:summary`).
+- Repository-level regression tests for tag metadata preservation and service tests for pagination, timestamp updates, and no-op tag handling.
+- Release notes (`docs/releases/notes.md`) and expanded security guidance for operational readiness.
+
+### Changed
+
+- SQLite connections now enable foreign keys and busy timeouts by default while preserving WAL mode for writable databases.
+- Prompt version creation uses a single timestamp to keep metadata consistent across records.
+- Tag queries sort case-insensitively and reuse existing descriptions when labels are re-applied.
+
+## [0.1.0] - 2024-04-11
+
+### Added
+
+- Codex automation chain definition (`codex_chain.json`).
+- TypeScript project scaffolding including package scripts, tsconfig, ESLint, and Vitest configuration.
+- Domain models, validation schemas, repositories, and services powering prompt management.
+- Commander-based CLI for creating, listing, tagging, and versioning prompts.
+- SQLite schema migrations stored alongside source code.
+- Comprehensive documentation set (architecture, workflows, dependencies, policies).
+- Initial Vitest suite covering prompt workflows.
+
+### Notes
+
+- Desktop UI work (React + Tauri) remains in planning; CLI acts as developer interface in the interim.
