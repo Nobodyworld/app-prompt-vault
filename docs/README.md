@@ -10,7 +10,7 @@ This directory contains product, development, operations, security, and release 
 - [Getting started index](getting-started/README.md)
 - [Standalone dependency matrix](developer-guide/standalone-dependency-matrix.md)
 - [Developer workflows](developer-guide/workflows.md)
-- [Architecture overview](architecture/overview.md)
+- [Architecture overview](developer-guide/architecture/overview.md)
 - [API specification](api-reference/SPEC.md)
 
 ## Development and automation
@@ -23,17 +23,17 @@ This directory contains product, development, operations, security, and release 
 
 ## Operations
 
+- [Operations index](operations/README.md)
 - [Automation operations](operations/automation.md)
 - [Automation roles](operations/automation-roles.md)
 - [Performance notes](operations/performance-notes.md)
-- [Incident response](incident-response.md)
 - [Telemetry guidance](operations/telemetry.md)
 
 ## Security
 
 - [HTTP and deployment security guide](SECURITY.md)
 - [Security reporting policy](security/policies/security.md)
-- [Dependency inventory](DEPENDENCIES.md)
+- [Dependency inventory](operations/DEPENDENCIES.md)
 
 ## Releases
 
