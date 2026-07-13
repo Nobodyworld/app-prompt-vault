@@ -91,6 +91,21 @@ function createFixture(): { directory: string; source: string; target: string } 
   return { directory, source, target };
 }
 
+function createMainDatabase(path: string): void {
+  const database = new Database(path);
+  database.exec(`
+    CREATE TABLE prompts (
+      id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL
+    );
+    CREATE TABLE prompt_versions (
+      id TEXT PRIMARY KEY,
+      prompt_id TEXT NOT NULL
+    );
+  `);
+  database.close();
+}
+
 afterEach(() => {
   while (temporaryDirectories.length > 0) {
     const directory = temporaryDirectories.pop();
@@ -177,5 +192,43 @@ describe("legacy tag sidecar migration", () => {
     expect(second.updatedTags).toBe(2);
     expect(second.insertedTaggings).toBe(0);
     expect(second.skippedTaggings).toBe(2);
+  });
+
+  it("refuses to read from the main Prompt Vault database", () => {
+    const directory = mkdtempSync(join(tmpdir(), "prompt-vault-tag-safety-"));
+    temporaryDirectories.push(directory);
+    const mainDatabase = join(directory, "prompt-vault.db");
+    const target = join(directory, "prompt-vault-platform.db");
+    createMainDatabase(mainDatabase);
+
+    expect(() =>
+      migrateLegacyTagSidecar({
+        sourcePath: mainDatabase,
+        targetPath: target,
+      }),
+    ).toThrow(/main Prompt Vault database/i);
+    expect(existsSync(target)).toBe(false);
+  });
+
+  it("refuses to write into the main Prompt Vault database", () => {
+    const { directory, source } = createFixture();
+    const mainDatabase = join(directory, "prompt-vault.db");
+    createMainDatabase(mainDatabase);
+
+    expect(() =>
+      migrateLegacyTagSidecar({
+        sourcePath: source,
+        targetPath: mainDatabase,
+      }),
+    ).toThrow(/target appears to be the main Prompt Vault database/i);
+
+    const verification = new Database(mainDatabase, { readonly: true });
+    const unexpectedTaggings = verification
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'taggings'",
+      )
+      .get();
+    verification.close();
+    expect(unexpectedTaggings).toBeUndefined();
   });
 });
