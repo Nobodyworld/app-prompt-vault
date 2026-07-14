@@ -147,7 +147,7 @@ describe("app-owned tag sidecar path safety", () => {
     expect(unexpectedTags).toBeUndefined();
   });
 
-  it("refuses an explicit legacy Core DB path", async () => {
+  it("refuses an explicit legacy Core DB path without modifying it", async () => {
     const directory = mkdtempSync(join(tmpdir(), "prompt-vault-sidecar-legacy-"));
     temporaryDirectories.push(directory);
     const legacyPath = join(directory, "prompt-vault.core.db");
@@ -158,7 +158,20 @@ describe("app-owned tag sidecar path safety", () => {
     await resetCoreDb();
 
     await expect(createSharedTag({ name: "unsafe" })).rejects.toThrow(
-      /uses the legacy Core DB schema/i,
+      /(appears to be the main Prompt Vault database|uses the legacy Core DB schema)/i,
     );
+
+    const legacy = new Database(legacyPath, { readonly: true });
+    const legacyColumns = legacy.prepare("PRAGMA table_info(tags)").all() as Array<{
+      name: string;
+    }>;
+    const legacyCount = legacy
+      .prepare("SELECT COUNT(*) AS count FROM tags")
+      .get() as { count: number };
+    legacy.close();
+
+    expect(legacyColumns.map((column) => column.name)).toContain("type");
+    expect(legacyColumns.map((column) => column.name)).not.toContain("kind");
+    expect(legacyCount.count).toBe(0);
   });
 });
