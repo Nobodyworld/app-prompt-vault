@@ -7,8 +7,8 @@ node_modules/
 .npm/
 .yarn/
 
-# Monorepo lockfiles (use root pnpm-lock.yaml)
-pnpm-lock.yaml
+# Lockfiles
+# pnpm-lock.yaml is committed for standalone reproducible installs.
 package-lock.json
 yarn.lock
 npm-shrinkwrap.json
