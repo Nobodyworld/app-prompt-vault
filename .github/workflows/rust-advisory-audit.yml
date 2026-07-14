@@ -1,0 +1,61 @@
+name: Rust advisory audit
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust-advisory-audit:
+    name: Rust advisory audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Record Rust toolchain
+        shell: bash
+        run: |
+          rustc --version | tee rust-toolchain.txt
+          cargo --version | tee -a rust-toolchain.txt
+
+      - name: Record affected dependency paths
+        shell: bash
+        run: |
+          for crate in time glib tauri bytes rand; do
+            cargo tree --locked --manifest-path src-tauri/Cargo.toml --invert "$crate" > "cargo-tree-${crate}.txt" 2>&1 || true
+          done
+
+      - name: Install cargo-audit
+        shell: bash
+        run: cargo install cargo-audit --locked
+
+      - name: Audit Rust lockfile
+        shell: bash
+        run: |
+          set +e
+          cargo audit --file src-tauri/Cargo.lock --json > rust-audit.json
+          json_status=$?
+          cargo audit --file src-tauri/Cargo.lock 2>&1 | tee rust-audit.txt
+          text_status=${PIPESTATUS[0]}
+          if [ "$json_status" -ne 0 ]; then
+            exit "$json_status"
+          fi
+          exit "$text_status"
+
+      - name: Upload Rust advisory evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-advisory-audit
+          path: |
+            rust-toolchain.txt
+            rust-audit.json
+            rust-audit.txt
+            cargo-tree-*.txt
+          if-no-files-found: warn
+          retention-days: 14
