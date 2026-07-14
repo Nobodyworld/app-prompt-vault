@@ -1,0 +1,66 @@
+name: Rust Clippy fix bootstrap
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust-clippy-fix-bootstrap:
+    name: Apply focused Rust Clippy fixes
+    if: github.event_name == 'pull_request' && github.head_ref == 'ci/pr27-rust-advisory-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out remediation branch
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ci/pr27-rust-advisory-audit
+
+      - name: Apply exact source corrections
+        shell: python
+        run: |
+          from pathlib import Path
+
+          replacements = {
+              Path("src-tauri/src/bin/dump_telemetry.rs"): [
+                  (
+                      "reader.lines().filter_map(|l| l.ok()).collect()",
+                      "reader.lines().map_while(Result::ok).collect()",
+                  )
+              ],
+              Path("src-tauri/src/main.rs"): [
+                  (
+                      "serde_json::to_string(&payload)",
+                      "serde_json::to_string(&sanitized)",
+                  )
+              ],
+          }
+
+          for path, changes in replacements.items():
+              content = path.read_text(encoding="utf-8")
+              for old, new in changes:
+                  count = content.count(old)
+                  if count != 1:
+                      raise SystemExit(f"expected exactly one occurrence of {old!r} in {path}, found {count}")
+                  content = content.replace(old, new)
+              path.write_text(content, encoding="utf-8")
+
+      - name: Apply cargo fmt
+        shell: bash
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Commit focused corrections once
+        shell: bash
+        run: |
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri
+          git commit -m "fix: address strict Rust validation findings"
+          git push origin HEAD:ci/pr27-rust-advisory-audit
