@@ -2,7 +2,8 @@
 
 > ## PRE-ALPHA SOURCE PREVIEW
 >
-> **PROPRIETARY SOURCE-AVAILABLE**  
+> **PROPRIETARY SOURCE-AVAILABLE**
+>
 > **STANDALONE BUILD NOT YET PROVEN**
 >
 > The current `main` branch is a historical, pre-release development state. It may still depend on legacy private Nobodyworld workspace packages, parent-level configuration, or assumptions that are not present in this repository.
