@@ -1,10 +1,16 @@
 # Prompt Vault
 
-[![Repository audit](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/repository-audit.yml/badge.svg)](https://github.com/Nobodyworld/app-prompt-vault/actions/workflows/repository-audit.yml)
+> ## PRE-ALPHA SOURCE PREVIEW
+>
+> **PROPRIETARY SOURCE-AVAILABLE**
+>
+> **STANDALONE BUILD NOT YET PROVEN**
+>
+> Prompt Vault is an experimental local-first application. Public access permits source inspection and limited evaluation under [LICENSE](LICENSE); it does not grant an open-source license or establish release, production, packaging, migration, or standalone-build readiness.
 
-Prompt Vault is a local-first application for storing, versioning, finding, and reusing prompts. It combines a React interface, a Tauri desktop shell, SQLite persistence, a CLI, an optional HTTP API, and automation/tool integrations.
+> **Release status:** pre-release. Draft PR #27 removes the repository's private Nobodyworld workspace dependencies and parent-path assumptions, but a clean standalone installation is not yet proven because the repository still lacks a reviewed lockfile and full standalone build/test/package validation. Track the release gate in [issue #26](../../issues/26), the clean-clone work in [issue #22](../../issues/22), and the [standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md).
 
-> **Release status:** pre-release. PR #27 has removed the repository's private Nobodyworld workspace dependencies and parent-path assumptions, but a clean standalone installation is not yet proven because the repository still lacks a reviewed lockfile and full standalone build/test/package validation. Track the release gate in [issue #26](../../issues/26), the clean-clone work in [issue #22](../../issues/22), and the [standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md).
+There is no supported downloadable release, installer, hosted service, or production deployment for this repository.
 
 ## Core workflow
 
@@ -17,7 +23,9 @@ Prompt Vault is designed around a simple loop:
 5. Add versions without losing history.
 6. Export prompts for backup or reuse in other applications.
 
-## Current capabilities
+## Current capabilities in source
+
+The following surfaces are present in the draft candidate, but their presence does not mean the complete standalone validation gate has passed:
 
 - Prompt CRUD with SQLite persistence and migrations
 - Semantic versions and version history
@@ -47,7 +55,7 @@ Prompt content is stored in the main Prompt Vault SQLite database. Cross-cutting
 
 ## Standalone development status
 
-The source tree now declares no `workspace:*` or private `@nw/*` packages. Shared test configuration, type roots, HTTP behavior, themes, logging, events, tool registration, widget registration, auth compatibility, tags/projects, JavaScript secret fallback, and the native secrets crate are repository-owned.
+The draft source tree declares no `workspace:*` or private `@nw/*` packages. Shared test configuration, type roots, HTTP behavior, themes, logging, events, tool registration, widget registration, auth compatibility, tags/projects, JavaScript secret fallback, and the native secrets crate are repository-owned.
 
 The intended standalone checkout is:
 
@@ -101,16 +109,18 @@ Important defaults:
 
 ## Verification and release status
 
-The lightweight repository audit workflow checks repository metadata, public links, full-SHA action pinning, and standalone source-boundary invariants. It does **not** replace the full build and packaging gate tracked in [issue #23](../../issues/23).
+The repository audit workflow checks repository metadata, public links, full-SHA action pinning, and standalone source-boundary invariants. It does **not** replace the full build and packaging gate tracked in [issue #23](../../issues/23).
 
-A public release requires all items in [issue #26](../../issues/26), including:
+A validated release requires all items in [issue #26](../../issues/26), including:
 
 - reproducible clean-checkout installation;
 - green Node, Playwright, Rust, and Tauri validation;
 - a tested Windows artifact;
 - an accurate screenshot/demo set;
-- final license and security-contact review;
+- final license and security-reporting review;
 - manual persistence and recovery smoke testing.
+
+A CI badge is intentionally omitted until the default branch has current, successful, reproducible validation.
 
 ## Documentation
 
@@ -128,8 +138,8 @@ Historical planning and assessment files are not authoritative when they conflic
 
 ## Security
 
-Do not report vulnerabilities in a public issue. Follow [the security policy](docs/security/policies/security.md) and email `security@nobodyworld.com`.
+Do not disclose suspected vulnerabilities in a public issue. Follow [SECURITY.md](SECURITY.md). The repository owner must confirm GitHub Private Vulnerability Reporting is enabled before public visibility is changed.
 
 ## License
 
-Copyright © 2025–2026 Nobody Production. This repository uses a proprietary source-available license. See [LICENSE](LICENSE) before copying, modifying, distributing, or deploying the software.
+Copyright © 2025–2026 Nobody Production. This repository is proprietary source-available software and is **not open source**. Review [LICENSE](LICENSE) before cloning, running, copying, modifying, distributing, or otherwise using the contents.
