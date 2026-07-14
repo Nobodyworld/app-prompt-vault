@@ -1,0 +1,85 @@
+name: Rust structure fix bootstrap
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust-structure-fix-bootstrap:
+    name: Apply remaining strict Clippy fixes
+    if: github.event_name == 'pull_request' && github.head_ref == 'ci/pr27-rust-advisory-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out remediation branch
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ci/pr27-rust-advisory-audit
+
+      - name: Apply exact source corrections
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("src-tauri/src/main.rs")
+          content = path.read_text(encoding="utf-8")
+
+          replacements = [
+              ("use std::path::PathBuf;", "use std::path::{Path, PathBuf};"),
+              (
+                  "fn resolve_database_path(base_dir: &PathBuf) -> PathBuf {",
+                  "fn resolve_database_path(base_dir: &Path) -> PathBuf {",
+              ),
+              (
+                  'connection.pragma_update(None, "user_version", &version.to_string())?;',
+                  'connection.pragma_update(None, "user_version", version.to_string())?;',
+              ),
+              ("let state = ensure_database(&handle)?;", "let state = ensure_database(handle)?;"),
+          ]
+
+          for old, new in replacements:
+              count = content.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one occurrence of {old!r}, found {count}")
+              content = content.replace(old, new)
+
+          marker = "#[cfg(test)]\nmod tests {"
+          start = content.index(marker)
+          brace_start = content.index("{", start)
+          depth = 0
+          end = None
+          for index in range(brace_start, len(content)):
+              character = content[index]
+              if character == "{":
+                  depth += 1
+              elif character == "}":
+                  depth -= 1
+                  if depth == 0:
+                      end = index + 1
+                      break
+          if end is None:
+              raise SystemExit("could not locate the end of the test module")
+
+          test_module = content[start:end].strip()
+          content = (content[:start] + content[end:]).rstrip() + "\n\n" + test_module + "\n"
+          path.write_text(content, encoding="utf-8")
+
+      - name: Apply cargo fmt
+        shell: bash
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Commit focused corrections once
+        shell: bash
+        run: |
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/src/main.rs
+          git commit -m "fix: satisfy strict Rust structure checks"
+          git push origin HEAD:ci/pr27-rust-advisory-audit
