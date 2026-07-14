@@ -4,8 +4,8 @@
   "version": "0.2.0",
   "identifier": "com.nobodyworld.promptvault",
   "build": {
-    "beforeDevCommand": "pnpm -C .. desktop:dev",
-    "beforeBuildCommand": "pnpm -C .. desktop:build",
+    "beforeDevCommand": "pnpm desktop:dev",
+    "beforeBuildCommand": "pnpm desktop:build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../desktop/dist"
   },
