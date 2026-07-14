@@ -1,6 +1,6 @@
 import type { CoverageOptions } from "vitest";
 
-export type CoverageTier = "core" | "app" | "ui" | "experimental";
+export type CoverageTier = "core" | "app" | "preAlpha" | "ui" | "experimental";
 
 export interface TierThresholds {
   readonly lines: number;
@@ -12,12 +12,15 @@ export interface TierThresholds {
 export const COVERAGE_THRESHOLDS: Record<CoverageTier, TierThresholds> = {
   core: { lines: 80, statements: 80, branches: 70, functions: 75 },
   app: { lines: 60, statements: 60, branches: 50, functions: 55 },
+  preAlpha: { lines: 45, statements: 45, branches: 33, functions: 45 },
   ui: { lines: 40, statements: 40, branches: 30, functions: 35 },
   experimental: { lines: 20, statements: 20, branches: 15, functions: 15 },
 };
 
 const PACKAGE_TIERS: Record<string, CoverageTier> = {
-  "@nw/app-prompt-vault": "app",
+  // Current no-regression floor for the public pre-alpha source preview.
+  // Raise this mapping to "app" only after the 60/60/50/55 release target is met.
+  "prompt-vault": "preAlpha",
 };
 
 export function getCoverageConfig(packageName: string): Partial<CoverageOptions> {

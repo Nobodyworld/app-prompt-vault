@@ -16,8 +16,10 @@ interface IstanbulCoverage {
 }
 
 const coverageDirectory = process.env.COVERAGE_DIR ?? "coverage";
-const coverageFiles = readdirSync(coverageDirectory).filter((file) => file.endsWith(".json"));
-const projectSrcDir = resolve(process.cwd(), 'src').replace(/\\/g, '/');
+const coverageFiles = readdirSync(coverageDirectory).filter(
+  (file) => file === "coverage-final.json",
+);
+const projectSrcDir = resolve(process.cwd(), "src").replace(/\\/g, "/");
 
 if (coverageFiles.length === 0) {
   console.error(`No coverage artifacts found in ${coverageDirectory}. Run tests with coverage enabled.`);
@@ -41,7 +43,7 @@ for (const file of coverageFiles) {
   const payload = JSON.parse(readFileSync(join(coverageDirectory, file), "utf8")) as IstanbulCoverage;
 
   for (const [filePath, coverage] of Object.entries(payload)) {
-    const normalizedFilePath = filePath.replace(/\\/g, '/');
+    const normalizedFilePath = filePath.replace(/\\/g, "/");
     if (!normalizedFilePath.startsWith(projectSrcDir)) {
       continue;
     }
@@ -53,7 +55,7 @@ for (const file of coverageFiles) {
     };
 
     // Statements
-    for (const [key, count] of Object.entries(coverage.s)) {
+    for (const count of Object.values(coverage.s)) {
       summary.statements.total += 1;
       globalTotals.statements.total += 1;
       if (count > 0) {
@@ -63,7 +65,7 @@ for (const file of coverageFiles) {
     }
 
     // Functions
-    for (const [key, count] of Object.entries(coverage.f)) {
+    for (const count of Object.values(coverage.f)) {
       summary.functions.total += 1;
       globalTotals.functions.total += 1;
       if (count > 0) {
@@ -73,7 +75,7 @@ for (const file of coverageFiles) {
     }
 
     // Branches
-    for (const [key, counts] of Object.entries(coverage.b)) {
+    for (const counts of Object.values(coverage.b)) {
       for (const count of counts) {
         summary.blocks.total += 1;
         globalTotals.blocks.total += 1;

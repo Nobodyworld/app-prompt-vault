@@ -49,7 +49,7 @@ jobs:
     name: Standalone Node validation
     needs: audit
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
 
     steps:
       - name: Check out repository
@@ -70,6 +70,12 @@ jobs:
         run: |
           set -o pipefail
           pnpm install --no-frozen-lockfile 2>&1 | tee install.txt
+
+      - name: Audit production dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm audit --prod --audit-level=high 2>&1 | tee dependency-audit.txt
 
       - name: Run repository audit
         shell: bash
@@ -95,11 +101,29 @@ jobs:
           set -o pipefail
           pnpm build 2>&1 | tee build.txt
 
-      - name: Run unit and integration tests
+      - name: Run unit and integration tests with coverage
         shell: bash
         run: |
           set -o pipefail
-          pnpm test 2>&1 | tee tests.txt
+          pnpm test:coverage 2>&1 | tee coverage-tests.txt
+
+      - name: Summarize coverage
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm coverage:summary 2>&1 | tee coverage-summary.txt
+
+      - name: Install Chromium for Playwright
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm exec playwright install --with-deps chromium 2>&1 | tee playwright-install.txt
+
+      - name: Run Playwright UI smoke tests
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test:ui 2>&1 | tee playwright.txt
 
       - name: Upload standalone validation evidence
         if: always()
@@ -109,10 +133,19 @@ jobs:
           path: |
             pnpm-lock.yaml
             install.txt
+            dependency-audit.txt
             audit-validation.txt
             lint.txt
             typecheck.txt
             build.txt
-            tests.txt
+            coverage-tests.txt
+            coverage-summary.txt
+            coverage/coverage-final.json
+            coverage/coverage-summary.json
+            coverage/lcov.info
+            playwright-install.txt
+            playwright.txt
+            playwright-report/
+            test-results/
           if-no-files-found: warn
           retention-days: 14
