@@ -65,11 +65,11 @@ jobs:
         shell: bash
         run: npm install --global pnpm@10.24.0
 
-      - name: Install standalone dependencies
+      - name: Install standalone dependencies from lockfile
         shell: bash
         run: |
           set -o pipefail
-          pnpm install --no-frozen-lockfile 2>&1 | tee install.txt
+          pnpm install --frozen-lockfile 2>&1 | tee install.txt
 
       - name: Audit production dependencies
         shell: bash
