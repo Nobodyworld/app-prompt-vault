@@ -7,7 +7,7 @@ use rusqlite::{params, Connection, Error as SqlError, ErrorCode, OptionalExtensi
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use thiserror::Error;
@@ -482,82 +482,6 @@ fn telemetry_retention_cleanup(dir: &std::path::Path, days: i64) {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    #[test]
-    fn tauri_migrations_apply_to_latest_schema_version() {
-        let connection = Connection::open_in_memory().expect("open db");
-        apply_migrations(&connection).expect("apply migrations");
-
-        let version = get_user_version(&connection).expect("read user_version");
-        assert_eq!(version, 5, "expected user_version to be 5 after migrations");
-
-        assert!(has_table(&connection, "prompts").expect("has_table prompts"));
-        assert!(has_table(&connection, "prompt_versions").expect("has_table prompt_versions"));
-
-        assert!(has_column(&connection, "prompts", "category").expect("has_column category"));
-        assert!(has_column(&connection, "prompts", "deleted_at").expect("has_column deleted_at"));
-        assert!(has_column(&connection, "prompts", "is_favorite").expect("has_column is_favorite"));
-        assert!(has_column(&connection, "prompts", "rating").expect("has_column rating"));
-        assert!(has_column(&connection, "prompt_versions", "format").expect("has_column format"));
-    }
-
-    #[test]
-    fn tauri_migrations_repair_stale_user_version_via_schema_inference() {
-        let connection = Connection::open_in_memory().expect("open db");
-        apply_migrations(&connection).expect("apply migrations");
-
-        set_user_version(&connection, 2).expect("force stale user_version");
-        let before = get_user_version(&connection).expect("read user_version before");
-        assert_eq!(before, 2);
-
-        apply_migrations(&connection).expect("re-apply migrations");
-        let after = get_user_version(&connection).expect("read user_version after");
-        assert_eq!(after, 5, "expected user_version to be repaired to 5");
-    }
-
-    #[test]
-    fn test_persist_and_rotate_and_metrics() {
-        let tmp = TempDir::new().expect("create tempdir");
-        let dir = tmp.path();
-
-        // small max bytes so rotation happens quickly during test
-        let max_bytes = 100u64;
-
-        let payload = serde_json::json!({
-            "name": "test_event",
-            "message": "hello",
-        });
-
-        // write multiple times to exceed rotation
-        for _ in 0..10 {
-            persist_telemetry_to_dir(dir, &payload, max_bytes).expect("persist ok");
-        }
-
-        // assert that at least one rotated file exists or the main file exists
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        let base = dir.join(format!("telemetry-{}.log", today));
-        let rotated = dir.join(format!("telemetry-{}.1.log", today));
-        assert!(
-            base.exists() || rotated.exists(),
-            "expected base or rotated file"
-        );
-
-        let metrics_path = dir.join("telemetry-metrics.json");
-        assert!(metrics_path.exists(), "metrics file should exist");
-        let content = std::fs::read_to_string(metrics_path).expect("read metrics");
-        let metrics: serde_json::Value = serde_json::from_str(&content).expect("parse metrics");
-        let key = format!("event_count:{}", "test_event");
-        assert!(
-            metrics.get(&key).is_some(),
-            "metrics should contain event counter"
-        );
     }
 }
 
@@ -1055,7 +979,7 @@ fn ensure_database(handle: &AppHandle) -> Result<AppState, AppError> {
     })
 }
 
-fn resolve_database_path(base_dir: &PathBuf) -> PathBuf {
+fn resolve_database_path(base_dir: &Path) -> PathBuf {
     let raw = std::env::var("PROMPT_VAULT_DB_PATH")
         .ok()
         .map(|value| value.trim().to_string())
@@ -1103,7 +1027,7 @@ fn get_user_version(connection: &Connection) -> Result<i32, AppError> {
 }
 
 fn set_user_version(connection: &Connection, version: i32) -> Result<(), AppError> {
-    connection.pragma_update(None, "user_version", &version.to_string())?;
+    connection.pragma_update(None, "user_version", version.to_string())?;
     Ok(())
 }
 
@@ -1198,7 +1122,7 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let handle = app.handle();
-            let state = ensure_database(&handle)?;
+            let state = ensure_database(handle)?;
             app.manage(state);
             // Run a background retention cleanup (best-effort): remove telemetry files older than configured days
             // Read retention days from env var PROMPT_VAULT_TELEMETRY_RETENTION_DAYS (positive integer). Fallback to 30.
@@ -1262,4 +1186,80 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn tauri_migrations_apply_to_latest_schema_version() {
+        let connection = Connection::open_in_memory().expect("open db");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let version = get_user_version(&connection).expect("read user_version");
+        assert_eq!(version, 5, "expected user_version to be 5 after migrations");
+
+        assert!(has_table(&connection, "prompts").expect("has_table prompts"));
+        assert!(has_table(&connection, "prompt_versions").expect("has_table prompt_versions"));
+
+        assert!(has_column(&connection, "prompts", "category").expect("has_column category"));
+        assert!(has_column(&connection, "prompts", "deleted_at").expect("has_column deleted_at"));
+        assert!(has_column(&connection, "prompts", "is_favorite").expect("has_column is_favorite"));
+        assert!(has_column(&connection, "prompts", "rating").expect("has_column rating"));
+        assert!(has_column(&connection, "prompt_versions", "format").expect("has_column format"));
+    }
+
+    #[test]
+    fn tauri_migrations_repair_stale_user_version_via_schema_inference() {
+        let connection = Connection::open_in_memory().expect("open db");
+        apply_migrations(&connection).expect("apply migrations");
+
+        set_user_version(&connection, 2).expect("force stale user_version");
+        let before = get_user_version(&connection).expect("read user_version before");
+        assert_eq!(before, 2);
+
+        apply_migrations(&connection).expect("re-apply migrations");
+        let after = get_user_version(&connection).expect("read user_version after");
+        assert_eq!(after, 5, "expected user_version to be repaired to 5");
+    }
+
+    #[test]
+    fn test_persist_and_rotate_and_metrics() {
+        let tmp = TempDir::new().expect("create tempdir");
+        let dir = tmp.path();
+
+        // small max bytes so rotation happens quickly during test
+        let max_bytes = 100u64;
+
+        let payload = serde_json::json!({
+            "name": "test_event",
+            "message": "hello",
+        });
+
+        // write multiple times to exceed rotation
+        for _ in 0..10 {
+            persist_telemetry_to_dir(dir, &payload, max_bytes).expect("persist ok");
+        }
+
+        // assert that at least one rotated file exists or the main file exists
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let base = dir.join(format!("telemetry-{}.log", today));
+        let rotated = dir.join(format!("telemetry-{}.1.log", today));
+        assert!(
+            base.exists() || rotated.exists(),
+            "expected base or rotated file"
+        );
+
+        let metrics_path = dir.join("telemetry-metrics.json");
+        assert!(metrics_path.exists(), "metrics file should exist");
+        let content = std::fs::read_to_string(metrics_path).expect("read metrics");
+        let metrics: serde_json::Value = serde_json::from_str(&content).expect("parse metrics");
+        let key = format!("event_count:{}", "test_event");
+        assert!(
+            metrics.get(&key).is_some(),
+            "metrics should contain event counter"
+        );
+    }
 }
