@@ -45,9 +45,98 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  rust-validation:
+    name: Rust validation
+    needs: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Install Tauri Linux prerequisites
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
+
+      - name: Record Rust toolchain
+        shell: bash
+        run: |
+          rustc --version | tee rust-toolchain.txt
+          cargo --version | tee -a rust-toolchain.txt
+          rustup component add rustfmt clippy
+
+      - name: Check Rust formatting
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check 2>&1 | tee cargo-fmt.txt
+
+      - name: Run strict Clippy
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings 2>&1 | tee cargo-clippy.txt
+
+      - name: Run Rust tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path src-tauri/Cargo.toml 2>&1 | tee cargo-test.txt
+
+      - name: Verify glib is absent from the Windows target graph
+        shell: bash
+        run: |
+          set +e
+          cargo tree --locked --manifest-path src-tauri/Cargo.toml \
+            --target x86_64-pc-windows-msvc --invert glib \
+            > windows-glib-tree.txt 2>&1
+          cat windows-glib-tree.txt
+          if grep -Eq '^glib v' windows-glib-tree.txt; then
+            echo "glib unexpectedly appears in the Windows target dependency graph" >&2
+            exit 1
+          fi
+          exit 0
+
+      - name: Install cargo-audit
+        shell: bash
+        run: cargo install cargo-audit --locked
+
+      - name: Audit Rust lockfile
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo audit --file src-tauri/Cargo.lock 2>&1 | tee rust-audit.txt
+
+      - name: Upload Rust validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-validation
+          path: |
+            rust-toolchain.txt
+            cargo-fmt.txt
+            cargo-clippy.txt
+            cargo-test.txt
+            windows-glib-tree.txt
+            rust-audit.txt
+          if-no-files-found: warn
+          retention-days: 14
+
   node-validation:
     name: Standalone Node validation
-    needs: audit
+    needs:
+      - audit
+      - rust-validation
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
