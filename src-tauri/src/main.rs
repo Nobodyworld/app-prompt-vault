@@ -440,13 +440,13 @@ fn sanitize_telemetry_payload(payload: serde_json::Value) -> serde_json::Value {
                 serde_json::Value::Object(out)
             }
             serde_json::Value::Array(values) => {
-                let out: Vec<serde_json::Value> = values
-                    .into_iter()
-                    .map(|v| walk(v, depth + 1))
-                    .collect();
+                let out: Vec<serde_json::Value> =
+                    values.into_iter().map(|v| walk(v, depth + 1)).collect();
                 serde_json::Value::Array(out)
             }
-            serde_json::Value::String(s) => serde_json::Value::String(truncate_string(&s, MAX_STRING)),
+            serde_json::Value::String(s) => {
+                serde_json::Value::String(truncate_string(&s, MAX_STRING))
+            }
             other => other,
         }
     }
