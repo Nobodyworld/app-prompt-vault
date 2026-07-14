@@ -1,0 +1,297 @@
+name: Auth hardening bootstrap
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auth-hardening-bootstrap:
+    name: Apply focused auth hardening
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/pr27-auth-compatibility-hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out hardening branch
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: fix/pr27-auth-compatibility-hardening
+
+      - name: Apply exact auth and test corrections
+        shell: python
+        run: |
+          from pathlib import Path
+
+          auth_path = Path("src/web/auth.ts")
+          auth = auth_path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  'import { createHmac, randomBytes } from "node:crypto";',
+                  'import {\n  createHash,\n  createHmac,\n  randomBytes,\n  timingSafeEqual,\n} from "node:crypto";',
+              ),
+              (
+                  '''export interface AuthPayload {
+            userId: string;
+            username: string;
+            roles?: string[];
+            scopes?: string[];
+            iat?: number;
+            exp?: number;
+          }
+          ''',
+                  '''export interface AuthPayload {
+            userId: string;
+            username: string;
+            roles?: string[];
+            scopes?: string[];
+            iat?: number;
+            exp?: number;
+          }
+
+          const jwtHeaderSchema = z
+            .object({
+              alg: z.literal("HS256"),
+              typ: z.literal("JWT"),
+            })
+            .strict();
+
+          const authPayloadSchema = z
+            .object({
+              userId: z.string().min(1),
+              username: z.string().min(1),
+              roles: z.array(z.string().min(1)).max(50).optional(),
+              scopes: z.array(z.string().min(1)).max(100).optional(),
+              iat: z.number().int().nonnegative(),
+              exp: z.number().int().positive(),
+            })
+            .strict();
+
+          function timingSafeStringEqual(left: string, right: string): boolean {
+            const leftDigest = createHash("sha256").update(left).digest();
+            const rightDigest = createHash("sha256").update(right).digest();
+            return timingSafeEqual(leftDigest, rightDigest);
+          }
+          ''',
+              ),
+              (
+                  '''      // Verify signature
+                if (signature !== expectedSignature) {
+          ''',
+                  '''      // Compare fixed-length digests to avoid early-exit string comparison.
+                if (!timingSafeStringEqual(signature, expectedSignature)) {
+          ''',
+              ),
+              (
+                  '''      // Decode payload
+                const payload = JSON.parse(
+                  this.base64UrlDecode(encodedPayload),
+                ) as AuthPayload;
+
+                // Check expiration
+                const now = Math.floor(Date.now() / 1000);
+                if (payload.exp && payload.exp < now) {
+                  this.logger?.debug("token_expired", { exp: payload.exp, now });
+                  return null;
+                }
+          ''',
+                  '''      const headerResult = jwtHeaderSchema.safeParse(
+                  JSON.parse(this.base64UrlDecode(encodedHeader)),
+                );
+                if (!headerResult.success) {
+                  this.logger?.debug("token_header_invalid");
+                  return null;
+                }
+
+                const payloadResult = authPayloadSchema.safeParse(
+                  JSON.parse(this.base64UrlDecode(encodedPayload)),
+                );
+                if (!payloadResult.success) {
+                  this.logger?.debug("token_payload_invalid");
+                  return null;
+                }
+
+                const payload: AuthPayload = payloadResult.data;
+                const now = Math.floor(Date.now() / 1000);
+                if (payload.exp <= payload.iat || payload.exp <= now) {
+                  this.logger?.debug("token_expired", {
+                    exp: payload.exp,
+                    iat: payload.iat,
+                    now,
+                  });
+                  return null;
+                }
+          ''',
+              ),
+              (
+                  '''      if (value === key) {
+          ''',
+                  '''      if (timingSafeStringEqual(value, key)) {
+          ''',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = auth.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one auth occurrence, found {count}: {old[:80]!r}")
+              auth = auth.replace(old, new)
+
+          auth_path.write_text(auth, encoding="utf-8")
+
+          test_path = Path("tests/auth.test.ts")
+          tests = test_path.read_text(encoding="utf-8")
+
+          test_replacements = [
+              (
+                  'import { beforeEach, describe, expect, it } from "vitest";',
+                  'import { createHmac } from "node:crypto";\nimport { beforeEach, describe, expect, it } from "vitest";',
+              ),
+              (
+                  'import { AuthManager } from "../src/web/auth.js";\n',
+                  '''import { AuthManager } from "../src/web/auth.js";
+
+          const JWT_SECRET = "test-secret-key-for-auth-manager-tests";
+
+          function base64UrlEncode(value: string | Buffer): string {
+            return Buffer.from(value)
+              .toString("base64")
+              .replace(/\\+/g, "-")
+              .replace(/\\//g, "_")
+              .replace(/=+$/g, "");
+          }
+
+          function createSignedToken(
+            header: object,
+            payload: object,
+            secret = JWT_SECRET,
+          ): string {
+            const encodedHeader = base64UrlEncode(JSON.stringify(header));
+            const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+            const signature = base64UrlEncode(
+              createHmac("sha256", secret)
+                .update(`${encodedHeader}.${encodedPayload}`)
+                .digest(),
+            );
+            return `${encodedHeader}.${encodedPayload}.${signature}`;
+          }
+          ''',
+              ),
+              (
+                  'jwtSecret: "test-secret-key-for-auth-manager-tests",',
+                  'jwtSecret: JWT_SECRET,',
+              ),
+              (
+                  '''    it("rejects a token with an invalid signature", () => {
+                const token = authManager.generateToken({
+                  userId: "user-123",
+                  username: "alice",
+                });
+                const parts = token.split(".");
+                const tamperedToken = `${parts[0]}.${parts[1]}.invalid-signature`;
+
+                expect(authManager.verifyToken(tamperedToken)).toBeNull();
+              });
+          ''',
+                  '''    it("rejects a token with an invalid signature", () => {
+                const token = authManager.generateToken({
+                  userId: "user-123",
+                  username: "alice",
+                });
+                const parts = token.split(".");
+                const tamperedToken = `${parts[0]}.${parts[1]}.invalid-signature`;
+
+                expect(authManager.verifyToken(tamperedToken)).toBeNull();
+              });
+
+              it("rejects a correctly signed token with an unsupported header", () => {
+                const now = Math.floor(Date.now() / 1000);
+                const token = createSignedToken(
+                  { alg: "none", typ: "JWT" },
+                  {
+                    userId: "user-123",
+                    username: "alice",
+                    iat: now,
+                    exp: now + 3600,
+                  },
+                );
+
+                expect(authManager.verifyToken(token)).toBeNull();
+              });
+
+              it("rejects a correctly signed token without required timestamps", () => {
+                const token = createSignedToken(
+                  { alg: "HS256", typ: "JWT" },
+                  { userId: "user-123", username: "alice" },
+                );
+
+                expect(authManager.verifyToken(token)).toBeNull();
+              });
+          ''',
+              ),
+              (
+                  '''    it("rejects an invalid API key", () => {
+                expect(authManager.validateApiKey("invalid-key")).toBeNull();
+              });
+          ''',
+                  '''    it("rejects an invalid API key", () => {
+                expect(authManager.validateApiKey("invalid-key")).toBeNull();
+              });
+
+              it("rejects a same-length incorrect API key", () => {
+                expect(authManager.validateApiKey("admin-key-124")).toBeNull();
+              });
+          ''',
+              ),
+          ]
+
+          for old, new in test_replacements:
+              count = tests.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one test occurrence, found {count}: {old[:80]!r}")
+              tests = tests.replace(old, new)
+
+          test_path.write_text(tests, encoding="utf-8")
+
+          notes_path = Path("docs/releases/notes.md")
+          notes = notes_path.read_text(encoding="utf-8")
+          marker = "## Standalone authentication compatibility decision"
+          if marker not in notes:
+              notes = notes.rstrip() + '''
+
+          ## Standalone authentication compatibility decision
+
+          Prompt Vault no longer accepts historical Nobodyworld Core DB session tokens directly. A repository-wide code inventory on July 14, 2026 found the legacy verifier only in the historical Core DB implementation and Prompt Vault's compatibility boundary; no separate active consumer was identified.
+
+          This is an intentional pre-alpha breaking change:
+
+          - clients must use a Prompt Vault JWT issued by the `/auth/token` flow or a configured API key;
+          - `verifyCoreDbSessionToken` remains fail-closed and returns `null` when no optional adapter is installed;
+          - the mandatory private Core DB package will not be restored;
+          - any future compatibility need must use a separately installable adapter or explicit token-exchange migration with dedicated tests.
+
+          JWT verification now requires the exact `HS256`/`JWT` header, a structurally valid payload with issued-at and expiration timestamps, and fail-closed malformed input handling. JWT signatures and configured local API keys are compared using fixed-length digests and timing-safe equality.
+          '''
+              notes_path.write_text(notes + "\n", encoding="utf-8")
+
+      - name: Apply formatting
+        shell: bash
+        run: |
+          npm install --global pnpm@10.24.0
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --write src/web/auth.ts tests/auth.test.ts docs/releases/notes.md
+
+      - name: Commit focused hardening once
+        shell: bash
+        run: |
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/web/auth.ts tests/auth.test.ts docs/releases/notes.md
+          git commit -m "security: harden standalone authentication compatibility"
+          git push origin HEAD:fix/pr27-auth-compatibility-hardening
