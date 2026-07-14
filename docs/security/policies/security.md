@@ -1,40 +1,42 @@
 # Security Policy
 
-## Supported Versions
+## PRE-ALPHA SOURCE PREVIEW
 
-The project is currently pre-release (`0.1.x`). All security issues affecting the default branch will be addressed as soon as poss
-ible. Formal support matrix will be published alongside the first stable release.
+Prompt Vault has no supported release or production deployment. The public repository, when enabled, is a proprietary source-available pre-alpha preview. Security fixes may be applied to `main`, but no support window or remediation service-level agreement is offered.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-1. **Do not open a public issue.** Instead, email security reports to `security@prompt-vault.local`.
-2. Include the following information:
-   - Description of the vulnerability and potential impact.
-   - Steps to reproduce or proof-of-concept.
-   - Suggested mitigations if known.
-3. You will receive acknowledgement within 48 hours. We aim to provide an initial assessment within 5 business days.
+Do **not** disclose suspected vulnerabilities, credentials, prompt data, database contents, or reproduction details in a public issue, discussion, pull request, or commit.
 
-## Disclosure Process
+Use GitHub Private Vulnerability Reporting:
 
-- We will work with you to verify the issue and determine a remediation plan.
-- Coordinated disclosure is preferred. We kindly request a 30-day embargo after the fix is available before public disclosure.
-- Credit will be given in release notes unless anonymity is requested.
+1. Open the repository **Security** tab.
+2. Select **Report a vulnerability**.
+3. Submit the report privately through the GitHub security advisory form.
 
-## Hardening Checklist
+Before changing repository visibility, the repository owner must confirm that GitHub Private Vulnerability Reporting is enabled and that the **Report a vulnerability** action is visible. If that action is unavailable, do not publish vulnerability details publicly; wait for the owner to provide a verified private reporting channel.
 
-- Run `npm run security:scan` (wrapper around `npm audit --omit=dev`) before releases and address high/critical issues prior to shipping.
-- Keep dependencies up to date (see `docs/DEPENDENCIES.md`).
-- Enable SQLite `PRAGMA foreign_keys = ON`, `busy_timeout`, and `journal_mode = WAL` on writable databases (handled by `ConnectionFactory`).
-- Ensure SQLite databases are stored in user-controlled directories with appropriate permissions.
-- Validate all user input using the Zod schemas provided in `src/domain/validation.ts`.
-- Redact secrets or API tokens from logs; Prompt Vault intentionally avoids logging prompt bodies.
-- Review release artifacts against `docs/releases/notes.md` for migration or operational calls to action.
-- Enable observability endpoints only when required and ensure metric exports do not include sensitive prompt content.
+Include:
 
-## Residual Risks
+- a concise description and expected impact;
+- the affected commit, branch, surface, and configuration;
+- reproduction steps or a proof of concept;
+- any known mitigation;
+- whether disclosure has already occurred.
 
-- Local databases are not encrypted; rely on full-disk encryption and OS permissions for confidentiality.
-- Prompt content is stored in plaintext. Scrub sensitive data before importing prompts into the vault.
-- Dependency scanning depends on npm registry availability; capture audit logs during releases and mirror advisories for air-gapped environments.
+## Disclosure process
 
-Thank you for helping keep Prompt Vault users safe!
+- Reports will be reviewed on a best-effort basis during pre-alpha development.
+- Coordinated disclosure is preferred.
+- Avoid publishing exploit details until a fix or mitigation is available.
+- Public access to source does not authorize testing against systems, accounts, data, or infrastructure you do not own or have explicit permission to test.
+
+## Known residual risks
+
+- The default branch is not proven to install or build standalone.
+- Prompt content and local SQLite databases may be stored in plaintext.
+- Historical code may depend on private Nobodyworld workspace packages or configuration.
+- Authentication, migration, packaging, telemetry, and integration behavior are not validated release guarantees.
+- Dependency and secret scanning may be incomplete until the public validation workflows execute successfully.
+
+See [README.md](../../../README.md) for the current repository classification and limitations.
