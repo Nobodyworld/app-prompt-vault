@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 import { getCoverageConfig } from "./vitest.shared";
 
-const coverage = getCoverageConfig("@nw/app-prompt-vault");
+const coverage = getCoverageConfig("prompt-vault");
 
 export default defineConfig({
   test: {
