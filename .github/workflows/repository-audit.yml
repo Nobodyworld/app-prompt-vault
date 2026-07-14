@@ -132,11 +132,83 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  windows-bundle:
+    name: Windows Tauri bundle
+    needs: audit
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          check-latest: false
+
+      - name: Record Windows and Rust toolchains
+        shell: pwsh
+        run: |
+          Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsBuildNumber | Format-List | Out-File windows-toolchain.txt
+          rustc --version | Tee-Object -FilePath rust-windows-toolchain.txt
+          cargo --version | Tee-Object -FilePath rust-windows-toolchain.txt -Append
+
+      - name: Install pinned pnpm
+        shell: pwsh
+        run: npm install --global pnpm@10.24.0
+
+      - name: Install standalone dependencies from lockfile
+        shell: pwsh
+        run: |
+          pnpm install --frozen-lockfile *>&1 | Tee-Object -FilePath windows-install.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build unsigned Windows Tauri bundle
+        shell: pwsh
+        run: |
+          pnpm tauri:build *>&1 | Tee-Object -FilePath tauri-windows-build.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Inventory Windows bundle
+        shell: pwsh
+        run: |
+          $bundleRoot = Join-Path $PWD "src-tauri\target\release\bundle"
+          if (-not (Test-Path $bundleRoot)) {
+            throw "Tauri bundle directory was not created: $bundleRoot"
+          }
+          $files = Get-ChildItem -Path $bundleRoot -File -Recurse
+          if (-not $files) {
+            throw "Tauri bundle directory contains no files"
+          }
+          $files | ForEach-Object {
+            $relative = $_.FullName.Substring($bundleRoot.Length).TrimStart('\')
+            $hash = (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLowerInvariant()
+            "{0}`t{1}`t{2}" -f $_.Length, $hash, $relative
+          } | Sort-Object | Tee-Object -FilePath windows-bundle-inventory.txt
+
+      - name: Upload Windows Tauri bundle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-tauri-bundle
+          path: |
+            src-tauri/target/release/bundle/**/*
+            windows-toolchain.txt
+            rust-windows-toolchain.txt
+            windows-install.txt
+            tauri-windows-build.txt
+            windows-bundle-inventory.txt
+          if-no-files-found: warn
+          retention-days: 14
+
   node-validation:
     name: Standalone Node validation
     needs:
       - audit
       - rust-validation
+      - windows-bundle
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
