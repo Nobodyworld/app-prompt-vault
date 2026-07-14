@@ -345,7 +345,7 @@ async fn record_telemetry_event(
                 e
             );
             // fallback to printing
-            if let Ok(s) = serde_json::to_string(&payload) {
+            if let Ok(s) = serde_json::to_string(&sanitized) {
                 println!("[telemetry] {}", s);
             }
             return Ok(());

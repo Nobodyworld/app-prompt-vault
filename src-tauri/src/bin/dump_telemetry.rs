@@ -6,7 +6,7 @@ use std::path::PathBuf;
 fn tail_file(path: &PathBuf, lines: usize) -> io::Result<()> {
     let file = fs::File::open(path)?;
     let reader = io::BufReader::new(file);
-    let all: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+    let all: Vec<String> = reader.lines().map_while(Result::ok).collect();
     let start = if all.len() > lines {
         all.len() - lines
     } else {
