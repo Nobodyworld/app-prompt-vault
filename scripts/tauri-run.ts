@@ -4,7 +4,7 @@ import { env, platform } from "node:process";
 function resolveCargoPaths(): string {
   const separator = platform === "win32" ? ";" : ":";
   const existing = (env.PATH ?? "").split(separator).filter(Boolean);
-  const additions = new Set();
+  const additions = new Set<string>();
 
   if (platform === "win32") {
     if (env.USERPROFILE) {
@@ -17,8 +17,7 @@ function resolveCargoPaths(): string {
     additions.add(`${env.HOME}/.cargo/bin`);
   }
 
-  const updated = [...additions, ...existing];
-  return updated.join(separator);
+  return [...additions, ...existing].join(separator);
 }
 
 const [, , command = "dev"] = process.argv;
@@ -29,12 +28,24 @@ const updatedEnv = {
   PATH: resolveCargoPaths(),
 };
 
-const child = spawn("tauri", tauriArgs, {
-  stdio: "inherit",
-  shell: true,
-  env: updatedEnv,
+const child =
+  platform === "win32"
+    ? spawn(env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `tauri ${tauriArgs.join(" ")}`], {
+        stdio: "inherit",
+        shell: false,
+        env: updatedEnv,
+      })
+    : spawn("tauri", tauriArgs, {
+        stdio: "inherit",
+        shell: false,
+        env: updatedEnv,
+      });
+
+child.on("error", (error) => {
+  console.error(`Failed to start Tauri CLI: ${error.message}`);
+  process.exit(1);
 });
 
 child.on("close", (code) => {
-  process.exit(code ?? 0);
+  process.exit(code ?? 1);
 });
