@@ -283,12 +283,14 @@ requireCondition(
   "README contains the obsolete local-only security address",
 );
 requireCondition(
-  securityPolicy.includes("security@nobodyworld.com"),
-  "security policy must contain the public reporting address",
+  securityPolicy.includes("GitHub Private Vulnerability Reporting") &&
+    securityPolicy.includes("Report a vulnerability"),
+  "security policy must route reports through GitHub Private Vulnerability Reporting",
 );
 requireCondition(
-  !securityPolicy.includes("security@prompt-vault.local"),
-  "security policy contains the obsolete local-only reporting address",
+  !securityPolicy.includes("security@nobodyworld.com") &&
+    !securityPolicy.includes("security@prompt-vault.local"),
+  "security policy contains an unverified or obsolete reporting address",
 );
 requireCondition(
   !license.includes("[Jurisdiction]"),
