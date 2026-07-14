@@ -17,7 +17,7 @@ export const COVERAGE_THRESHOLDS: Record<CoverageTier, TierThresholds> = {
 };
 
 const PACKAGE_TIERS: Record<string, CoverageTier> = {
-  "@nw/app-prompt-vault": "app",
+  "prompt-vault": "app",
 };
 
 export function getCoverageConfig(packageName: string): Partial<CoverageOptions> {
