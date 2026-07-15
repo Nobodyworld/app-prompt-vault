@@ -1,38 +1,29 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { createPrompt } from "../services/promptApi";
-import { isTauriAvailable } from "../lib/tauri";
 import { useToast } from "../components/Toast";
-import { useI18n } from "../i18n";
+import { isTauriAvailable } from "../lib/tauri";
+import { createPrompt } from "../services/promptApi";
 
 interface FormState {
   title: string;
   body: string;
+  tags: string;
   category: string;
   isFavorite: boolean;
   rating: string;
-  customTags: string;
 }
 
+const STORAGE_KEY = "prompt-vault-create-form-v2";
+const INITIAL_VERSION = "1.0.0";
 const INITIAL_FORM: FormState = {
   title: "",
   body: "",
+  tags: "",
   category: "",
   isFavorite: false,
   rating: "",
-  customTags: "",
 };
-
-const TAG_PRESETS = [
-  "Brainstorming",
-  "Email Draft",
-  "Product Strategy",
-  "Support Reply",
-  "Code Review",
-  "Workflow",
-];
-const INITIAL_VERSION = "1.0.0";
 
 function slugify(input: string): string {
   return input
@@ -46,294 +37,252 @@ function createSlugSuffix(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
-function parseCustomTags(input: string): string[] {
-  return input
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
-
-const STORAGE_KEY = "prompt-vault-create-form";
-
-interface PersistedState {
-  form: FormState;
-  selectedTags: string[];
-  slugSuffix: string;
+function parseTags(input: string): string[] {
+  return Array.from(
+    new Set(
+      input
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 export function CreatePromptPage(): React.JSX.Element {
-  const { t } = useI18n();
+  const navigate = useNavigate();
+  const { addToast } = useToast();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [slugSuffix, setSlugSuffix] = useState<string>(createSlugSuffix);
+  const [slugSuffix, setSlugSuffix] = useState(createSlugSuffix);
   const [runtimeAvailable, setRuntimeAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const navigate = useNavigate();
-  const { addToast } = useToast();
-
-  // Load persisted form data on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed: PersistedState = JSON.parse(saved);
-        setForm(parsed.form);
-        setSelectedTags(parsed.selectedTags);
-        setSlugSuffix(parsed.slugSuffix);
-      }
-    } catch (error) {
-      console.error("Failed to load saved form data:", error);
-    }
-  }, []);
-
-  // Save form data whenever it changes
-  useEffect(() => {
-    const stateToSave: PersistedState = {
-      form,
-      selectedTags,
-      slugSuffix,
-    };
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-    } catch (error) {
-      console.error("Failed to save form data:", error);
-    }
-  }, [form, selectedTags, slugSuffix]);
 
   useEffect(() => {
     setRuntimeAvailable(isTauriAvailable());
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setForm(JSON.parse(saved) as FormState);
+    } catch (caught: unknown) {
+      console.error("Failed to restore the prompt draft:", caught);
+    }
   }, []);
 
-  // Listen for custom event to submit form from header
   useEffect(() => {
-    const handleSubmitEvent = (): void => {
-      const formElement = document.querySelector(
-        ".prompt-form",
-      ) as HTMLFormElement;
-      if (formElement) {
-        formElement.requestSubmit();
-      }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+    } catch (caught: unknown) {
+      console.error("Failed to save the prompt draft:", caught);
+    }
+  }, [form]);
+
+  useEffect(() => {
+    const submitFromHeader = (): void => {
+      document.querySelector<HTMLFormElement>(".prompt-form")?.requestSubmit();
     };
 
-    window.addEventListener("submit-create-form", handleSubmitEvent);
+    window.addEventListener("submit-create-form", submitFromHeader);
     return () =>
-      window.removeEventListener("submit-create-form", handleSubmitEvent);
+      window.removeEventListener("submit-create-form", submitFromHeader);
   }, []);
 
   const slugPreview = useMemo(() => {
-    const base = slugify(form.title);
-    return base ? `${base}-${slugSuffix}` : `prompt-${slugSuffix}`;
+    const base = slugify(form.title) || "prompt";
+    return `${base}-${slugSuffix}`;
   }, [form.title, slugSuffix]);
 
-  const tagPreview = useMemo(() => {
-    const custom = parseCustomTags(form.customTags);
-    const combined = Array.from(new Set([...selectedTags, ...custom]));
-    return combined.join(", ");
-  }, [selectedTags, form.customTags]);
-
-  function toggleTag(tag: string): void {
-    setSelectedTags((current) =>
-      current.includes(tag)
-        ? current.filter((item) => item !== tag)
-        : [...current, tag],
-    );
-  }
-
-  function resetForm(): void {
+  const resetForm = (): void => {
     setForm(INITIAL_FORM);
-    setSelectedTags([]);
     setSlugSuffix(createSlugSuffix());
-    // Clear persisted data
     localStorage.removeItem(STORAGE_KEY);
-  }
+  };
 
-  async function handleSubmit(
+  const handleSubmit = async (
     event: FormEvent<HTMLFormElement>,
-  ): Promise<void> {
+  ): Promise<void> => {
     event.preventDefault();
-    setIsSubmitting(true);
     setError(null);
 
     if (!runtimeAvailable) {
-      setError(t("create.runtimeUnavailable"));
-      setIsSubmitting(false);
+      setError("Prompt creation requires the desktop runtime.");
       return;
     }
 
-    if (form.body.trim().length === 0) {
-      setError(t("create.bodyRequired"));
-      setIsSubmitting(false);
+    if (!form.title.trim()) {
+      setError("Give the prompt a clear title.");
       return;
     }
 
+    if (!form.body.trim()) {
+      setError("Add the prompt text you want to reuse.");
+      return;
+    }
+
+    const rating = form.rating.trim()
+      ? Number.parseInt(form.rating, 10)
+      : null;
+    if (rating !== null && (Number.isNaN(rating) || rating < 1 || rating > 5)) {
+      setError("Rating must be between 1 and 5.");
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      const title = form.title.trim() || t("create.untitled");
-      const customTags = parseCustomTags(form.customTags);
-      const tags = Array.from(new Set([...selectedTags, ...customTags]));
-
-      const ratingNumber =
-        form.rating.trim() === "" ? null : Number.parseInt(form.rating, 10);
-      if (
-        form.rating.trim() !== "" &&
-        (Number.isNaN(ratingNumber) || ratingNumber < 1 || ratingNumber > 5)
-      ) {
-        setError(t("create.ratingInvalid"));
-        return;
-      }
-
       await createPrompt({
         slug: slugPreview,
-        title,
+        title: form.title.trim(),
         description: undefined,
-        category: form.category.trim() || undefined,
-        isFavorite: form.isFavorite,
-        rating: ratingNumber,
         body: form.body,
         semanticVersion: INITIAL_VERSION,
         changelog: undefined,
-        tags,
+        tags: parseTags(form.tags),
+        category: form.category.trim() || undefined,
+        isFavorite: form.isFavorite,
+        rating,
       });
 
-      addToast(t("create.success"), "success");
+      addToast("Prompt saved.", "success");
       resetForm();
       navigate("/");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("create.failed"));
+    } catch (caught: unknown) {
+      setError(
+        caught instanceof Error ? caught.message : "Unable to save the prompt.",
+      );
     } finally {
       setIsSubmitting(false);
     }
-  }
+  };
 
   return (
-    <form className="prompt-form" onSubmit={handleSubmit}>
-      <header>
-        <h2>{t("create.title")}</h2>
+    <form className="prompt-form prompt-form--focused" onSubmit={handleSubmit}>
+      <header className="form-heading">
+        <div>
+          <h2>New prompt</h2>
+          <p>Save the prompt now. Add optional organization only when useful.</p>
+        </div>
       </header>
 
       <label>
-        {t("create.promptMessage")}
+        Title
+        <input
+          autoFocus
+          required
+          value={form.title}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, title: event.target.value }))
+          }
+          placeholder="Example: Weekly project status update"
+        />
+      </label>
+
+      <label>
+        Prompt
         <textarea
           required
-          rows={10}
+          rows={14}
           value={form.body}
           onChange={(event) =>
-            setForm((state) => ({ ...state, body: event.target.value }))
+            setForm((current) => ({ ...current, body: event.target.value }))
           }
-          placeholder={t("create.promptMessage.placeholder")}
+          placeholder="Write or paste the reusable prompt here…"
         />
       </label>
 
       <label>
-        {t("create.category")}
+        Tags <span className="field-optional">Optional</span>
         <input
-          value={form.category}
+          value={form.tags}
           onChange={(event) =>
-            setForm((state) => ({ ...state, category: event.target.value }))
+            setForm((current) => ({ ...current, tags: event.target.value }))
           }
-          placeholder={t("create.category.placeholder")}
+          placeholder="writing, reporting, client-work"
         />
+        <small>Separate tags with commas.</small>
       </label>
 
-      <label>
-        <input
-          type="checkbox"
-          checked={form.isFavorite}
-          onChange={(event) =>
-            setForm((state) => ({ ...state, isFavorite: event.target.checked }))
-          }
-        />
-        {t("create.favorite")}
-      </label>
+      <details className="advanced-fields">
+        <summary>More options</summary>
+        <div className="advanced-fields__content">
+          <label>
+            Category
+            <input
+              value={form.category}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  category: event.target.value,
+                }))
+              }
+              placeholder="Work, Personal, Research…"
+            />
+          </label>
 
-      <label>
-        {t("create.rating")}
-        <input
-          inputMode="numeric"
-          value={form.rating}
-          onChange={(event) =>
-            setForm((state) => ({ ...state, rating: event.target.value }))
-          }
-          placeholder={t("create.rating.placeholder")}
-        />
-      </label>
+          <label>
+            Rating
+            <input
+              inputMode="numeric"
+              value={form.rating}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, rating: event.target.value }))
+              }
+              placeholder="1–5"
+            />
+          </label>
 
-      <section className="tag-selector">
-        <span className="tag-selector__label">{t("create.quickTags")}</span>
-        <div className="tag-grid">
-          {TAG_PRESETS.map((tag) => {
-            const isActive = selectedTags.includes(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                className={`tag-button${isActive ? " tag-button--active" : ""}`}
-                onClick={() => toggleTag(tag)}
-              >
-                {tag}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={form.isFavorite}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  isFavorite: event.target.checked,
+                }))
+              }
+            />
+            Mark as favorite
+          </label>
 
-      <label>
-        {t("create.customTags")}
-        <input
-          value={form.customTags}
-          onChange={(event) =>
-            setForm((state) => ({ ...state, customTags: event.target.value }))
-          }
-          placeholder={t("create.customTags.placeholder")}
-        />
-      </label>
-
-      <div className="metadata-preview">
-        <div>
-          <span className="metadata-label">{t("create.meta.slug")}</span>
-          <span className="metadata-value">{slugPreview}</span>
-        </div>
-        <div>
-          <span className="metadata-label">{t("create.meta.version")}</span>
-          <span className="metadata-value">{INITIAL_VERSION}</span>
-        </div>
-        {tagPreview && (
-          <div>
-            <span className="metadata-label">{t("create.meta.tags")}</span>
-            <span className="metadata-value">{tagPreview}</span>
+          <div className="metadata-preview metadata-preview--quiet">
+            <div>
+              <span className="metadata-label">Slug</span>
+              <span className="metadata-value">{slugPreview}</span>
+            </div>
+            <div>
+              <span className="metadata-label">Version</span>
+              <span className="metadata-value">{INITIAL_VERSION}</span>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      </details>
 
       {error && <p className="error">{error}</p>}
+      {!runtimeAvailable && (
+        <p className="warning">Open the native desktop app to save prompts.</p>
+      )}
 
-      <div className="form-actions">
+      <div className="form-actions form-actions--balanced">
         <button
-          className="secondary"
           type="button"
+          className="secondary-action"
           onClick={() => navigate("/")}
         >
-          {t("actions.cancel")}
+          Cancel
         </button>
-        <button
-          className="danger"
-          type="button"
-          onClick={() => {
-            if (confirm(t("actions.clearConfirm"))) {
-              resetForm();
-            }
-          }}
-        >
-          {t("actions.clear")}
-        </button>
-        <button type="submit" disabled={isSubmitting || !runtimeAvailable}>
-          {isSubmitting ? t("actions.creating") : t("actions.create")}
-        </button>
+        <div className="form-actions__primary">
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              if (window.confirm("Clear this draft?")) resetForm();
+            }}
+          >
+            Clear draft
+          </button>
+          <button type="submit" disabled={isSubmitting || !runtimeAvailable}>
+            {isSubmitting ? "Saving…" : "Save prompt"}
+          </button>
+        </div>
       </div>
-
-      {!runtimeAvailable && (
-        <p className="warning">{t("create.warning.runtimeUnavailable")}</p>
-      )}
     </form>
   );
 }
