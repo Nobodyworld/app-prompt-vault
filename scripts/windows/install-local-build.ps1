@@ -39,6 +39,13 @@ function Get-MsiProductCode([object]$installRecord) {
 
 Push-Location $repoRoot
 try {
+    Write-Host "Prompt Vault local desktop refresh" -ForegroundColor Cyan
+    Write-Host "Publisher metadata: Nobody Production"
+    Write-Host "Trust status: unsigned local development package" -ForegroundColor Yellow
+    Write-Host "Windows may display 'Unknown publisher' until trusted production code signing is configured." -ForegroundColor Yellow
+    Write-Host "This workflow preserves the local Prompt Vault database." -ForegroundColor Yellow
+    Write-Host ""
+
     if (-not $SkipBuild) {
         Write-Host "Building fresh MSI and NSIS packages from the current branch..." -ForegroundColor Cyan
         & pnpm tauri:build
@@ -55,6 +62,13 @@ try {
         throw "No Prompt Vault MSI was found under $bundleRoot."
     }
 
+    $signature = Get-AuthenticodeSignature -LiteralPath $msi.FullName
+    $signatureLabel = if ($signature.SignerCertificate) {
+        $signature.SignerCertificate.Subject
+    } else {
+        "No trusted signer attached"
+    }
+
     Get-Process -Name "prompt-vault-app" -ErrorAction SilentlyContinue |
         Stop-Process -Force
 
@@ -65,7 +79,7 @@ try {
             throw "Prompt Vault is installed, but its MSI product code could not be determined safely. Uninstall it from Windows Installed Apps, then rerun this command."
         }
 
-        Write-Host "Removing the currently installed Prompt Vault package..." -ForegroundColor Cyan
+        Write-Host "Replacing the previously installed local Prompt Vault build..." -ForegroundColor Cyan
         $uninstall = Start-Process -FilePath "msiexec.exe" `
             -ArgumentList "/x $productCode /passive /norestart" `
             -Wait `
@@ -77,8 +91,11 @@ try {
     }
 
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $msi.FullName).Hash.ToLowerInvariant()
-    Write-Host "Installing current local build:" -ForegroundColor Green
-    Write-Host "  $($msi.FullName)"
+    Write-Host "Installing the current local Prompt Vault build:" -ForegroundColor Green
+    Write-Host "  Package: $($msi.FullName)"
+    Write-Host "  Manufacturer metadata: Nobody Production"
+    Write-Host "  Signature status: $($signature.Status)"
+    Write-Host "  Signer: $signatureLabel"
     Write-Host "  SHA256: $hash"
 
     $install = Start-Process -FilePath "msiexec.exe" `
