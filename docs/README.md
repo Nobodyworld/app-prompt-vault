@@ -9,6 +9,7 @@ This directory contains product, development, operations, security, and release 
 - [Repository overview and release status](../README.md)
 - [Standalone product experience and validation record](product-experience.md)
 - [Getting started index](getting-started/README.md)
+- [Windows local desktop workflow](developer-guide/windows-local-desktop-workflow.md)
 - [Standalone dependency matrix](developer-guide/standalone-dependency-matrix.md)
 - [Legacy tag/project migration](developer-guide/legacy-tag-migration.md)
 - [Developer workflows](developer-guide/workflows.md)
@@ -30,6 +31,7 @@ See [Product experience](product-experience.md) for the detailed hierarchy, exac
 - [Contributing guide](../CONTRIBUTING.md)
 - [Agent instructions](AGENT_INSTRUCTIONS.md)
 - [Developer agent notes](developer-guide/AGENTS.md)
+- [Windows local desktop workflow](developer-guide/windows-local-desktop-workflow.md)
 - [Extension guide](developer-guide/guides/extension-guide.md)
 - [Git integration](developer-guide/git-integration.md)
 
