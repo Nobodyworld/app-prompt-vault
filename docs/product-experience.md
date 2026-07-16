@@ -41,6 +41,21 @@ The Library is the primary product surface. Raw interoperability payloads, bundl
 
 Advanced tools remain available at `/advanced`, linked from Settings rather than the primary navigation.
 
+## Shared web and native UI architecture
+
+Prompt Vault has one React/Vite presentation layer under `desktop/src`.
+
+- `pnpm desktop:dev` runs that UI in a browser for fast visual work.
+- `pnpm tauri:dev` runs the same UI in the Tauri WebView while the Rust host provides native persistence and operating-system capabilities.
+- `pnpm desktop:build` produces `desktop/dist`.
+- `pnpm tauri:build` runs the desktop build and packages that same output into the native application.
+
+UI components, routing, information hierarchy, accessibility, form behavior, and responsive styling must not be duplicated in Rust. Rust should remain a narrow native boundary for SQLite persistence, secrets, file-system or operating-system operations, telemetry, and other capabilities that cannot run safely in a plain browser.
+
+Browser and native differences should be isolated behind small TypeScript adapters. The normal UI should consume stable application interfaces instead of branching throughout components on whether Tauri is available.
+
+The custom title bar requires explicit Tauri permissions. The main-window capability grants only the operations used by the UI: close, minimize, toggle maximize, start dragging, and set position. These controls require native validation because browser Playwright does not expose Tauri window APIs.
+
 ## Local data behavior
 
 The Tauri identifier is `com.nobodyworld.promptvault`. On Windows, the current application database is stored beneath:
@@ -113,6 +128,7 @@ These unsigned local artifacts are acceptance-test evidence, not a supported rel
 
 ## Known follow-up work
 
+- validate the corrected custom close, minimize, maximize/restore, drag, and placement behavior in `pnpm tauri:dev`;
 - refresh the deterministic Tauri-generated schemas in a focused change;
 - replace or repair the JavaScript production dependency audit that currently reaches a retired endpoint;
 - decide and test legacy `com.promptvault.desktop` data migration behavior;
