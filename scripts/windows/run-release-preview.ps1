@@ -10,7 +10,7 @@ $releaseExe = Join-Path $repoRoot "src-tauri\target\release\prompt-vault-app.exe
 Push-Location $repoRoot
 try {
     Write-Host "Building the current Prompt Vault source as a release executable..." -ForegroundColor Cyan
-    & pnpm tauri:build -- --bundles none
+    & pnpm tauri:build -- --no-bundle
     if ($LASTEXITCODE -ne 0) {
         throw "Tauri release build failed with exit code $LASTEXITCODE."
     }
