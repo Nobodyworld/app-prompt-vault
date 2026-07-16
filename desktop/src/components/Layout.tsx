@@ -31,9 +31,7 @@ export function Layout(): React.JSX.Element {
   const handleToggleMaximize = async (): Promise<void> => {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const currentWindow = getCurrentWindow();
-      if (await currentWindow.isMaximized()) await currentWindow.unmaximize();
-      else await currentWindow.maximize();
+      await getCurrentWindow().toggleMaximize();
     } catch (error) {
       console.error("Failed to resize window:", error);
     }
