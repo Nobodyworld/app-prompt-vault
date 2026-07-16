@@ -132,15 +132,21 @@ pnpm tauri:build
 Useful commands:
 
 ```bash
-pnpm desktop:dev         # React/Vite desktop UI
-pnpm web:dev             # Express API and built web assets
-pnpm tags:migrate-legacy # Explicit legacy tag/project migration
-pnpm quality:gate        # Repository quality gate
+pnpm desktop:dev               # Shared React/Vite UI in a browser
+pnpm tauri:dev                 # Shared UI in a native development WebView
+pnpm desktop:preview-release   # Build and launch an optimized uninstalled executable
+pnpm desktop:refresh-installed # Windows: rebuild and replace the installed MSI copy
+pnpm web:dev                   # Express API and built web assets
+pnpm tags:migrate-legacy       # Explicit legacy tag/project migration
+pnpm quality:gate              # Repository quality gate
 ```
+
+See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md) for the difference between the hot-reloading development window, release preview, and Windows-installed application.
 
 ## Remaining release work
 
 - validate the UX cleanup in the native desktop app;
+- validate the local release-preview and installed-refresh scripts;
 - refresh deterministic generated Tauri schemas in a focused change;
 - replace or repair the JavaScript production dependency audit that reaches a retired endpoint;
 - decide and prove legacy desktop-database migration behavior;
@@ -154,6 +160,7 @@ pnpm quality:gate        # Repository quality gate
 
 - [Product experience](docs/product-experience.md)
 - [Documentation index](docs/README.md)
+- [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md)
 - [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
 - [Legacy tag/project migration](docs/developer-guide/legacy-tag-migration.md)
 - [Architecture overview](docs/developer-guide/architecture/overview.md)
