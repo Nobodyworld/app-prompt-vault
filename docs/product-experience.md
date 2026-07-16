@@ -41,20 +41,18 @@ The Library is the primary product surface. Raw interoperability payloads, bundl
 
 Advanced tools remain available at `/advanced`, linked from Settings rather than the primary navigation.
 
-## Shared web and native UI architecture
+## Shared web and desktop UI
 
-Prompt Vault has one React/Vite presentation layer under `desktop/src`.
+Prompt Vault uses one React/Vite interface under `desktop/src` for both browser development and the Tauri desktop application. Rust supplies native persistence and operating-system capabilities; it does not maintain a second UI implementation.
 
-- `pnpm desktop:dev` runs that UI in a browser for fast visual work.
-- `pnpm tauri:dev` runs the same UI in the Tauri WebView while the Rust host provides native persistence and operating-system capabilities.
-- `pnpm desktop:build` produces `desktop/dist`.
-- `pnpm tauri:build` runs the desktop build and packages that same output into the native application.
+Development modes:
 
-UI components, routing, information hierarchy, accessibility, form behavior, and responsive styling must not be duplicated in Rust. Rust should remain a narrow native boundary for SQLite persistence, secrets, file-system or operating-system operations, telemetry, and other capabilities that cannot run safely in a plain browser.
+- `pnpm desktop:dev` — shared frontend in a browser;
+- `pnpm tauri:dev` — the same frontend in a native development WebView with hot reload;
+- `pnpm desktop:preview-release` — optimized release executable without Windows installation;
+- `pnpm desktop:refresh-installed` — Windows-only rebuild, MSI replacement, and launch of the refreshed installed copy.
 
-Browser and native differences should be isolated behind small TypeScript adapters. The normal UI should consume stable application interfaces instead of branching throughout components on whether Tauri is available.
-
-The custom title bar requires explicit Tauri permissions. The main-window capability grants only the operations used by the UI: close, minimize, toggle maximize, start dragging, and set position. These controls require native validation because browser Playwright does not expose Tauri window APIs.
+See [Windows local desktop workflow](developer-guide/windows-local-desktop-workflow.md).
 
 ## Local data behavior
 
@@ -128,7 +126,7 @@ These unsigned local artifacts are acceptance-test evidence, not a supported rel
 
 ## Known follow-up work
 
-- validate the corrected custom close, minimize, maximize/restore, drag, and placement behavior in `pnpm tauri:dev`;
+- validate the new local release-preview and installed-refresh scripts on Windows;
 - refresh the deterministic Tauri-generated schemas in a focused change;
 - replace or repair the JavaScript production dependency audit that currently reaches a retired endpoint;
 - decide and test legacy `com.promptvault.desktop` data migration behavior;
