@@ -36,20 +36,20 @@ pnpm desktop:refresh-installed
 
 This Windows-only command:
 
-1. builds fresh MSI and NSIS packages from the current branch;
-2. closes a running `prompt-vault-app` process;
-3. detects and removes the currently installed Prompt Vault MSI package;
-4. installs the newly built MSI;
-5. launches the Start-menu shortcut when found;
-6. reports any tracked Tauri schema files regenerated during packaging.
+1. identifies the operation as a local development refresh before changing Windows installation state;
+2. builds fresh MSI and NSIS packages from the current branch;
+3. reports package manufacturer metadata, Authenticode signature status, signer identity, and SHA-256;
+4. closes a running `prompt-vault-app` process;
+5. detects and removes the currently installed Prompt Vault MSI package;
+6. installs the newly built MSI;
+7. launches the Start-menu shortcut when found;
+8. reports any tracked Tauri schema files regenerated during packaging.
 
 The workflow does not delete application data. The expected current database remains:
 
 ```text
 %LOCALAPPDATA%\com.nobodyworld.promptvault\prompt-vault.db
 ```
-
-Windows may display an elevation or unsigned-publisher prompt. Local packages remain development and acceptance artifacts, not supported releases.
 
 To reuse an already built MSI without rebuilding:
 
@@ -58,6 +58,23 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
   -File scripts/windows/install-local-build.ps1 `
   -SkipBuild
 ```
+
+## Package identity versus Windows trust
+
+Prompt Vault packages declare the following truthful product metadata:
+
+- product: `Prompt Vault`;
+- publisher/manufacturer metadata: `Nobody Production`;
+- category: `Productivity`;
+- license: proprietary;
+- homepage: the public Prompt Vault repository;
+- application description and copyright.
+
+This metadata improves Windows Installed Apps, file details, and installer product identity. It does **not** create a cryptographic publisher identity.
+
+Local development packages are currently unsigned. Windows may therefore display `Unknown publisher` or an unsigned-application warning even though the MSI manufacturer metadata says `Nobody Production`. The local refresh script reports this state before invoking Windows Installer rather than hiding it.
+
+Removing the Windows trust warning requires signing the executable and installers with a trusted Windows code-signing identity. Signing configuration must be added only after the project selects and securely provisions a certificate or managed signing service. Never commit a private signing key or certificate password to the repository.
 
 ## Why the installed app does not change automatically
 
