@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
@@ -35,10 +35,14 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-function captureOutput(child: ChildProcessWithoutNullStreams): {
+function captureOutput(child: ChildProcess): {
   stdout: () => string;
   stderr: () => string;
 } {
+  if (!child.stdout || !child.stderr) {
+    throw new Error("Child process output pipes were not created");
+  }
+
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
   child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
@@ -68,11 +72,19 @@ async function waitForHttp(url: string, timeoutMs = 20_000): Promise<Response> {
 }
 
 async function waitForExit(
-  child: ChildProcessWithoutNullStreams,
+  child: ChildProcess,
   timeoutMs: number,
 ): Promise<{ code: number | null; signal: NodeJS.Signals | null } | undefined> {
-  return new Promise((resolve) => {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return { code: child.exitCode, signal: child.signalCode };
+  }
+
+  return new Promise((resolve, reject) => {
     const timer = setTimeout(() => resolve(undefined), timeoutMs);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
     child.once("exit", (code, signal) => {
       clearTimeout(timer);
       resolve({ code, signal });
@@ -100,10 +112,7 @@ async function assertNotReachable(url: string): Promise<void> {
       `Expected ${url} to be unreachable, but received HTTP ${response.status}`,
     );
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.startsWith("Expected ")
-    ) {
+    if (error instanceof Error && error.message.startsWith("Expected ")) {
       throw error;
     }
   }
@@ -148,6 +157,9 @@ async function main(): Promise<void> {
   const baseEnv: NodeJS.ProcessEnv = {
     ...process.env,
     NODE_ENV: "test",
+    PROMPT_VAULT_HOST: LOOPBACK,
+    LOCALHOST_ONLY: "true",
+    PROMPT_VAULT_ALLOWED_ORIGINS: ALLOWED_ORIGIN,
     PORT: String(port),
     PROMPT_VAULT_METRICS: "true",
     PROMPT_VAULT_METRICS_PORT: String(metricsPort),
@@ -158,83 +170,89 @@ async function main(): Promise<void> {
     PROMPT_VAULT_LOG_LEVEL: "error",
   };
 
-  await assertRemoteHostFailsClosed(baseEnv);
-
-  const child = spawn(process.execPath, ["dist/server.js"], {
-    cwd: process.cwd(),
-    env: baseEnv,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const output = captureOutput(child);
+  let child: ChildProcess | undefined;
 
   try {
-    const healthUrl = `http://${LOOPBACK}:${port}/observability/healthz`;
-    const health = await waitForHttp(healthUrl);
-    if (health.status !== 200) {
-      throw new Error(`Loopback health endpoint returned HTTP ${health.status}`);
-    }
+    await assertRemoteHostFailsClosed(baseEnv);
 
-    const allowed = await fetch(healthUrl, {
-      headers: { Origin: ALLOWED_ORIGIN },
-      signal: AbortSignal.timeout(2_000),
+    child = spawn(process.execPath, ["dist/server.js"], {
+      cwd: process.cwd(),
+      env: baseEnv,
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    if (allowed.status !== 200) {
-      throw new Error(`Allowed local origin returned HTTP ${allowed.status}`);
-    }
-    if (allowed.headers.get("access-control-allow-origin") !== ALLOWED_ORIGIN) {
-      throw new Error("Allowed local origin did not receive its CORS response header");
-    }
+    const output = captureOutput(child);
 
-    const denied = await fetch(healthUrl, {
-      headers: { Origin: DENIED_ORIGIN },
-      signal: AbortSignal.timeout(2_000),
-    });
-    if (denied.status !== 403) {
-      throw new Error(`Denied browser origin returned HTTP ${denied.status}`);
-    }
+    try {
+      const healthUrl = `http://${LOOPBACK}:${port}/observability/healthz`;
+      const health = await waitForHttp(healthUrl);
+      if (health.status !== 200) {
+        throw new Error(`Loopback health endpoint returned HTTP ${health.status}`);
+      }
 
-    const repair = await fetch(
-      `http://${LOOPBACK}:${port}/observability/repair`,
-      {
-        method: "POST",
+      const allowed = await fetch(healthUrl, {
+        headers: { Origin: ALLOWED_ORIGIN },
         signal: AbortSignal.timeout(2_000),
-      },
-    );
-    if (repair.status !== 404) {
-      throw new Error(`Disabled repair route returned HTTP ${repair.status}`);
-    }
+      });
+      if (allowed.status !== 200) {
+        throw new Error(`Allowed local origin returned HTTP ${allowed.status}`);
+      }
+      if (allowed.headers.get("access-control-allow-origin") !== ALLOWED_ORIGIN) {
+        throw new Error("Allowed local origin did not receive its CORS response header");
+      }
 
-    const metrics = await waitForHttp(
-      `http://${LOOPBACK}:${metricsPort}/healthz`,
-    );
-    if (metrics.status !== 200) {
-      throw new Error(`Loopback metrics health endpoint returned HTTP ${metrics.status}`);
-    }
+      const denied = await fetch(healthUrl, {
+        headers: { Origin: DENIED_ORIGIN },
+        signal: AbortSignal.timeout(2_000),
+      });
+      if (denied.status !== 403) {
+        throw new Error(`Denied browser origin returned HTTP ${denied.status}`);
+      }
 
-    const externalAddress = findNonLoopbackIpv4();
-    if (externalAddress) {
-      await assertNotReachable(
-        `http://${externalAddress}:${port}/observability/healthz`,
+      const repair = await fetch(
+        `http://${LOOPBACK}:${port}/observability/repair`,
+        {
+          method: "POST",
+          signal: AbortSignal.timeout(2_000),
+        },
       );
-      await assertNotReachable(
-        `http://${externalAddress}:${metricsPort}/healthz`,
-      );
-    } else {
-      console.warn("network-security-smoke: no non-loopback IPv4 address available");
-    }
+      if (repair.status !== 404) {
+        throw new Error(`Disabled repair route returned HTTP ${repair.status}`);
+      }
 
-    console.log(
-      `network-security-smoke: passed (http=${port}, metrics=${metricsPort})`,
-    );
-  } catch (error) {
-    throw new Error(
-      `${error instanceof Error ? error.message : String(error)}\nserver stdout:\n${output.stdout()}\nserver stderr:\n${output.stderr()}`,
-    );
+      const metrics = await waitForHttp(
+        `http://${LOOPBACK}:${metricsPort}/healthz`,
+      );
+      if (metrics.status !== 200) {
+        throw new Error(`Loopback metrics health endpoint returned HTTP ${metrics.status}`);
+      }
+
+      const externalAddress = findNonLoopbackIpv4();
+      if (externalAddress) {
+        await assertNotReachable(
+          `http://${externalAddress}:${port}/observability/healthz`,
+        );
+        await assertNotReachable(
+          `http://${externalAddress}:${metricsPort}/healthz`,
+        );
+      } else {
+        console.warn("network-security-smoke: no non-loopback IPv4 address available");
+      }
+
+      console.log(
+        `network-security-smoke: passed (http=${port}, metrics=${metricsPort})`,
+      );
+    } catch (error) {
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}\nserver stdout:\n${output.stdout()}\nserver stderr:\n${output.stderr()}`,
+      );
+    }
   } finally {
-    child.kill("SIGTERM");
-    const exit = await waitForExit(child, 5_000);
-    if (!exit) {
-      child.kill("SIGKILL");
+    if (child) {
+      child.kill("SIGTERM");
+      const exit = await waitForExit(child, 5_000);
+      if (!exit) {
+        child.kill("SIGKILL");
+      }
     }
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
