@@ -35,7 +35,8 @@
     "desktop:build": "vite build --config desktop/vite.config.ts",
     "desktop:preview-release": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows/run-release-preview.ps1",
     "desktop:refresh-installed": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows/install-local-build.ps1",
-    "web:dev": "tsx src/server.ts",
+    "web:dev": "tsx src/secure-server.ts",
+    "web:start": "node dist/secure-server.js",
     "web:build": "pnpm desktop:build",
     "tauri:dev": "tsx scripts/tauri-run.ts dev",
     "tauri:build": "tsx scripts/tauri-run.ts build"
