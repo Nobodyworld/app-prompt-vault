@@ -7,6 +7,32 @@ import { createPrompt, listPrompts } from "../services/promptApi";
 
 type WindowPlacement = "left" | "right";
 
+interface BackupPrompt {
+  slug: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+  body: string;
+  version?: string;
+}
+
+function isBackupPrompt(value: unknown): value is BackupPrompt {
+  if (!value || typeof value !== "object") return false;
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.slug === "string" &&
+    typeof candidate.title === "string" &&
+    typeof candidate.body === "string" &&
+    (candidate.description === undefined ||
+      typeof candidate.description === "string") &&
+    (candidate.version === undefined || typeof candidate.version === "string") &&
+    (candidate.tags === undefined ||
+      (Array.isArray(candidate.tags) &&
+        candidate.tags.every((tag) => typeof tag === "string")))
+  );
+}
+
 export function SettingsPage(): React.JSX.Element {
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -118,57 +144,67 @@ export function SettingsPage(): React.JSX.Element {
   const handleImport = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ): Promise<void> => {
-    const file = event.target.files?.[0];
+    const input = event.target;
+    const file = input.files?.[0];
     if (!file) return;
 
     if (!isTauriAvailable()) {
       setError("Backup import is available in the desktop app.");
+      input.value = "";
       return;
     }
 
     setIsImporting(true);
     setError(null);
     try {
-      const data = JSON.parse(await file.text()) as {
-        prompts?: Array<{
-          slug: string;
-          title: string;
-          description?: string;
-          tags?: string[];
-          body: string;
-          version?: string;
-        }>;
-      };
+      const data = JSON.parse(await file.text()) as { prompts?: unknown[] };
 
       if (!Array.isArray(data.prompts)) {
         throw new Error("This file is not a valid Prompt Vault backup.");
       }
 
       let imported = 0;
-      for (const prompt of data.prompts) {
+      let skipped = 0;
+
+      for (const candidate of data.prompts) {
+        if (!isBackupPrompt(candidate)) {
+          skipped += 1;
+          console.warn("Skipped an invalid backup prompt record.");
+          continue;
+        }
+
         try {
           await createPrompt({
-            slug: prompt.slug,
-            title: prompt.title,
-            description: prompt.description,
-            tags: prompt.tags ?? [],
-            body: prompt.body,
-            semanticVersion: prompt.version ?? "1.0.0",
+            slug: candidate.slug,
+            title: candidate.title,
+            description: candidate.description,
+            tags: candidate.tags ?? [],
+            body: candidate.body,
+            semanticVersion: candidate.version ?? "1.0.0",
           });
           imported += 1;
         } catch (caught: unknown) {
-          console.warn(`Skipped prompt ${prompt.title}:`, caught);
+          skipped += 1;
+          console.warn(`Skipped prompt ${candidate.title}:`, caught);
         }
       }
 
-      event.target.value = "";
+      const importedLabel = `${imported} prompt${imported === 1 ? "" : "s"} imported`;
+      const skippedLabel = `${skipped} skipped`;
       addToast(
-        `Imported ${imported} prompt${imported === 1 ? "" : "s"}.`,
-        "success",
+        skipped > 0 ? `${importedLabel}; ${skippedLabel}.` : `${importedLabel}.`,
+        skipped > 0 ? "warning" : "success",
       );
+
+      if (imported === 0 && skipped > 0) {
+        setError(
+          "No prompts were imported. The records were invalid, duplicated, or could not be saved.",
+        );
+      }
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : "Backup import failed.");
     } finally {
+      input.value = "";
       setIsImporting(false);
     }
   };
