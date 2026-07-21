@@ -42,8 +42,12 @@ test.describe("Desktop App Smoke Tests", () => {
     await page.getByRole("link", { name: "New prompt" }).click();
     await expect(page).toHaveURL(/.*\/create/);
     await expect(page.getByRole("heading", { name: "New prompt" })).toBeVisible();
-    await expect(page.getByLabel("Title")).toBeVisible();
-    await expect(page.getByLabel("Prompt")).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: "Title", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: "Prompt", exact: true }),
+    ).toBeVisible();
 
     await page.getByRole("link", { name: "Library" }).click();
     await expect(page).toHaveURL(/.*\/$/);
@@ -54,8 +58,8 @@ test.describe("Desktop App Smoke Tests", () => {
   }) => {
     await page.goto("/create");
 
-    const title = page.getByLabel("Title");
-    const prompt = page.getByLabel("Prompt");
+    const title = page.getByRole("textbox", { name: "Title", exact: true });
+    const prompt = page.getByRole("textbox", { name: "Prompt", exact: true });
     await title.fill("Draft prompt title");
     await prompt.fill("Draft prompt body");
 
@@ -68,8 +72,12 @@ test.describe("Desktop App Smoke Tests", () => {
 
     await page.getByRole("link", { name: "Library" }).click();
     await page.getByRole("link", { name: "New prompt" }).click();
-    await expect(page.getByLabel("Title")).toHaveValue("Draft prompt title");
-    await expect(page.getByLabel("Prompt")).toHaveValue("Draft prompt body");
+    await expect(
+      page.getByRole("textbox", { name: "Title", exact: true }),
+    ).toHaveValue("Draft prompt title");
+    await expect(
+      page.getByRole("textbox", { name: "Prompt", exact: true }),
+    ).toHaveValue("Draft prompt body");
   });
 
   test("keeps advanced utilities outside the everyday library", async ({
@@ -89,7 +97,7 @@ test.describe("Desktop App Smoke Tests", () => {
   test("remains functional after keyboard input", async ({ page }) => {
     await page.goto("/");
 
-    await page.keyboard.press("Control+k");
+    await page.keyboard.press("Control+KeyK");
     await expect(page.getByLabel("Search prompts")).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(
