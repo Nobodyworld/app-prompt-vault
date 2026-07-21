@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTheme } from "../components/ThemeProvider";
 import { useToast } from "../components/Toast";
@@ -16,34 +16,51 @@ export function SettingsPage(): React.JSX.Element {
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const positionWindow = useCallback(
+    async (nextPlacement: WindowPlacement): Promise<void> => {
+      if (!isTauriAvailable()) return;
+
+      try {
+        const { currentMonitor, getCurrentWindow, LogicalPosition } =
+          await import("@tauri-apps/api/window");
+        const monitor = await currentMonitor();
+        if (!monitor) return;
+
+        const currentWindow = getCurrentWindow();
+        const scaleFactor = monitor.scaleFactor;
+        const workAreaPosition = monitor.workArea.position.toLogical(scaleFactor);
+        const workAreaSize = monitor.workArea.size.toLogical(scaleFactor);
+        const windowSize = (await currentWindow.outerSize()).toLogical(scaleFactor);
+
+        const x =
+          nextPlacement === "left"
+            ? workAreaPosition.x
+            : Math.max(
+                workAreaPosition.x,
+                workAreaPosition.x + workAreaSize.width - windowSize.width,
+              );
+        const y =
+          workAreaPosition.y +
+          Math.max(0, (workAreaSize.height - windowSize.height) / 2);
+
+        await currentWindow.setPosition(
+          new LogicalPosition(Math.round(x), Math.round(y)),
+        );
+      } catch (caught: unknown) {
+        console.error("Failed to position window:", caught);
+        addToast("Window placement could not be changed.", "warning");
+      }
+    },
+    [addToast],
+  );
+
   useEffect(() => {
-    const saved = localStorage.getItem(
-      "prompt-vault-window-placement",
-    ) as WindowPlacement | null;
-    if (saved === "left" || saved === "right") setPlacement(saved);
-  }, []);
+    const saved = localStorage.getItem("prompt-vault-window-placement");
+    if (saved !== "left" && saved !== "right") return;
 
-  const positionWindow = async (
-    nextPlacement: WindowPlacement,
-  ): Promise<void> => {
-    if (!isTauriAvailable()) return;
-
-    try {
-      const { currentMonitor, getCurrentWindow, LogicalPosition } =
-        await import("@tauri-apps/api/window");
-      const monitor = await currentMonitor();
-      if (!monitor) return;
-
-      const windowWidth = 500;
-      const windowHeight = 800;
-      const x = nextPlacement === "left" ? 0 : monitor.size.width - windowWidth;
-      const y = Math.max(0, (monitor.size.height - windowHeight) / 2);
-      await getCurrentWindow().setPosition(new LogicalPosition(x, y));
-    } catch (caught: unknown) {
-      console.error("Failed to position window:", caught);
-      addToast("Window placement could not be changed.", "warning");
-    }
-  };
+    setPlacement(saved);
+    void positionWindow(saved);
+  }, [positionWindow]);
 
   const handlePlacementChange = async (
     nextPlacement: WindowPlacement,
