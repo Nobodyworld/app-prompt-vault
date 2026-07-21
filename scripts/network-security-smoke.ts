@@ -7,6 +7,7 @@ import { join } from "node:path";
 const LOOPBACK = "127.0.0.1";
 const ALLOWED_ORIGIN = "http://127.0.0.1:1420";
 const DENIED_ORIGIN = "https://malicious.example";
+const SERVER_ENTRYPOINT = "dist/src/server.js";
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -119,7 +120,7 @@ async function assertNotReachable(url: string): Promise<void> {
 }
 
 async function assertRemoteHostFailsClosed(baseEnv: NodeJS.ProcessEnv): Promise<void> {
-  const child = spawn(process.execPath, ["dist/server.js"], {
+  const child = spawn(process.execPath, [SERVER_ENTRYPOINT], {
     cwd: process.cwd(),
     env: {
       ...baseEnv,
@@ -175,7 +176,7 @@ async function main(): Promise<void> {
   try {
     await assertRemoteHostFailsClosed(baseEnv);
 
-    child = spawn(process.execPath, ["dist/server.js"], {
+    child = spawn(process.execPath, [SERVER_ENTRYPOINT], {
       cwd: process.cwd(),
       env: baseEnv,
       stdio: ["ignore", "pipe", "pipe"],
