@@ -10,15 +10,6 @@ export function Layout(): React.JSX.Element {
   const [fallbackActiveState, setFallbackActiveState] =
     useState<boolean>(isUsingFallback());
 
-  const handleCreateClick = (
-    event: React.MouseEvent<HTMLAnchorElement>,
-  ): void => {
-    if (location.pathname === "/create") {
-      event.preventDefault();
-      window.dispatchEvent(new CustomEvent("submit-create-form"));
-    }
-  };
-
   const handleMinimize = async (): Promise<void> => {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -140,9 +131,7 @@ export function Layout(): React.JSX.Element {
 
             <nav aria-label="Primary navigation">
               <NavLink to="/">Library</NavLink>
-              <NavLink to="/create" onClick={handleCreateClick}>
-                New prompt
-              </NavLink>
+              <NavLink to="/create">New prompt</NavLink>
               <NavLink to="/settings">Settings</NavLink>
             </nav>
           </header>
