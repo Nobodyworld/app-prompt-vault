@@ -34,7 +34,8 @@ function slugify(input: string): string {
 }
 
 function createSlugSuffix(): string {
-  return Math.random().toString(36).slice(2, 8);
+  const generated = globalThis.crypto?.randomUUID?.();
+  return generated ? generated.slice(0, 6) : Math.random().toString(36).slice(2, 8);
 }
 
 function parseTags(input: string): string[] {
@@ -46,6 +47,18 @@ function parseTags(input: string): string[] {
         .filter(Boolean),
     ),
   );
+}
+
+function parseSavedForm(serialized: string): FormState {
+  const parsed = JSON.parse(serialized) as Record<string, unknown>;
+  return {
+    title: typeof parsed.title === "string" ? parsed.title : "",
+    body: typeof parsed.body === "string" ? parsed.body : "",
+    tags: typeof parsed.tags === "string" ? parsed.tags : "",
+    category: typeof parsed.category === "string" ? parsed.category : "",
+    isFavorite: parsed.isFavorite === true,
+    rating: typeof parsed.rating === "string" ? parsed.rating : "",
+  };
 }
 
 export function CreatePromptPage(): React.JSX.Element {
@@ -61,9 +74,10 @@ export function CreatePromptPage(): React.JSX.Element {
     setRuntimeAvailable(isTauriAvailable());
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setForm(JSON.parse(saved) as FormState);
+      if (saved) setForm(parseSavedForm(saved));
     } catch (caught: unknown) {
       console.error("Failed to restore the prompt draft:", caught);
+      localStorage.removeItem(STORAGE_KEY);
     }
   }, []);
 
@@ -74,16 +88,6 @@ export function CreatePromptPage(): React.JSX.Element {
       console.error("Failed to save the prompt draft:", caught);
     }
   }, [form]);
-
-  useEffect(() => {
-    const submitFromHeader = (): void => {
-      document.querySelector<HTMLFormElement>(".prompt-form")?.requestSubmit();
-    };
-
-    window.addEventListener("submit-create-form", submitFromHeader);
-    return () =>
-      window.removeEventListener("submit-create-form", submitFromHeader);
-  }, []);
 
   const slugPreview = useMemo(() => {
     const base = slugify(form.title) || "prompt";
