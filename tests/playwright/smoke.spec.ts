@@ -49,6 +49,29 @@ test.describe("Desktop App Smoke Tests", () => {
     await expect(page).toHaveURL(/.*\/$/);
   });
 
+  test("keeps prompt saving explicit and preserves an unfinished draft", async ({
+    page,
+  }) => {
+    await page.goto("/create");
+
+    const title = page.getByLabel("Title");
+    const prompt = page.getByLabel("Prompt");
+    await title.fill("Draft prompt title");
+    await prompt.fill("Draft prompt body");
+
+    await page.getByRole("link", { name: "New prompt" }).click();
+    await expect(title).toHaveValue("Draft prompt title");
+    await expect(prompt).toHaveValue("Draft prompt body");
+    await expect(
+      page.getByText("Prompt creation requires the desktop runtime."),
+    ).not.toBeVisible();
+
+    await page.getByRole("link", { name: "Library" }).click();
+    await page.getByRole("link", { name: "New prompt" }).click();
+    await expect(page.getByLabel("Title")).toHaveValue("Draft prompt title");
+    await expect(page.getByLabel("Prompt")).toHaveValue("Draft prompt body");
+  });
+
   test("keeps advanced utilities outside the everyday library", async ({
     page,
   }) => {
