@@ -55,13 +55,15 @@ export function Layout(): React.JSX.Element {
         return;
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.key === "n") {
+      const key = event.key.toLowerCase();
+
+      if ((event.ctrlKey || event.metaKey) && key === "n") {
         event.preventDefault();
         navigate("/create");
         return;
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.key === "k") {
+      if ((event.ctrlKey || event.metaKey) && key === "k") {
         event.preventDefault();
         navigate("/");
         window.setTimeout(
@@ -71,7 +73,7 @@ export function Layout(): React.JSX.Element {
         return;
       }
 
-      if (event.key === "Escape" && location.pathname === "/") {
+      if (key === "escape" && location.pathname === "/") {
         window.dispatchEvent(new CustomEvent("clear-search"));
       }
     };
