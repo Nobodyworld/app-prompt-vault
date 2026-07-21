@@ -124,9 +124,30 @@ Fresh local installer inventory from the final recorded build:
 
 These unsigned local artifacts are acceptance-test evidence, not a supported release or distribution channel.
 
+## PR #43 Windows workflow validation
+
+The new local desktop workflows were exercised on Windows at commit:
+
+```text
+20dca24ee8b1e38276538497aba8f1db5c3235bf
+```
+
+Observed results:
+
+- `pnpm desktop:preview-release` completed twice and launched `src-tauri\target\release\prompt-vault-app.exe` both times;
+- the two same-source preview builds produced different executable hashes:
+  - `345628904f5ac6be97c8723a987c6c7b00a3e6b69d0b0b4a443f0310a5d75a20`;
+  - `238e72dc3de392315385cfa7f9f6b107bf1050a862729c3d4950b98c80f64b77`;
+- this proves successful repeat construction, but not byte-for-byte reproducibility;
+- `pnpm desktop:refresh-installed` built fresh MSI and NSIS bundles, removed the existing MSI registration, installed the current local build, preserved the application database, and launched the refreshed installed copy;
+- the MSI installed by that run had SHA-256 `0ab510e1017244dd09c0f5a256716e2bfb196e5449122f0e0492d54c05d07601`;
+- Tauri regenerated four tracked schema files during packaging; their diff was saved for review and the working tree copies were restored.
+
+These results validate the local workflow scripts at `20dca24...`. Later package-metadata and README-audit commits still require ordinary exact-head validation before PR #43 can be integrated.
+
 ## Known follow-up work
 
-- validate the new local release-preview and installed-refresh scripts on Windows;
+- validate PR #43 visually and functionally in the native app, including close, minimize, maximize/restore, dragging, window placement, light/dark themes, and 400×600 usability;
 - refresh the deterministic Tauri-generated schemas in a focused change;
 - replace or repair the JavaScript production dependency audit that currently reaches a retired endpoint;
 - decide and test legacy `com.promptvault.desktop` data migration behavior;
