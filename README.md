@@ -146,7 +146,7 @@ See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-
 ## Remaining release work
 
 - validate the UX cleanup in the native desktop app;
-- validate the local release-preview and installed-refresh scripts;
+- revalidate the latest PR #43 head after documentation and package-metadata changes;
 - refresh deterministic generated Tauri schemas in a focused change;
 - replace or repair the JavaScript production dependency audit that reaches a retired endpoint;
 - decide and prove legacy desktop-database migration behavior;
@@ -162,7 +162,7 @@ See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-
 - [Documentation index](docs/README.md)
 - [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md)
 - [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
-- [Legacy sidecar migration procedure](docs/developer-guide/legacy-tag-migration.md)
+- [legacy sidecar migration procedure](docs/developer-guide/legacy-tag-migration.md)
 - [Architecture overview](docs/developer-guide/architecture/overview.md)
 - [Developer workflows](docs/developer-guide/workflows.md)
 - [Security policy](docs/security/policies/security.md)
