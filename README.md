@@ -8,7 +8,7 @@
 >
 > Prompt Vault is an experimental local-first desktop application. Public access permits source inspection and limited evaluation under [LICENSE](LICENSE); it does not grant an open-source license or establish production, migration, signing, or release readiness.
 
-There is no supported downloadable release, hosted service, or production deployment for this repository. Draft PR #27 must remain unmerged until its remaining product, migration, security, coverage, exact-head hosted-validation, and release gates are complete.
+**Release status:** pre-release. There is no supported downloadable release, hosted service, or production deployment for this repository. Draft PR #27 must remain unmerged until its remaining product, migration, security, coverage, exact-head hosted-validation, and release gates are complete. Track the governing decision in [issue #26](../../issues/26).
 
 ## What Prompt Vault is
 
@@ -162,7 +162,7 @@ See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-
 - [Documentation index](docs/README.md)
 - [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md)
 - [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
-- [Legacy tag/project migration](docs/developer-guide/legacy-tag-migration.md)
+- [Legacy sidecar migration procedure](docs/developer-guide/legacy-tag-migration.md)
 - [Architecture overview](docs/developer-guide/architecture/overview.md)
 - [Developer workflows](docs/developer-guide/workflows.md)
 - [Security policy](docs/security/policies/security.md)
