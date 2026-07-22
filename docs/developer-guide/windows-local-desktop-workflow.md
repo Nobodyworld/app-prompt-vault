@@ -14,6 +14,32 @@ Use this for normal UI and UX work. Tauri starts the Vite development server, la
 
 This window is a development process. It is not the copy registered in Windows Installed Apps.
 
+### Measure the native client area
+
+Tauri `minWidth` and `minHeight` apply to the logical **inner client area**, not the outer Win32 frame. Windows borders and frame geometry make the outer rectangle larger than the configured client minimum.
+
+Launch Prompt Vault, resize it to the smallest permitted size, and run:
+
+```powershell
+pnpm desktop:accept-window-minimum
+```
+
+The command reports:
+
+- client size in reported pixels;
+- client size converted to logical pixels using the window DPI;
+- outer Win32 rectangle size;
+- whether the client meets the configured 400×600 logical minimum;
+- whether it is within the acceptance tolerance of that minimum.
+
+For a non-gating measurement at any current size:
+
+```powershell
+pnpm desktop:measure-window
+```
+
+When multiple Prompt Vault windows are visible, call the PowerShell script directly with `-ProcessId`.
+
 ### Current release preview without installation
 
 ```powershell
