@@ -11,9 +11,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "pnpm security:network-smoke && vitest run --coverage",
     "coverage:summary": "tsx scripts/report-coverage.ts",
     "security:scan": "tsx scripts/security-scan.ts",
+    "security:network-smoke": "tsx scripts/network-security-smoke.ts",
     "metrics:snapshot": "tsx scripts/metrics-snapshot.ts",
     "repository:audit": "node scripts/repository-audit.mjs",
     "quality:gate": "pnpm repository:audit && pnpm lint && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm coverage:summary && pnpm security:scan",
@@ -36,6 +37,7 @@
     "desktop:preview-release": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows/run-release-preview.ps1",
     "desktop:refresh-installed": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows/install-local-build.ps1",
     "web:dev": "tsx src/server.ts",
+    "web:start": "node dist/src/server.js",
     "web:build": "pnpm desktop:build",
     "tauri:dev": "tsx scripts/tauri-run.ts dev",
     "tauri:build": "tsx scripts/tauri-run.ts build"
@@ -56,7 +58,10 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "fast-uri": "3.1.4"
+    }
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
