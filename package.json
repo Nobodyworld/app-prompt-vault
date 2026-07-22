@@ -36,6 +36,8 @@
     "desktop:build": "vite build --config desktop/vite.config.ts",
     "desktop:preview-release": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows/run-release-preview.ps1",
     "desktop:refresh-installed": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows/install-local-build.ps1",
+    "desktop:measure-window": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows/measure-window-client.ps1",
+    "desktop:accept-window-minimum": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows/measure-window-client.ps1 -RequireExactMinimum",
     "web:dev": "tsx src/server.ts",
     "web:start": "node dist/src/server.js",
     "web:build": "pnpm desktop:build",
