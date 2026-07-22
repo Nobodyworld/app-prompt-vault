@@ -2,36 +2,15 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTheme } from "../components/ThemeProvider";
 import { useToast } from "../components/Toast";
+import {
+  backupPromptToCreateInput,
+  buildBackupExport,
+  isBackupPrompt,
+} from "../lib/backup";
 import { isTauriAvailable } from "../lib/tauri";
 import { createPrompt, listPrompts } from "../services/promptApi";
 
 type WindowPlacement = "left" | "right";
-
-interface BackupPrompt {
-  slug: string;
-  title: string;
-  description?: string;
-  tags?: string[];
-  body: string;
-  version?: string;
-}
-
-function isBackupPrompt(value: unknown): value is BackupPrompt {
-  if (!value || typeof value !== "object") return false;
-
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.slug === "string" &&
-    typeof candidate.title === "string" &&
-    typeof candidate.body === "string" &&
-    (candidate.description === undefined ||
-      typeof candidate.description === "string") &&
-    (candidate.version === undefined || typeof candidate.version === "string") &&
-    (candidate.tags === undefined ||
-      (Array.isArray(candidate.tags) &&
-        candidate.tags.every((tag) => typeof tag === "string")))
-  );
-}
 
 export function SettingsPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -106,21 +85,7 @@ export function SettingsPage(): React.JSX.Element {
     setError(null);
     try {
       const prompts = await listPrompts();
-      const exportData = {
-        version: "1.0",
-        exportedAt: new Date().toISOString(),
-        prompts: prompts.map((prompt) => ({
-          id: prompt.id,
-          slug: prompt.slug,
-          title: prompt.title,
-          description: prompt.description,
-          tags: prompt.tags,
-          createdAt: prompt.createdAt,
-          updatedAt: prompt.updatedAt,
-          body: prompt.latestVersion?.body || "",
-          version: prompt.latestVersion?.semanticVersion || "1.0.0",
-        })),
-      };
+      const exportData = buildBackupExport(prompts);
 
       const blob = new Blob([JSON.stringify(exportData, null, 2)], {
         type: "application/json",
@@ -174,14 +139,7 @@ export function SettingsPage(): React.JSX.Element {
         }
 
         try {
-          await createPrompt({
-            slug: candidate.slug,
-            title: candidate.title,
-            description: candidate.description,
-            tags: candidate.tags ?? [],
-            body: candidate.body,
-            semanticVersion: candidate.version ?? "1.0.0",
-          });
+          await createPrompt(backupPromptToCreateInput(candidate));
           imported += 1;
         } catch (caught: unknown) {
           skipped += 1;
