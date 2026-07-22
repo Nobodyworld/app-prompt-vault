@@ -10,7 +10,7 @@ export interface PromptSummary {
   slug: string;
   title: string;
   description?: string;
-  category?: string;
+  category?: string | null;
   isFavorite: boolean;
   rating?: number | null;
   tags: string[];
@@ -43,7 +43,7 @@ export interface UpdatePromptInput {
   id: string;
   title?: string;
   description?: string;
-  category?: string;
+  category?: string | null;
   isFavorite?: boolean;
   rating?: number | null;
   tags?: string[];

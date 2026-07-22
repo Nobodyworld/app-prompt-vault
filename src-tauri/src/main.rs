@@ -63,6 +63,7 @@ struct PromptSummary {
     slug: String,
     title: String,
     description: Option<String>,
+    category: Option<String>,
     is_favorite: bool,
     rating: Option<i32>,
     tags: Vec<String>,
@@ -86,6 +87,7 @@ struct CreatePromptPayload {
     slug: String,
     title: String,
     description: Option<String>,
+    category: Option<String>,
     is_favorite: Option<bool>,
     rating: Option<i32>,
     body: String,
@@ -156,9 +158,20 @@ struct UpdatePromptPayload {
     id: String,
     title: Option<String>,
     description: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    category: Option<Option<String>>,
     is_favorite: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
     rating: Option<Option<i32>>,
     tags: Option<Vec<String>>,
+}
+
+fn deserialize_optional_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Serialize)]
@@ -491,8 +504,12 @@ fn list_prompts_inner(state: State<'_, AppState>) -> Result<ListPromptsResponse,
         .lock()
         .map_err(|_| AppError::Internal("database lock poisoned".into()))?;
 
-    let mut stmt = connection_guard.prepare(
-        "SELECT id, slug, title, description, is_favorite, rating, created_at, updated_at
+    list_prompts_from_connection(&connection_guard)
+}
+
+fn list_prompts_from_connection(connection: &Connection) -> Result<ListPromptsResponse, AppError> {
+    let mut stmt = connection.prepare(
+        "SELECT id, slug, title, description, category, is_favorite, rating, created_at, updated_at
      FROM prompts
      ORDER BY updated_at DESC",
     )?;
@@ -503,17 +520,18 @@ fn list_prompts_inner(state: State<'_, AppState>) -> Result<ListPromptsResponse,
             slug: row.get(1)?,
             title: row.get(2)?,
             description: row.get(3)?,
-            is_favorite: row.get(4)?,
-            rating: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
+            category: row.get(4)?,
+            is_favorite: row.get(5)?,
+            rating: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
         })
     })?;
 
     let mut prompts = Vec::new();
     for row in rows {
         let partial = row?;
-        prompts.push(compose_prompt_summary(&connection_guard, &partial)?);
+        prompts.push(compose_prompt_summary(connection, &partial)?);
     }
 
     Ok(ListPromptsResponse { prompts })
@@ -523,12 +541,29 @@ fn create_prompt_inner(
     state: State<'_, AppState>,
     payload: CreatePromptPayload,
 ) -> Result<CreatePromptResponse, AppError> {
+    let mut connection = state
+        .connection
+        .lock()
+        .map_err(|_| AppError::Internal("database lock poisoned".into()))?;
+
+    create_prompt_in_connection(&mut connection, payload)
+}
+
+fn create_prompt_in_connection(
+    connection: &mut Connection,
+    payload: CreatePromptPayload,
+) -> Result<CreatePromptResponse, AppError> {
     validate_payload(&payload)?;
 
     let slug = payload.slug.trim().to_string();
     let title = payload.title.trim().to_string();
     let description = payload
         .description
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let category = payload
+        .category
         .as_ref()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
@@ -549,19 +584,14 @@ fn create_prompt_inner(
     let is_favorite = payload.is_favorite.unwrap_or(false);
     let rating = payload.rating;
 
-    let mut connection = state
-        .connection
-        .lock()
-        .map_err(|_| AppError::Internal("database lock poisoned".into()))?;
-
     let tx = connection.transaction()?;
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
     tx.execute(
-          "INSERT INTO prompts (id, slug, title, description, is_favorite, rating, created_at, updated_at)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-          params![id, slug, title, description, if is_favorite { 1 } else { 0 }, rating, now,],
+          "INSERT INTO prompts (id, slug, title, description, category, is_favorite, rating, created_at, updated_at)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+          params![id, slug, title, description, category, if is_favorite { 1 } else { 0 }, rating, now,],
     )
     .map_err(|error| match error {
         SqlError::SqliteFailure(ref sqlite_error, _)
@@ -592,12 +622,13 @@ fn create_prompt_inner(
     tx.commit()?;
 
     let summary = compose_prompt_summary(
-        &connection,
+        connection,
         &PartialPrompt {
             id: id.clone(),
             slug,
             title,
             description,
+            category,
             is_favorite: if is_favorite { 1 } else { 0 },
             rating,
             created_at: now.clone(),
@@ -671,6 +702,13 @@ fn update_prompt_inner(
         .lock()
         .map_err(|_| AppError::Internal("database lock poisoned".into()))?;
 
+    update_prompt_in_connection(&connection, payload)
+}
+
+fn update_prompt_in_connection(
+    connection: &Connection,
+    payload: UpdatePromptPayload,
+) -> Result<UpdatePromptResponse, AppError> {
     let id = payload.id;
     let title = payload
         .title
@@ -680,6 +718,11 @@ fn update_prompt_inner(
         .description
         .map(|d| d.trim().to_string())
         .filter(|d| !d.is_empty());
+    let category = payload.category.map(|value| {
+        value
+            .map(|category| category.trim().to_string())
+            .filter(|category| !category.is_empty())
+    });
     let is_favorite = payload.is_favorite;
     let rating = payload.rating;
     let tags = payload.tags.map(|t| {
@@ -699,6 +742,10 @@ fn update_prompt_inner(
     if let Some(d) = description {
         updates.push("description = ?");
         params_vec.push(Box::new(d));
+    }
+    if let Some(category_value) = category {
+        updates.push("category = ?");
+        params_vec.push(Box::new(category_value));
     }
     if let Some(fav) = is_favorite {
         updates.push("is_favorite = ?");
@@ -721,18 +768,21 @@ fn update_prompt_inner(
         .map(|value| value.as_ref() as &dyn rusqlite::ToSql)
         .collect();
 
-    connection.execute(&query, &params_refs[..])?;
+    let updated = connection.execute(&query, &params_refs[..])?;
+    if updated == 0 {
+        return Err(AppError::Validation("Prompt not found".into()));
+    }
 
     if let Some(ref t) = tags {
         // Remove existing tags
         connection.execute("DELETE FROM prompt_tags WHERE prompt_id = ?", [&id])?;
         // Add new tags
-        store_tags(&connection, &id, t)?;
+        store_tags(connection, &id, t)?;
     }
 
     // Fetch updated prompt
     let mut stmt = connection.prepare(
-        "SELECT id, slug, title, description, is_favorite, rating, created_at, updated_at FROM prompts WHERE id = ?",
+        "SELECT id, slug, title, description, category, is_favorite, rating, created_at, updated_at FROM prompts WHERE id = ?",
     )?;
     let partial = stmt.query_row([&id], |row| {
         Ok(PartialPrompt {
@@ -740,14 +790,15 @@ fn update_prompt_inner(
             slug: row.get(1)?,
             title: row.get(2)?,
             description: row.get(3)?,
-            is_favorite: row.get(4)?,
-            rating: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
+            category: row.get(4)?,
+            is_favorite: row.get(5)?,
+            rating: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
         })
     })?;
 
-    let summary = compose_prompt_summary(&connection, &partial)?;
+    let summary = compose_prompt_summary(connection, &partial)?;
 
     Ok(UpdatePromptResponse { prompt: summary })
 }
@@ -839,6 +890,7 @@ struct PartialPrompt {
     slug: String,
     title: String,
     description: Option<String>,
+    category: Option<String>,
     is_favorite: i64,
     rating: Option<i32>,
     created_at: String,
@@ -857,6 +909,7 @@ fn compose_prompt_summary(
         slug: partial.slug.clone(),
         title: partial.title.clone(),
         description: partial.description.clone(),
+        category: partial.category.clone(),
         is_favorite: partial.is_favorite != 0,
         rating: partial.rating,
         tags,
@@ -1193,6 +1246,21 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    fn category_prompt_payload(category: Option<&str>) -> CreatePromptPayload {
+        CreatePromptPayload {
+            slug: "category-round-trip".into(),
+            title: "Category round trip".into(),
+            description: None,
+            category: category.map(str::to_string),
+            is_favorite: Some(false),
+            rating: None,
+            body: "Persist this prompt body".into(),
+            semantic_version: "1.0.0".into(),
+            changelog: None,
+            tags: vec!["native".into()],
+        }
+    }
+
     #[test]
     fn tauri_migrations_apply_to_latest_schema_version() {
         let connection = Connection::open_in_memory().expect("open db");
@@ -1223,6 +1291,93 @@ mod tests {
         apply_migrations(&connection).expect("re-apply migrations");
         let after = get_user_version(&connection).expect("read user_version after");
         assert_eq!(after, 5, "expected user_version to be repaired to 5");
+    }
+
+    #[test]
+    fn native_category_round_trips_through_create_and_list() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let created = create_prompt_in_connection(
+            &mut connection,
+            category_prompt_payload(Some("  Research  ")),
+        )
+        .expect("create prompt");
+        assert_eq!(created.prompt.category.as_deref(), Some("Research"));
+
+        let listed = list_prompts_from_connection(&connection).expect("list prompts");
+        assert_eq!(listed.prompts.len(), 1);
+        assert_eq!(listed.prompts[0].category.as_deref(), Some("Research"));
+        assert_eq!(listed.prompts[0].tags, vec!["native"]);
+    }
+
+    #[test]
+    fn native_category_update_distinguishes_omitted_set_and_clear() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        apply_migrations(&connection).expect("apply migrations");
+        let created =
+            create_prompt_in_connection(&mut connection, category_prompt_payload(Some("Research")))
+                .expect("create prompt");
+        let id = created.prompt.id;
+
+        let omitted: UpdatePromptPayload = serde_json::from_value(serde_json::json!({
+            "id": id,
+            "title": "Renamed"
+        }))
+        .expect("deserialize omitted category");
+        assert!(omitted.category.is_none());
+        let unchanged = update_prompt_in_connection(&connection, omitted).expect("update title");
+        assert_eq!(unchanged.prompt.category.as_deref(), Some("Research"));
+
+        let set: UpdatePromptPayload = serde_json::from_value(serde_json::json!({
+            "id": unchanged.prompt.id,
+            "category": "  Writing  ",
+            "rating": 4
+        }))
+        .expect("deserialize category value");
+        assert_eq!(
+            set.category.as_ref().and_then(Option::as_deref),
+            Some("  Writing  ")
+        );
+        let updated = update_prompt_in_connection(&connection, set).expect("set category");
+        assert_eq!(updated.prompt.category.as_deref(), Some("Writing"));
+        assert_eq!(updated.prompt.rating, Some(4));
+
+        let clear: UpdatePromptPayload = serde_json::from_value(serde_json::json!({
+            "id": updated.prompt.id,
+            "category": null,
+            "rating": null
+        }))
+        .expect("deserialize category clear");
+        assert_eq!(clear.category, Some(None));
+        assert_eq!(clear.rating, Some(None));
+        let cleared = update_prompt_in_connection(&connection, clear).expect("clear category");
+        assert_eq!(cleared.prompt.category, None);
+        assert_eq!(cleared.prompt.rating, None);
+    }
+
+    #[test]
+    fn native_category_survives_database_reopen_and_migration_path() {
+        let tmp = TempDir::new().expect("create tempdir");
+        let database_path = tmp.path().join("prompt-vault.db");
+        let prompt_id = {
+            let mut connection = Connection::open(&database_path).expect("open db");
+            apply_migrations(&connection).expect("apply migrations");
+            create_prompt_in_connection(&mut connection, category_prompt_payload(Some("Durable")))
+                .expect("create prompt")
+                .prompt
+                .id
+        };
+
+        let reopened = Connection::open(&database_path).expect("reopen db");
+        apply_migrations(&reopened).expect("reapply migrations");
+        let listed = list_prompts_from_connection(&reopened).expect("list reopened prompts");
+        let prompt = listed
+            .prompts
+            .into_iter()
+            .find(|prompt| prompt.id == prompt_id)
+            .expect("persisted prompt");
+        assert_eq!(prompt.category.as_deref(), Some("Durable"));
     }
 
     #[test]
