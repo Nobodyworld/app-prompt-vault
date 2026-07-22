@@ -50,7 +50,7 @@ namespace PromptVault
 
 function Get-Win32ErrorMessage {
     $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-    return "Win32 error $code: $([ComponentModel.Win32Exception]::new($code).Message)"
+    return "Win32 error ${code}: $([System.ComponentModel.Win32Exception]::new($code).Message)"
 }
 
 if ($PSBoundParameters.ContainsKey("ProcessId")) {
