@@ -96,6 +96,9 @@ test.describe("Desktop App Smoke Tests", () => {
 
   test("remains functional after keyboard input", async ({ page }) => {
     await page.goto("/");
+    await expect(
+      page.getByRole("heading", { name: "Your prompt library" }),
+    ).toBeVisible();
 
     await page.keyboard.press("Control+KeyK");
     await expect(page.getByLabel("Search prompts")).toBeFocused();
