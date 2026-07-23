@@ -1,16 +1,46 @@
 import type { NextFunction, Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
-  getSecret,
-  storeSecret,
   verifyCoreDbApiKey,
-  verifyCoreDbSessionToken,
   type CoreDbAuthContext,
 } from "../lib/platform-core.js";
 import type { StructuredLogger } from "../observability/logger.js";
 import { createEndpointRateLimiter } from "./rate-limit.js";
+
+const JWT_CLOCK_SKEW_SECONDS = 60;
+const JWT_TEXT_MAX_LENGTH = 200;
+const JWT_ROLE_OR_SCOPE_MAX_LENGTH = 100;
+const JWT_ROLES_MAX_LENGTH = 10;
+const JWT_SCOPES_MAX_LENGTH = 20;
+const BASE64URL_SEGMENT_PATTERN = /^[A-Za-z0-9_-]+$/;
+const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+
+const jwtHeaderSchema = z
+  .object({
+    alg: z.literal("HS256"),
+    typ: z.literal("JWT"),
+  })
+  .strict();
+
+const jwtPayloadSchema = z
+  .object({
+    userId: z.string().min(1).max(JWT_TEXT_MAX_LENGTH),
+    username: z.string().min(1).max(JWT_TEXT_MAX_LENGTH),
+    roles: z
+      .array(z.string().min(1).max(JWT_ROLE_OR_SCOPE_MAX_LENGTH))
+      .max(JWT_ROLES_MAX_LENGTH)
+      .optional(),
+    scopes: z
+      .array(z.string().min(1).max(JWT_ROLE_OR_SCOPE_MAX_LENGTH))
+      .max(JWT_SCOPES_MAX_LENGTH)
+      .optional(),
+    iat: z.number().int().nonnegative(),
+    exp: z.number().int().nonnegative(),
+  })
+  .strict();
+const jwtTokenInputSchema = jwtPayloadSchema.omit({ iat: true, exp: true });
 
 function getErrorDetails(response: Response): { requestId?: string; traceId?: string } {
   const requestId =
@@ -69,31 +99,47 @@ export interface AuthPayload {
   username: string;
   roles?: string[];
   scopes?: string[];
-  iat?: number;
-  exp?: number;
+  iat: number;
+  exp: number;
+}
+
+export class JwtSigningUnavailableError extends Error {
+  public constructor() {
+    super(
+      "JWT signing is unavailable because no Prompt Vault JWT secret is configured",
+    );
+    this.name = "JwtSigningUnavailableError";
+  }
 }
 
 /**
  * Authentication manager for JWT-based auth and API key validation.
  */
 export class AuthManager {
-  private jwtSecret!: string;
+  private jwtSecret: string | null = null;
   private readonly jwtExpiresIn: string;
-  private readonly apiKeys: Map<string, string>;
+  private readonly apiKeys: Map<string, Buffer>;
   private readonly tokenTtlSeconds: number;
   private readonly logger?: StructuredLogger;
   private readonly providedSecret?: string;
 
   public constructor(config: AuthConfig, logger?: StructuredLogger) {
     this.jwtExpiresIn = config.jwtExpiresIn || "24h";
-    this.apiKeys = new Map(Object.entries(config.apiKeys || {}));
+    this.apiKeys = new Map(
+      Object.entries(config.apiKeys || {})
+        .filter(([, value]) => value.length > 0)
+        .map(([name, value]) => [name, this.hashApiKey(value)]),
+    );
     this.logger = logger;
     this.tokenTtlSeconds = this.parseExpiresIn(this.jwtExpiresIn);
     this.providedSecret = config.jwtSecret?.trim();
   }
 
   /**
-   * Initialize the JWT secret from @nw/secrets or generate a random one.
+   * Initialize JWT signing from an explicitly provided secret.
+   *
+   * Missing configuration intentionally leaves JWT verification and issuance
+   * unavailable. Prompt Vault does not create a process-local signing authority.
    * Should be called after construction and before using JWT functionality.
    */
   public async initialize(): Promise<void> {
@@ -105,29 +151,24 @@ export class AuthManager {
       return;
     }
 
-    // Try to get existing secret
-    const existingSecret = await getSecret(secretRef);
-    if (existingSecret) {
-      this.jwtSecret = existingSecret;
-      this.logger?.info("auth_secret_loaded", { secretRef });
-    } else {
-      // Generate and store new secret
-      const newSecret = randomBytes(64).toString("hex");
-      await storeSecret(secretRef, newSecret);
-      this.jwtSecret = newSecret;
-      this.logger?.info("auth_secret_generated", { secretRef });
-    }
+    this.jwtSecret = null;
+    this.logger?.warn("auth_secret_unavailable", {
+      secretRef,
+      jwtIssuanceEnabled: false,
+    });
   }
 
   /**
    * Generate a JWT token for a user (simple HMAC-based implementation).
    */
   public generateToken(payload: Omit<AuthPayload, "iat" | "exp">): string {
+    const jwtSecret = this.requireJwtSecret();
+    const supportedPayload = jwtTokenInputSchema.parse(payload);
     const iat = Math.floor(Date.now() / 1000);
     const exp = iat + this.tokenTtlSeconds;
 
     const fullPayload: AuthPayload = {
-      ...payload,
+      ...supportedPayload,
       iat,
       exp,
     };
@@ -135,7 +176,10 @@ export class AuthManager {
     const header = { alg: "HS256", typ: "JWT" };
     const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
     const encodedPayload = this.base64UrlEncode(JSON.stringify(fullPayload));
-    const signature = this.sign(`${encodedHeader}.${encodedPayload}`);
+    const signature = this.sign(
+      `${encodedHeader}.${encodedPayload}`,
+      jwtSecret,
+    ).toString("base64url");
 
     return `${encodedHeader}.${encodedPayload}.${signature}`;
   }
@@ -144,6 +188,10 @@ export class AuthManager {
    * Verify and decode a JWT token (simple HMAC-based implementation).
    */
   public verifyToken(token: string): AuthPayload | null {
+    if (!this.jwtSecret) {
+      return null;
+    }
+
     try {
       const parts = token.split(".");
       if (parts.length !== 3) {
@@ -151,22 +199,41 @@ export class AuthManager {
       }
 
       const [encodedHeader, encodedPayload, signature] = parts;
-      const expectedSignature = this.sign(`${encodedHeader}.${encodedPayload}`);
+      const presentedSignature = this.strictBase64UrlDecode(signature);
+      const expectedSignature = this.sign(
+        `${encodedHeader}.${encodedPayload}`,
+        this.jwtSecret,
+      );
 
-      // Verify signature
-      if (signature !== expectedSignature) {
+      if (
+        presentedSignature.length !== expectedSignature.length ||
+        !timingSafeEqual(expectedSignature, presentedSignature)
+      ) {
         this.logger?.debug("token_signature_invalid");
         return null;
       }
 
-      // Decode payload
-      const payload = JSON.parse(
-        this.base64UrlDecode(encodedPayload),
-      ) as AuthPayload;
+      const header = jwtHeaderSchema.parse(
+        this.parseJsonSegment(encodedHeader),
+      );
+      if (header.alg !== "HS256" || header.typ !== "JWT") {
+        return null;
+      }
 
-      // Check expiration
+      const payload = jwtPayloadSchema.parse(
+        this.parseJsonSegment(encodedPayload),
+      );
+
       const now = Math.floor(Date.now() / 1000);
-      if (payload.exp && payload.exp < now) {
+      if (payload.exp <= payload.iat) {
+        this.logger?.debug("token_lifetime_invalid");
+        return null;
+      }
+      if (payload.iat > now + JWT_CLOCK_SKEW_SECONDS) {
+        this.logger?.debug("token_issued_in_future", { iat: payload.iat, now });
+        return null;
+      }
+      if (payload.exp <= now - JWT_CLOCK_SKEW_SECONDS) {
         this.logger?.debug("token_expired", { exp: payload.exp, now });
         return null;
       }
@@ -182,10 +249,6 @@ export class AuthManager {
 
   public getTokenTtlSeconds(): number {
     return this.tokenTtlSeconds;
-  }
-
-  public getJwtSecret(): string {
-    return this.jwtSecret;
   }
 
   private parseExpiresIn(expiresIn: string): number {
@@ -211,32 +274,51 @@ export class AuthManager {
     }
   }
 
-  private sign(data: string): string {
-    const hmac = createHmac("sha256", this.jwtSecret);
+  private requireJwtSecret(): string {
+    if (!this.jwtSecret) {
+      throw new JwtSigningUnavailableError();
+    }
+    return this.jwtSecret;
+  }
+
+  private sign(data: string, secret: string): Buffer {
+    const hmac = createHmac("sha256", secret);
     hmac.update(data);
-    return this.base64UrlEncode(hmac.digest());
+    return hmac.digest();
   }
 
   private base64UrlEncode(data: string | Buffer): string {
-    const base64 = Buffer.from(data).toString("base64");
-    return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+    return Buffer.from(data).toString("base64url");
   }
 
-  private base64UrlDecode(data: string): string {
-    let base64 = data.replace(/-/g, "+").replace(/_/g, "/");
-    // Add padding if needed
-    while (base64.length % 4) {
-      base64 += "=";
+  private strictBase64UrlDecode(segment: string): Buffer {
+    if (!segment || !BASE64URL_SEGMENT_PATTERN.test(segment)) {
+      throw new Error("Invalid compact JWT base64url segment");
     }
-    return Buffer.from(base64, "base64").toString("utf8");
+
+    const decoded = Buffer.from(segment, "base64url");
+    if (decoded.toString("base64url") !== segment) {
+      throw new Error("Noncanonical compact JWT base64url segment");
+    }
+    return decoded;
+  }
+
+  private parseJsonSegment(segment: string): unknown {
+    const decoded = this.strictBase64UrlDecode(segment);
+    return JSON.parse(utf8Decoder.decode(decoded)) as unknown;
+  }
+
+  private hashApiKey(key: string): Buffer {
+    return createHash("sha256").update(key).digest();
   }
 
   /**
    * Validate an API key.
    */
   public validateApiKey(key: string): string | null {
-    for (const [name, value] of this.apiKeys) {
-      if (value === key) {
+    const presentedDigest = this.hashApiKey(key);
+    for (const [name, configuredDigest] of this.apiKeys) {
+      if (timingSafeEqual(configuredDigest, presentedDigest)) {
         return name;
       }
     }
@@ -246,9 +328,12 @@ export class AuthManager {
 
 const tokenRequestSchema = z.object({
   apiKey: z.string().min(1).optional(),
-  userId: z.string().min(1).optional(),
-  username: z.string().min(1).optional(),
-  roles: z.array(z.string().min(1)).max(10).optional(),
+  userId: z.string().min(1).max(JWT_TEXT_MAX_LENGTH).optional(),
+  username: z.string().min(1).max(JWT_TEXT_MAX_LENGTH).optional(),
+  roles: z
+    .array(z.string().min(1).max(JWT_ROLE_OR_SCOPE_MAX_LENGTH))
+    .max(JWT_ROLES_MAX_LENGTH)
+    .optional(),
 });
 
 export function createAuthRouter(options: {
@@ -351,7 +436,26 @@ export function createAuthRouter(options: {
 
     // Issue Prompt Vault JWT signed with Prompt Vault secret.
     const ttlSeconds = authManager.getTokenTtlSeconds();
-    const token = authManager.generateToken(tokenPayload);
+    let token: string;
+    try {
+      token = authManager.generateToken(tokenPayload);
+    } catch (error) {
+      if (error instanceof JwtSigningUnavailableError) {
+        logger?.warn("auth_token_issuance_unavailable", {
+          requestId: response.locals.requestId,
+        });
+        response.status(503).json({
+          error: {
+            code: "JWT_SIGNING_UNAVAILABLE",
+            message:
+              "JWT issuance is unavailable because no signing secret is configured",
+            details: getErrorDetails(response),
+          },
+        });
+        return;
+      }
+      throw error;
+    }
 
     logger?.info("auth_token_issued", {
       userId: tokenPayload.userId,
@@ -461,7 +565,7 @@ export function createAuthMiddleware(options: {
       );
     };
 
-    // Try Bearer token (Prompt Vault JWT) first, then Core DB fallbacks.
+    // Try a Prompt Vault JWT first, then the app-owned API-key compatibility store.
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.substring(7);
 
@@ -482,20 +586,31 @@ export function createAuthMiddleware(options: {
       }
 
       if (!authenticated) {
-        try {
-          authCtx =
-            (await verifyCoreDbSessionToken(token, authManager.getJwtSecret(), {
+        const localKeyName = authManager.validateApiKey(token);
+        if (localKeyName) {
+          authenticated = true;
+          authMethod = "api-key";
+          authCtx = {
+            kind: "api-key",
+            userId: `api-key:${localKeyName}`,
+            displayName: localKeyName,
+            roles: ["api-key"],
+            scopes: ["prompt-vault:*"],
+          };
+        } else {
+          try {
+            authCtx = await verifyCoreDbApiKey(token, {
               scopes: requiredScopes,
-            })) ??
-            (await verifyCoreDbApiKey(token, { scopes: requiredScopes }));
-          if (authCtx) {
-            authenticated = true;
-            authMethod = authCtx.kind;
+            });
+            if (authCtx) {
+              authenticated = true;
+              authMethod = authCtx.kind;
+            }
+          } catch (error) {
+            logger?.warn("api_key_bearer_verification_failed", {
+              message: error instanceof Error ? error.message : String(error),
+            });
           }
-        } catch (error) {
-          logger?.warn("core_db_bearer_verification_failed", {
-            message: error instanceof Error ? error.message : String(error),
-          });
         }
       }
     }
