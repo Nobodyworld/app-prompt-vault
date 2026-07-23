@@ -18,21 +18,25 @@ This window is a development process. It is not the copy registered in Windows I
 
 Tauri `minWidth` and `minHeight` apply to the logical **inner client area**, not the outer Win32 frame. Windows borders and frame geometry make the outer rectangle larger than the configured client minimum.
 
-Launch Prompt Vault, resize it to the smallest permitted size, and run:
+Launch Prompt Vault and run:
 
 ```powershell
 pnpm desktop:accept-window-minimum
 ```
 
+The exact-minimum command temporarily resizes the native window to the configured 400×600 logical client target before measuring it. The measurement thread explicitly uses per-monitor-v2 DPI awareness so Win32 rectangle values are not DPI-virtualized and converted a second time.
+
 The command reports:
 
-- client size in reported pixels;
+- the caller DPI-awareness mode;
+- client size in physical pixels;
 - client size converted to logical pixels using the window DPI;
 - outer Win32 rectangle size;
 - whether the client meets the configured 400×600 logical minimum;
-- whether it is within the acceptance tolerance of that minimum.
+- whether it is within the acceptance tolerance of that minimum;
+- whether the exact-minimum resize was requested and applied.
 
-For a non-gating measurement at any current size:
+For a non-gating measurement at the current size without resizing:
 
 ```powershell
 pnpm desktop:measure-window
