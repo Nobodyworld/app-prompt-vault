@@ -31,6 +31,13 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "Nobody Production",
+    "category": "Productivity",
+    "shortDescription": "A local-first library for creating, organizing, and reusing prompts.",
+    "longDescription": "Prompt Vault is an independent local-first desktop application for creating, finding, copying, editing, versioning, importing, and exporting reusable prompts.",
+    "copyright": "Copyright © 2025–2026 Nobody Production",
+    "license": "Proprietary",
+    "homepage": "https://github.com/Nobodyworld/app-prompt-vault",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

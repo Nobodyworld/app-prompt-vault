@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { isTauriAvailable } from "../lib/tauri";
-import { listPrompts, createPrompt } from "../services/promptApi";
-import { useToast } from "../components/Toast";
+import React, { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useTheme } from "../components/ThemeProvider";
+import { useToast } from "../components/Toast";
+import {
+  backupPromptToCreateInput,
+  buildBackupExport,
+  isBackupPrompt,
+} from "../lib/backup";
+import { isTauriAvailable } from "../lib/tauri";
+import { createPrompt, listPrompts } from "../services/promptApi";
 
 type WindowPlacement = "left" | "right";
 
@@ -13,149 +18,89 @@ export function SettingsPage(): React.JSX.Element {
   const { theme, toggleTheme } = useTheme();
   const [placement, setPlacement] = useState<WindowPlacement>("left");
   const [isExporting, setIsExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [promptStats, setPromptStats] = useState<{
-    total: number;
-    withTags: number;
-    totalTags: number;
-    avgTagsPerPrompt: number;
-    mostUsedTag: string | null;
-  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const saved = localStorage.getItem(
-      "prompt-vault-window-placement",
-    ) as WindowPlacement;
-    if (saved) setPlacement(saved);
-  }, []);
+  const positionWindow = useCallback(
+    async (nextPlacement: WindowPlacement): Promise<void> => {
+      if (!isTauriAvailable()) return;
 
-  useEffect(() => {
-    const loadStats = async (): Promise<void> => {
       try {
-        const prompts = await listPrompts();
-        const total = prompts.length;
-        const withTags = prompts.filter((p) => p.tags.length > 0).length;
-        const allTags = prompts.flatMap((p) => p.tags);
-        const totalTags = allTags.length;
-        const avgTagsPerPrompt = total > 0 ? totalTags / total : 0;
+        const { currentMonitor, getCurrentWindow, LogicalPosition } =
+          await import("@tauri-apps/api/window");
+        const monitor = await currentMonitor();
+        if (!monitor) return;
 
-        // Find most used tag
-        const tagCounts: Record<string, number> = {};
-        allTags.forEach((tag) => {
-          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-        });
-        const mostUsedTag =
-          Object.entries(tagCounts).sort(([, a], [, b]) => b - a)[0]?.[0] ||
-          null;
+        const currentWindow = getCurrentWindow();
+        const scaleFactor = monitor.scaleFactor;
+        const workAreaPosition = monitor.workArea.position.toLogical(scaleFactor);
+        const workAreaSize = monitor.workArea.size.toLogical(scaleFactor);
+        const windowSize = (await currentWindow.outerSize()).toLogical(scaleFactor);
 
-        setPromptStats({
-          total,
-          withTags,
-          totalTags,
-          avgTagsPerPrompt: Math.round(avgTagsPerPrompt * 10) / 10,
-          mostUsedTag,
-        });
-      } catch (err) {
-        console.error("Failed to load prompt stats:", err);
+        const x =
+          nextPlacement === "left"
+            ? workAreaPosition.x
+            : Math.max(
+                workAreaPosition.x,
+                workAreaPosition.x + workAreaSize.width - windowSize.width,
+              );
+        const y =
+          workAreaPosition.y +
+          Math.max(0, (workAreaSize.height - windowSize.height) / 2);
+
+        await currentWindow.setPosition(
+          new LogicalPosition(Math.round(x), Math.round(y)),
+        );
+      } catch (caught: unknown) {
+        console.error("Failed to position window:", caught);
+        addToast("Window placement could not be changed.", "warning");
       }
-    };
+    },
+    [addToast],
+  );
 
-    void loadStats();
-  }, []);
+  useEffect(() => {
+    const saved = localStorage.getItem("prompt-vault-window-placement");
+    if (saved !== "left" && saved !== "right") return;
 
-  const positionWindow = async (
-    newPlacement: WindowPlacement,
-  ): Promise<void> => {
-    if (!isTauriAvailable()) {
-      // Running in browser/dev server: skip Tauri-only window positioning.
-      return;
-    }
-    try {
-      const { getCurrentWindow, LogicalPosition } =
-        await import("@tauri-apps/api/window");
-      const window = getCurrentWindow();
-
-      // Get screen dimensions
-      const { currentMonitor } = await import("@tauri-apps/api/window");
-      const monitor = await currentMonitor();
-      if (!monitor) return;
-
-      const screenWidth = monitor.size.width;
-      const screenHeight = monitor.size.height;
-      const windowWidth = 500; // from tauri.conf.json
-      const windowHeight = 800; // from tauri.conf.json
-
-      let x: number;
-      if (newPlacement === "left") {
-        x = 0;
-      } else {
-        x = screenWidth - windowWidth;
-      }
-
-      const y = Math.max(0, (screenHeight - windowHeight) / 2);
-
-      await window.setPosition(new LogicalPosition(x, y));
-    } catch (error) {
-      console.error("Failed to position window:", error);
-    }
-  };
+    setPlacement(saved);
+    void positionWindow(saved);
+  }, [positionWindow]);
 
   const handlePlacementChange = async (
-    newPlacement: WindowPlacement,
+    nextPlacement: WindowPlacement,
   ): Promise<void> => {
-    setPlacement(newPlacement);
-    localStorage.setItem("prompt-vault-window-placement", newPlacement);
-    await positionWindow(newPlacement);
+    setPlacement(nextPlacement);
+    localStorage.setItem("prompt-vault-window-placement", nextPlacement);
+    await positionWindow(nextPlacement);
   };
 
   const handleExport = async (): Promise<void> => {
     if (!isTauriAvailable()) {
-      setExportError("Export is only available in the desktop app.");
+      setError("Backup export is available in the desktop app.");
       return;
     }
 
     setIsExporting(true);
-    setExportError(null);
-
+    setError(null);
     try {
       const prompts = await listPrompts();
+      const exportData = buildBackupExport(prompts);
 
-      // Create export data with full prompt information
-      const exportData = {
-        version: "1.0",
-        exportedAt: new Date().toISOString(),
-        prompts: prompts.map((prompt) => ({
-          id: prompt.id,
-          slug: prompt.slug,
-          title: prompt.title,
-          description: prompt.description,
-          tags: prompt.tags,
-          createdAt: prompt.createdAt,
-          updatedAt: prompt.updatedAt,
-          body: prompt.latestVersion?.body || "",
-          version: prompt.latestVersion?.semanticVersion || "1.0.0",
-        })),
-      };
-
-      // Convert to JSON and trigger download
-      const jsonString = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([jsonString], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
-
-      // Create download link and trigger it
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `prompt-vault-export-${new Date().toISOString().split("T")[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `prompt-vault-backup-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch (err: unknown) {
-      setExportError(
-        err instanceof Error ? err.message : "Failed to export prompts",
-      );
+      addToast("Backup exported.", "success");
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : "Backup export failed.");
     } finally {
       setIsExporting(false);
     }
@@ -164,206 +109,155 @@ export function SettingsPage(): React.JSX.Element {
   const handleImport = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ): Promise<void> => {
-    const file = event.target.files?.[0];
+    const input = event.target;
+    const file = input.files?.[0];
     if (!file) return;
 
     if (!isTauriAvailable()) {
-      setImportError("Import is only available in the desktop app.");
+      setError("Backup import is available in the desktop app.");
+      input.value = "";
       return;
     }
 
     setIsImporting(true);
-    setImportError(null);
-
+    setError(null);
     try {
-      const text = await file.text();
-      const importData = JSON.parse(text) as {
-        version: string;
-        prompts: Array<{
-          slug: string;
-          title: string;
-          description?: string;
-          tags: string[];
-          body: string;
-          version: string;
-        }>;
-      };
+      const data = JSON.parse(await file.text()) as { prompts?: unknown[] };
 
-      if (!importData.prompts || !Array.isArray(importData.prompts)) {
-        throw new Error("Invalid import file format");
+      if (!Array.isArray(data.prompts)) {
+        throw new Error("This file is not a valid Prompt Vault backup.");
       }
 
-      let importedCount = 0;
-      for (const promptData of importData.prompts) {
+      let imported = 0;
+      let skipped = 0;
+
+      for (const candidate of data.prompts) {
+        if (!isBackupPrompt(candidate)) {
+          skipped += 1;
+          console.warn("Skipped an invalid backup prompt record.");
+          continue;
+        }
+
         try {
-          await createPrompt({
-            slug: promptData.slug,
-            title: promptData.title,
-            description: promptData.description,
-            body: promptData.body,
-            semanticVersion: promptData.version || "1.0.0",
-            tags: promptData.tags || [],
-          });
-          importedCount++;
-        } catch (err: unknown) {
-          console.warn(`Failed to import prompt "${promptData.title}":`, err);
-          // Continue with other prompts
+          await createPrompt(backupPromptToCreateInput(candidate));
+          imported += 1;
+        } catch (caught: unknown) {
+          skipped += 1;
+          console.warn(`Skipped prompt ${candidate.title}:`, caught);
         }
       }
 
+      const importedLabel = `${imported} prompt${imported === 1 ? "" : "s"} imported`;
+      const skippedLabel = `${skipped} skipped`;
       addToast(
-        `Successfully imported ${importedCount} prompt${importedCount === 1 ? "" : "s"}.`,
-        "success",
+        skipped > 0 ? `${importedLabel}; ${skippedLabel}.` : `${importedLabel}.`,
+        skipped > 0 ? "warning" : "success",
       );
 
-      // Clear the file input
-      event.target.value = "";
-    } catch (err: unknown) {
-      setImportError(
-        err instanceof Error ? err.message : "Failed to import prompts",
-      );
+      if (imported === 0 && skipped > 0) {
+        setError(
+          "No prompts were imported. The records were invalid, duplicated, or could not be saved.",
+        );
+      }
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : "Backup import failed.");
     } finally {
+      input.value = "";
       setIsImporting(false);
     }
   };
 
   return (
-    <div className="settings-page">
-      <header>
-        <h2>Settings</h2>
+    <section className="settings-page settings-page--simplified">
+      <header className="form-heading">
+        <div>
+          <h2>Settings</h2>
+          <p>Appearance, placement, and local data controls.</p>
+        </div>
       </header>
 
-      <div className="settings-section">
-        <h3>Window Placement</h3>
-        <div className="placement-options">
-          <label>
-            <input
-              type="radio"
-              name="placement"
-              value="left"
-              checked={placement === "left"}
-              onChange={() => handlePlacementChange("left")}
-            />
-            Left Sidebar
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="placement"
-              value="right"
-              checked={placement === "right"}
-              onChange={() => handlePlacementChange("right")}
-            />
-            Right Sidebar
-          </label>
-        </div>
-      </div>
-
-      <div className="settings-section">
-        <h3>Keyboard Shortcuts</h3>
-        <div className="keyboard-shortcuts">
-          <div className="shortcut-item">
-            <kbd>Ctrl+N</kbd>
-            <span>Create new prompt</span>
-          </div>
-          <div className="shortcut-item">
-            <kbd>Ctrl+K</kbd>
-            <span>Focus search (on Library page)</span>
-          </div>
-          <div className="shortcut-item">
-            <kbd>Esc</kbd>
-            <span>Clear search (on Library page)</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="settings-section">
-        <h3>Data Management</h3>
-        <div className="data-actions">
-          <div className="data-action-group">
-            <button
-              onClick={handleExport}
-              disabled={isExporting || !isTauriAvailable()}
-              className="export-button"
-            >
-              {isExporting ? "Exporting..." : "Export Prompts"}
-            </button>
-            <p className="data-description">
-              Export all your prompts as a JSON file for backup or migration.
-            </p>
-          </div>
-
-          <div className="data-action-group">
-            <label className="import-button">
-              {isImporting ? "Importing..." : "Import Prompts"}
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleImport}
-                disabled={isImporting || !isTauriAvailable()}
-                className="import-input"
-              />
-            </label>
-            <p className="data-description">
-              Import prompts from a JSON export file.
-            </p>
-          </div>
-        </div>
-        {exportError && <p className="error">{exportError}</p>}
-        {importError && <p className="error">{importError}</p>}
-      </div>
-
-      <div className="settings-section">
-        <h3>Usage Analytics</h3>
-        {promptStats ? (
-          <div className="analytics-grid">
-            <div className="stat-card">
-              <div className="stat-value">{promptStats.total}</div>
-              <div className="stat-label">Total Prompts</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{promptStats.withTags}</div>
-              <div className="stat-label">Tagged Prompts</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{promptStats.totalTags}</div>
-              <div className="stat-label">Total Tags</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{promptStats.avgTagsPerPrompt}</div>
-              <div className="stat-label">Avg Tags/Prompt</div>
-            </div>
-            {promptStats.mostUsedTag && (
-              <div className="stat-card stat-card--wide">
-                <div className="stat-value">#{promptStats.mostUsedTag}</div>
-                <div className="stat-label">Most Used Tag</div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="stat-loading">Loading statistics...</p>
-        )}
-      </div>
-
-      <div className="settings-section">
+      <section className="settings-section">
         <h3>Appearance</h3>
-        <div className="theme-toggle">
-          <label className="theme-toggle__label">
-            Theme
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="theme-toggle__button"
-            >
-              {theme === "dark" ? "🌙 Dark" : "☀️ Light"}
-            </button>
+        <div className="settings-row">
+          <div>
+            <strong>Theme</strong>
+            <p>Use the light or dark interface.</p>
+          </div>
+          <button type="button" className="secondary-action" onClick={toggleTheme}>
+            {theme === "dark" ? "Switch to light" : "Switch to dark"}
+          </button>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>Window placement</h3>
+        <div className="segmented-control" aria-label="Window placement">
+          <button
+            type="button"
+            className={placement === "left" ? "is-active" : ""}
+            onClick={() => void handlePlacementChange("left")}
+          >
+            Left
+          </button>
+          <button
+            type="button"
+            className={placement === "right" ? "is-active" : ""}
+            onClick={() => void handlePlacementChange("right")}
+          >
+            Right
+          </button>
+        </div>
+      </section>
+
+      <section className="settings-section" id="data">
+        <h3>Backup and local data</h3>
+        <p>
+          Prompt Vault stores prompts locally. On Windows, the current desktop
+          identifier uses <code>AppData\\Local\\com.nobodyworld.promptvault</code>.
+          Uninstalling version 0.2.0 preserves that user data so reinstalling can
+          recover the same library.
+        </p>
+        <div className="data-actions data-actions--compact">
+          <button
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={isExporting || !isTauriAvailable()}
+          >
+            {isExporting ? "Exporting…" : "Export backup"}
+          </button>
+          <label className="import-button secondary-action">
+            {isImporting ? "Importing…" : "Import backup"}
+            <input
+              type="file"
+              accept=".json"
+              onChange={(event) => void handleImport(event)}
+              disabled={isImporting || !isTauriAvailable()}
+              className="import-input"
+            />
           </label>
         </div>
-      </div>
+        {error && <p className="error">{error}</p>}
+      </section>
 
-      <div className="form-actions">
-        <button onClick={() => navigate(-1)}>Save</button>
-      </div>
-    </div>
+      <section className="settings-section settings-section--quiet">
+        <h3>Advanced tools</h3>
+        <p>
+          Raw bundle import/export, cross-app payloads, and bulk administration
+          are available separately so they do not crowd the everyday library.
+        </p>
+        <Link className="secondary-action inline-action" to="/advanced">
+          Open advanced tools
+        </Link>
+      </section>
+
+      <footer className="settings-footer">
+        <span>
+          Shortcuts: <kbd>Ctrl+K</kbd> search · <kbd>Ctrl+N</kbd> new prompt
+        </span>
+        <button type="button" className="text-button" onClick={() => navigate(-1)}>
+          Done
+        </button>
+      </footer>
+    </section>
   );
 }

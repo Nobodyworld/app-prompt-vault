@@ -155,6 +155,26 @@ jobs:
           rustc --version | Tee-Object -FilePath rust-windows-toolchain.txt
           cargo --version | Tee-Object -FilePath rust-windows-toolchain.txt -Append
 
+      - name: Validate Windows acceptance script syntax
+        shell: pwsh
+        run: |
+          $scriptPath = Join-Path $PWD "scripts\windows\measure-window-client.ps1"
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors |
+              ForEach-Object { $_.ToString() } |
+              Tee-Object -FilePath window-measurement-script-syntax.txt
+            exit 1
+          }
+          "PowerShell syntax valid: $scriptPath" |
+            Tee-Object -FilePath window-measurement-script-syntax.txt
+
       - name: Install pinned pnpm
         shell: pwsh
         run: npm install --global pnpm@10.24.0
@@ -197,6 +217,7 @@ jobs:
             src-tauri/target/release/bundle/**/*
             windows-toolchain.txt
             rust-windows-toolchain.txt
+            window-measurement-script-syntax.txt
             windows-install.txt
             tauri-windows-build.txt
             windows-bundle-inventory.txt

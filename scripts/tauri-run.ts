@@ -20,8 +20,9 @@ function resolveCargoPaths(): string {
   return [...additions, ...existing].join(separator);
 }
 
-const [, , command = "dev"] = process.argv;
-const tauriArgs = command === "build" ? ["build"] : ["dev"];
+const [, , command = "dev", ...rawExtraArgs] = process.argv;
+const extraArgs = rawExtraArgs[0] === "--" ? rawExtraArgs.slice(1) : rawExtraArgs;
+const tauriArgs = [command === "build" ? "build" : "dev", ...extraArgs];
 
 const updatedEnv = {
   ...env,
@@ -30,11 +31,15 @@ const updatedEnv = {
 
 const child =
   platform === "win32"
-    ? spawn(env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `tauri ${tauriArgs.join(" ")}`], {
-        stdio: "inherit",
-        shell: false,
-        env: updatedEnv,
-      })
+    ? spawn(
+        env.ComSpec ?? "cmd.exe",
+        ["/d", "/s", "/c", `tauri ${tauriArgs.join(" ")}`],
+        {
+          stdio: "inherit",
+          shell: false,
+          env: updatedEnv,
+        },
+      )
     : spawn("tauri", tauriArgs, {
         stdio: "inherit",
         shell: false,

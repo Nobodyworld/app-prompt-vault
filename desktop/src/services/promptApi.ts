@@ -88,7 +88,7 @@ function normalizePromptSummary(raw: unknown): PromptSummary {
     slug: candidate.slug ?? "",
     title: candidate.title ?? "",
     description: candidate.description,
-    category: candidate.category,
+    category: candidate.category?.trim() || undefined,
     isFavorite: Boolean(candidate.isFavorite),
     rating: candidate.rating ?? null,
     tags: normalizeTags(candidate.tags),
@@ -514,7 +514,9 @@ function updatePromptInMemory(input: UpdatePromptInput): Summary {
   if (!prompt) throw new Error(`Prompt not found: ${input.id}`);
   if (input.title !== undefined) prompt.title = input.title;
   if (input.description !== undefined) prompt.description = input.description;
-  if (input.category !== undefined) prompt.category = input.category;
+  if (input.category !== undefined) {
+    prompt.category = input.category?.trim() || undefined;
+  }
   if (input.isFavorite !== undefined) prompt.isFavorite = input.isFavorite;
   if (input.rating !== undefined) prompt.rating = input.rating;
   if (input.tags !== undefined) prompt.tags = input.tags;
@@ -544,7 +546,7 @@ export async function listPrompts(): Promise<PromptSummary[]> {
     // Use Tauri API
     const { invoke } = await import("@tauri-apps/api/core");
     const response = await invoke<{ prompts: PromptSummary[] }>("list_prompts");
-    return response.prompts;
+    return response.prompts.map((prompt) => normalizePromptSummary(prompt));
   } else {
     // Use HTTP API with graceful fallback to in-memory store
     try {
@@ -562,6 +564,18 @@ export async function listPrompts(): Promise<PromptSummary[]> {
       return listPromptsFromMemory();
     }
   }
+}
+
+/**
+ * Resolves an edit-route prompt through the shared list contract so web and
+ * Tauri keep one UI path. The browser API list is currently capped at 100
+ * prompts; a dedicated cross-platform read endpoint can remove that limit.
+ */
+export async function getPromptById(
+  promptId: string,
+): Promise<PromptSummary | undefined> {
+  const prompts = await listPrompts();
+  return prompts.find((prompt) => prompt.id === promptId);
 }
 
 export async function searchPrompts(
@@ -691,7 +705,7 @@ export async function createPrompt(
     const response = await invoke<{ prompt: PromptSummary }>("create_prompt", {
       payload: input,
     });
-    return response.prompt;
+    return normalizePromptSummary(response.prompt);
   } else {
     try {
       const response = await browserApiCall<{ prompt: unknown }>(
@@ -756,7 +770,7 @@ export async function updatePrompt(
     const response = await invoke<{ prompt: PromptSummary }>("update_prompt", {
       payload: input,
     });
-    return response.prompt;
+    return normalizePromptSummary(response.prompt);
   } else {
     try {
       const response = await browserApiCall<{ prompt: unknown }>(
