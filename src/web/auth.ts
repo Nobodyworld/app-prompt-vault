@@ -571,7 +571,7 @@ export function createAuthMiddleware(options: {
 
       const jwtPayload = authManager.verifyToken(token);
       if (jwtPayload) {
-        const grantedScopes = jwtPayload.scopes ?? ["prompt-vault:*"];
+        const grantedScopes = jwtPayload.scopes ?? [];
         if (hasAllScopes(grantedScopes, requiredScopes)) {
           authenticated = true;
           authMethod = "jwt";

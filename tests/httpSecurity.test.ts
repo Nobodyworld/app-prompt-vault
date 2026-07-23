@@ -31,6 +31,40 @@ function createSignedJwt(
   return `${encodedHeader}.${encodedPayload}.${signature}`;
 }
 
+async function expectWriteDeniedWithoutMutation(options: {
+  baseUrl: string;
+  apiKey: string;
+  token: string;
+  slugPrefix: string;
+}): Promise<void> {
+  const slug = `${options.slugPrefix}-${randomUUID().slice(0, 8)}`;
+  const response = await fetch(`${options.baseUrl}/api/prompts`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${options.token}`,
+    },
+    body: JSON.stringify({
+      slug,
+      title: "Scope Denied",
+      body: "Must not be persisted",
+      semanticVersion: "1.0.0",
+    }),
+  });
+
+  expect(response.status).toBe(401);
+  const payload = await response.json();
+  expect(payload.error.code).toBe("UNAUTHORIZED");
+
+  const listResponse = await fetch(`${options.baseUrl}/api/prompts`, {
+    headers: { "x-api-key": options.apiKey },
+  });
+  expect(listResponse.status).toBe(200);
+  const listPayload = await listResponse.json();
+  expect(listPayload.data.pagination.total).toBe(0);
+  expect(listPayload.data.prompts).toEqual([]);
+}
+
 async function withSecureServer(
   handler: (context: ServerContext) => Promise<void>,
   options: {
@@ -196,7 +230,40 @@ describe("HTTP security middleware", () => {
     });
   });
 
-  it("allows authorized requests via JWT bearer token", async () => {
+  it("denies a valid JWT with missing scopes without creating a prompt", async () => {
+    await withSecureServer(async ({ baseUrl, apiKey, authManager }) => {
+      const token = authManager.generateToken({
+        userId: "user-no-scopes",
+        username: "no-scopes",
+      });
+
+      await expectWriteDeniedWithoutMutation({
+        baseUrl,
+        apiKey,
+        token,
+        slugPrefix: "jwt-missing-scopes",
+      });
+    });
+  });
+
+  it("denies a valid JWT with empty scopes without creating a prompt", async () => {
+    await withSecureServer(async ({ baseUrl, apiKey, authManager }) => {
+      const token = authManager.generateToken({
+        userId: "user-empty-scopes",
+        username: "empty-scopes",
+        scopes: [],
+      });
+
+      await expectWriteDeniedWithoutMutation({
+        baseUrl,
+        apiKey,
+        token,
+        slugPrefix: "jwt-empty-scopes",
+      });
+    });
+  });
+
+  it("allows a JWT with explicit write scope to perform a protected write", async () => {
     await withSecureServer(async ({ baseUrl, authManager }) => {
       const token = authManager.generateToken({
         userId: "user-1",
@@ -213,6 +280,35 @@ describe("HTTP security middleware", () => {
         body: JSON.stringify({
           slug: `jwt-ok-${randomUUID().slice(0, 8)}`,
           title: "JWT Authorized",
+          body: "Body",
+          semanticVersion: "1.0.0",
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const payload = await response.json();
+      expect(payload.data.prompt.slug).toBeDefined();
+      expect(payload.data.prompt.latestVersion.semanticVersion).toBe("1.0.0");
+    });
+  });
+
+  it("allows a JWT with explicit wildcard scope to perform a protected write", async () => {
+    await withSecureServer(async ({ baseUrl, authManager }) => {
+      const token = authManager.generateToken({
+        userId: "user-wildcard",
+        username: "wildcard",
+        scopes: ["prompt-vault:*"],
+      });
+
+      const response = await fetch(`${baseUrl}/api/prompts`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          slug: `jwt-wildcard-${randomUUID().slice(0, 8)}`,
+          title: "JWT Wildcard Authorized",
           body: "Body",
           semanticVersion: "1.0.0",
         }),
