@@ -40,7 +40,7 @@ Use these rules for automated changes in `app-prompt-vault`.
 
 ## Security rules
 
-- Production network deployments inject `JWT_SECRET`; do not rely on the insecure process-local fallback.
+- JWT issuance requires an explicitly injected `JWT_SECRET`; do not introduce a process-local signing fallback. Public-network deployment is unsupported.
 - Keep prompt bodies, credentials, tokens, and personal data out of logs, events, telemetry, screenshots, and fixtures.
 - Preserve authentication, scoped API keys, rate limits, request IDs, and explicit CORS origins.
 - Do not expose write tools or administrative routes without authorization and confirmation controls.

@@ -68,6 +68,9 @@ describe("app-local authentication compatibility", () => {
         scopes: ["prompt-vault:write"],
       }),
     ).resolves.toBeNull();
+    await expect(verifyCoreDbApiKey("reader-secreu")).resolves.toBeNull();
+    await expect(verifyCoreDbApiKey("reader-secret-longer")).resolves.toBeNull();
+    await expect(verifyCoreDbApiKey("réader-secret")).resolves.toBeNull();
   });
 
   it("supports wildcard scopes without restoring the Core DB dependency", async () => {
@@ -85,14 +88,14 @@ describe("app-local authentication compatibility", () => {
 
   it("does not silently accept legacy Core DB session tokens", async () => {
     await expect(
-      verifyCoreDbSessionToken("legacy-session", "secret", {
+      verifyCoreDbSessionToken("legacy-session", {
         scopes: ["prompt-vault:read"],
       }),
     ).resolves.toBeNull();
   });
 });
 
-describe("process-local secret fallback", () => {
+describe("process-local secret compatibility utility", () => {
   it("stores and retrieves a development-only secret", async () => {
     process.env.NODE_ENV = "test";
     await storeSecret("test:secret", "value");

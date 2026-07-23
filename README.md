@@ -66,6 +66,14 @@ The current app uses a separate directory and did not overwrite the older databa
 
 Prompt content and local databases are plaintext. Use operating-system permissions and full-disk encryption, and do not store secrets in prompts.
 
+## Local HTTP authentication
+
+The optional Prompt Vault HTTP entrypoint is loopback-only. Public-network and public-internet deployment are unsupported.
+
+Supported credentials are Prompt Vault `HS256` JWTs signed with an explicitly injected `JWT_SECRET`, configured API keys, and the app-owned API-key compatibility store. Direct legacy Nobodyworld Core DB session tokens are intentionally unsupported.
+
+Without `JWT_SECRET`, the local server can still start and configured API keys can authenticate, but JWT verification and issuance remain disabled. A valid API key sent to `/auth/token` receives a deliberate `503`; Prompt Vault does not create a process-local random signing authority. See [HTTP security](docs/SECURITY.md) for the exact token schema, 60-second clock-skew rule, and plaintext-data limitations.
+
 ## Exact-head local validation
 
 Commit `91a335fd09f0611059c5edc17319bc021bc8db27` was validated locally on Windows with Node 24.12.0, pnpm 10.24.0, Rust 1.97.0, and Tauri 2.
@@ -104,7 +112,7 @@ These hashes document local acceptance evidence only. Do not distribute these un
 | Surface | Location | Responsibility |
 | --- | --- | --- |
 | Domain and persistence | `src/domain`, `src/db`, `src/services` | Validation, migrations, repositories, and application services |
-| Platform compatibility | `src/lib/platform-core.ts` | App-owned logging, events, auth compatibility, secrets fallback, tags, and project associations |
+| Platform compatibility | `src/lib/platform-core.ts` | App-owned logging, events, API-key compatibility, process-local compatibility utilities, tags, and project associations |
 | CLI and HTTP | `src/cli`, `src/web`, `src/server.ts` | Local automation and optional network access |
 | Desktop UI | `desktop/` | React/Vite standalone product interface |
 | Native shell | `src-tauri/` | Tauri window, native SQLite commands, secrets, and telemetry |

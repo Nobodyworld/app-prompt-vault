@@ -251,7 +251,7 @@ const authManager = new AuthManager(
   logger.child({ component: "auth" }),
 );
 
-// Initialize auth manager (loads/stores JWT secret)
+// Initialize auth manager. JWT signing stays unavailable without JWT_SECRET.
 await authManager.initialize();
 
 const auditLogger = new InMemoryAuditLogger({

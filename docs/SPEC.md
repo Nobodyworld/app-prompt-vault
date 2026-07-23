@@ -53,8 +53,8 @@ Prompt Vault owns the minimum contracts it requires:
 - structured logger and bounded recent-log feed;
 - typed in-process event bus;
 - scoped environment API-key compatibility;
-- Prompt Vault JWT creation and verification;
-- local secret fallback with production refusal;
+- Prompt Vault JWT creation and verification with an explicitly injected signing secret;
+- process-local secret compatibility utilities that are not a JWT signing fallback;
 - tool definitions, registry, lookup, and direct invocation;
 - widget definitions and registry;
 - tag/project persistence and associations.
@@ -97,8 +97,9 @@ External Nobodyworld or Hub adapters may consume these contracts, but private pl
 
 ## 7. Security requirements
 
-- Network deployments require explicit authentication and CORS origins.
-- A production deployment must inject `JWT_SECRET`; insecure process-local secret fallback is refused unless explicitly overridden for emergency diagnostics.
+- The supported HTTP surface is loopback-only with explicit browser origins; public-network deployment is unsupported.
+- JWT issuance requires an explicitly injected `JWT_SECRET`. Missing configuration leaves JWT signing unavailable and never creates a process-local authority.
+- Direct legacy Core DB session tokens are unsupported; Prompt Vault JWTs, configured API keys, and the app-owned API-key compatibility store are the supported authentication methods.
 - Prompt bodies, credentials, tokens, and personal data must stay out of logs, telemetry, screenshots, and fixtures.
 - Main and sidecar databases are plaintext and rely on operating-system permissions and disk encryption.
 - Migration commands must open legacy sources read-only, write transactionally into separate targets, and refuse the main Prompt Vault database.

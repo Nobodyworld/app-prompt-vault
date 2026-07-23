@@ -44,7 +44,7 @@ Before publishing a validated release candidate:
 - run Rust formatting, Clippy, tests, and Tauri packaging;
 - verify SQLite foreign keys, busy timeout, WAL behavior, migration, restart, and persistence;
 - validate all HTTP input and keep request-body limits enabled;
-- require authentication and explicit CORS origins for network deployments;
+- keep the supported HTTP entrypoint loopback-only with authentication for unsafe methods and explicit browser origins;
 - confirm logs and telemetry contain no prompt bodies, credentials, tokens, or personal data;
 - review generated installers and release artifacts before publication.
 
@@ -52,7 +52,7 @@ Before publishing a validated release candidate:
 
 - Prompt content and local SQLite databases are stored in plaintext.
 - The local-first threat model relies on operating-system permissions and full-disk encryption.
-- Authentication is optional by default for local use; network deployments must explicitly enable it.
+- Safe reads may remain unauthenticated during local pre-alpha use; unsafe methods remain authenticated. Public-network deployment is unsupported.
 - Audit events are held in memory and are not a durable compliance log.
 - Dependency scanning may be incomplete when package registries are unavailable; unavailable scanning is not proof of safety.
 - Draft PR #27 has removed declared private workspace dependencies, but clean standalone installation, builds, tests, packaging, migration, and persistence remain unproven until the release gate passes.

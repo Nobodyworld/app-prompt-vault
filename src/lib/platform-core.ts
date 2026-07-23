@@ -189,8 +189,8 @@ function insecureSecretFallbackAllowed(): boolean {
 }
 
 /**
- * Process-local fallback used only when JWT_SECRET is not injected.
- * Production refuses this fallback unless explicitly overridden.
+ * Process-local compatibility storage. This is neither persistent nor used as
+ * a fallback signing authority for Prompt Vault JWTs.
  */
 export async function getSecret(ref: string): Promise<string | null> {
   return localSecretStore.get(ref) ?? null;
@@ -312,7 +312,6 @@ export async function verifyCoreDbApiKey(
  */
 export async function verifyCoreDbSessionToken(
   _token: string | undefined,
-  _secret: string | undefined,
   _requirements: CoreDbAuthRequirements = {},
 ): Promise<CoreDbAuthContext | null> {
   return null;

@@ -11,13 +11,13 @@ This document records the dependency boundary for making `app-prompt-vault` repr
 | `@nw/connectors-http` | The timeout-aware fetch adapter is implemented in `src/lib/platform-connectors.ts`. |
 | `@nw/ui-theme` | Theme application is app-local and updates document theme attributes. |
 | `@nw/ui-kit` | No app call site was found; the stale declaration was removed. |
-| `@nw/secrets` | Prompt Vault owns the narrow process-local fallback and refuses insecure production use unless explicitly overridden. Network deployments should inject `JWT_SECRET`. |
+| `@nw/secrets` | JWT signing uses only an explicitly injected `JWT_SECRET`. The remaining app-local secret compatibility utility is process-local memory, is not persistent secure storage, and is not a JWT fallback. |
 | `../../../packages/secrets/native` | The native secrets crate is vendored under `src-tauri/crates/nw-secrets`. |
 | `@nw/logging` | Prompt Vault owns the logger factory, bounded in-memory log feed, child contexts, and sinks used by this app. |
 | `@nw/event-bus` | Prompt Vault owns the typed in-process event bus for its prompt, tag, and logging events. |
 | `@nw/pages-widgets` | Prompt Vault owns its widget-definition registry; an external Hub can consume an exported manifest through a future adapter. |
 | `@nw/orchestrator-sdk` | Prompt Vault owns its tool types, registry, lookup, reset hook, and direct invocation helper. |
-| `@nw/core-db` | Environment API-key scoping and compatibility types are app-local; Prompt Vault continues to issue and verify its own JWTs. |
+| `@nw/core-db` | Environment API-key scoping and compatibility types are app-local. Prompt Vault verifies its own JWTs only with an injected secret, and direct legacy Core DB session tokens are intentionally unsupported. |
 | `@nw/tags-projects` | Prompt Vault owns tag/project metadata and entity associations in a dedicated SQLite sidecar database using the existing adapter API. |
 
 These boundaries are enforced by `pnpm repository:audit`. The audit rejects `workspace:*`, declared `@nw/*` dependencies, and direct private-package imports under source, desktop, and tests.

@@ -7,10 +7,11 @@ This section describes draft PR #27. It is not a published release and has not p
 ### Highlights
 
 - Removed all declared private `@nw/*`, `workspace:*`, parent configuration, parent type-root, and external native-package dependencies.
-- Added app-owned implementations for logging, events, scoped environment API keys, secret fallback, tags/projects, tool registration, and widget registration.
+- Added app-owned implementations for logging, events, scoped environment API keys, process-local compatibility utilities, tags/projects, tool registration, and widget registration.
 - Added an app-owned SQLite tag/project sidecar and explicit legacy Nobodyworld Core DB migration utility.
 - Added dry-run, transactional, idempotence, schema-recognition, and main-database refusal tests for legacy migration.
 - Added runtime sidecar guards that derive a new `.platform.db` from the historical Core DB path rather than opening the legacy database.
+- Pinned the transitive `@hono/node-server` adapter to patched `2.0.11` after the production audit identified the Windows encoded-backslash path-traversal advisory.
 - Added a standalone Node CI job configured to install pinned pnpm, generate a candidate lockfile, and run audit, lint, typecheck, build, and tests.
 - Expanded the dependency-free repository audit to reject private-package imports/declarations, unsafe migration regressions, broken public links, and unpinned actions.
 - Corrected public documentation, versioning, security contact, environment names, build scripts, and source-available license language.
@@ -54,8 +55,10 @@ See `docs/developer-guide/legacy-tag-migration.md` for the full procedure.
 
 - Private Nobodyworld packages are no longer installation dependencies.
 - The historical `NW_CORE_DB_PATH` is treated only as a location hint; Prompt Vault derives a separate `.platform.db` and does not open the legacy Core DB as its new sidecar.
-- Legacy Core DB session tokens are not accepted by the standalone compatibility layer. Prompt Vault JWTs and configured API keys remain the supported HTTP authentication paths.
-- Production deployments must inject `JWT_SECRET`. The process-local secret fallback refuses production use unless `NW_SECRETS_ALLOW_INSECURE=1` is explicitly set for emergency diagnostics.
+- Direct legacy Core DB session tokens are intentionally removed as a pre-alpha breaking change. Existing callers must use a configured API key directly or exchange a valid API key for a Prompt Vault JWT; any future legacy flow requires a separately reviewed optional adapter or explicit token exchange.
+- Prompt Vault JWTs, configured API keys, and the app-owned API-key compatibility store are the supported HTTP authentication paths.
+- JWT issuance requires an explicitly injected `JWT_SECRET`. Without it, JWT verification returns no identity, generation fails with a controlled error, and `/auth/token` returns HTTP `503` after a valid API key is authenticated. Prompt Vault no longer generates a process-local random signing authority.
+- The supported HTTP entrypoint remains loopback-only. These authentication changes do not establish production or public-network deployment readiness.
 - External Hub, orchestrator, widget, event, and platform integrations now require optional adapters built against Prompt Vault's app-owned contracts.
 - Existing legacy tag/project data requires the explicit migration procedure; it is not silently upgraded in place.
 
