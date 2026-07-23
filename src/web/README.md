@@ -1,47 +1,36 @@
-# Prompt Vault Web/HTTP API Security
+# Prompt Vault Web/HTTP Security
 
-This directory contains security middleware for network deployments of the Prompt Vault HTTP API.
+This directory contains the Express middleware for Prompt Vault's loopback-only pre-alpha HTTP surface. Public-network and public-internet deployment are unsupported.
 
-## Quick Start
+## Authentication
 
-### 1. Environment Configuration
+`auth.ts` supports:
 
-Copy `.env.example` to `.env` and configure:
+- Prompt Vault JWTs using the exact `HS256` / `JWT` header;
+- configured API keys;
+- the app-owned API-key compatibility store.
+
+Direct legacy Nobodyworld Core DB session tokens are not supported.
+
+### Configuration
 
 ```bash
-# Generate a secure JWT secret
-JWT_SECRET=$(openssl rand -hex 32)
+# Required only when JWT verification and issuance are needed.
+# Use at least 32 random characters and never commit the real value.
+JWT_SECRET=replace-with-a-random-secret
+JWT_EXPIRES_IN=24h
 
-# Enable security features
-REQUIRE_AUTH=true
-AUDIT_LOGGING_ENABLED=true
+# Optional direct API keys.
+API_KEY_ADMIN=replace-with-a-random-api-key
+
+# The supported entrypoint remains loopback-only.
+PROMPT_VAULT_HOST=127.0.0.1
+LOCALHOST_ONLY=true
+REQUIRE_AUTH=false
 RATE_LIMIT_ENABLED=true
-
-# Optional: API keys for service accounts
-API_KEY_ADMIN=your-admin-key-here
-API_KEY_READONLY=your-readonly-key-here
 ```
 
-### 2. Start the Server
-
-```bash
-pnpm --filter @nw/prompt-vault run server
-```
-
-The server will apply all enabled security middleware automatically.
-
-## Modules
-
-### `auth.ts` — Authentication
-
-**Features:**
-
-- JWT token-based authentication (custom HMAC-SHA256 implementation)
-- API key authentication (Bearer or header-based)
-- Configurable token expiration (seconds, minutes, hours, days)
-- No external dependencies (uses native Node.js crypto)
-
-**Usage:**
+Initialize the manager before using JWT methods:
 
 ```typescript
 import { AuthManager, createAuthMiddleware } from "./auth.js";
@@ -50,261 +39,109 @@ const authManager = new AuthManager({
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: "24h",
   apiKeys: {
-    admin: process.env.API_KEY_ADMIN,
-    readonly: process.env.API_KEY_READONLY,
+    admin: process.env.API_KEY_ADMIN ?? "",
   },
 });
 
-// Apply to all routes
-app.use(createAuthMiddleware(authManager));
+await authManager.initialize();
 
-// Or protect specific routes
-router.post("/sensitive", requireAuth(authManager), handler);
+app.use(
+  createAuthMiddleware({
+    authManager,
+    requireAuth: false,
+    localhostOnly: true,
+    logger,
+  }),
+);
 ```
 
-**Token Generation:**
+Without an injected `JWT_SECRET`, initialization succeeds in a JWT-disabled state. Local reads can remain available, and configured keys can still authenticate. `verifyToken()` returns `null`, `generateToken()` throws `JwtSigningUnavailableError`, and `/auth/token` returns HTTP `503` after validating the API key. No random process-local JWT authority is created.
+
+### JWT contract
+
+Generated and accepted JWTs use exactly:
+
+```json
+{ "alg": "HS256", "typ": "JWT" }
+```
+
+The required payload claims are `userId`, `username`, `iat`, and `exp`. Optional claims are `roles` and `scopes`. Header and payload objects are strict; additional properties are rejected. Timestamps must be non-negative integers, `exp` must exceed `iat`, and `iat` may be at most 60 seconds in the future. Expiration has a bounded 60-second clock-skew allowance.
+
+All three compact segments are strictly decoded as unpadded canonical base64url. Signatures use raw HMAC-SHA256 buffers, an explicit length check, and Node's `timingSafeEqual`.
 
 ```typescript
 const token = authManager.generateToken({
   userId: "user-123",
   username: "alice",
   roles: ["admin"],
+  scopes: ["prompt-vault:read"],
 });
-```
 
-**Token Verification:**
-
-```typescript
 const payload = authManager.verifyToken(token);
-if (payload) {
-  console.log("Authenticated user:", payload.username);
-}
 ```
 
-### `audit.ts` — Audit Logging
+### API keys
 
-**Features:**
+Configured keys are hashed to fixed-length SHA-256 buffers during manager construction. Presented keys are hashed and compared with `timingSafeEqual`. The key name is returned after a match; raw keys and digests must never be logged.
 
-- Structured event logging (who, what, when, where)
-- Filtering by userId, action, resource, result, date range
-- In-memory storage with configurable max events
-- Automatic request logging middleware
-- Auto-detection of sensitive operations
+Use a configured key directly:
 
-**Usage:**
-
-```typescript
-import { InMemoryAuditLogger, createAuditMiddleware } from "./audit.js";
-
-const auditLogger = new InMemoryAuditLogger({
-  maxEvents: 10_000,
-  logger,
-});
-
-// Log all requests
-app.use(createAuditMiddleware(auditLogger));
-
-// Or auto-log sensitive operations only
-app.use(createAutoAuditMiddleware(auditLogger));
+```bash
+curl \
+  -H "X-API-Key: YOUR_KEY" \
+  http://127.0.0.1:3001/api/prompts
 ```
 
-**Manual Logging:**
+The existing API-key Bearer fallback is also supported. A Bearer value is never interpreted as a legacy Core DB session token.
 
-```typescript
-auditLogger.log({
-  userId: "user-123",
-  action: "delete",
-  resource: "prompt:abc",
-  result: "success",
-  details: { reason: "user requested" },
-  ipAddress: req.ip,
-  userAgent: req.get("user-agent"),
-});
+Exchange a valid API key for a JWT only when `JWT_SECRET` is configured:
+
+```bash
+curl \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d "{}" \
+  http://127.0.0.1:3001/auth/token
 ```
 
-**Query Events:**
+## Other middleware
 
-```typescript
-const events = auditLogger.getEvents({
-  userId: "user-123",
-  action: "delete",
-  result: "failure",
-  startDate: new Date("2025-01-01"),
-  limit: 100,
-});
-```
+### `audit.ts`
 
-### `rate-limit.ts` — Rate Limiting
+The audit middleware records bounded in-memory events for sensitive operations. Prompt bodies and credentials must not be included in audit details.
 
-**Features:**
+### `rate-limit.ts`
 
-- Sliding window algorithm for accurate rate limiting
-- Per-IP or custom key rate limiting
-- X-RateLimit-* headers (Limit, Remaining, Reset)
-- 429 Too Many Requests with Retry-After
-- Automatic cleanup of expired entries
-- Separate limits for sensitive endpoints
+API routes use a sliding-window limiter. `/auth/token` has an independent, stricter limiter. Rate limiting remains enabled by default for the supported local entrypoint.
 
-**Usage:**
+### Authorization boundaries
 
-```typescript
-import { createRateLimitMiddleware, createEndpointRateLimiter } from "./rate-limit.js";
+- local safe reads may be unauthenticated while `REQUIRE_AUTH=false`;
+- unsafe methods always require authentication;
+- required JWT/compatibility-store scopes are checked;
+- `requireAuth()` enforces route roles and scopes;
+- logs always require authentication;
+- browser origins stay explicit.
 
-// Global rate limit (100 req/min per IP)
-app.use(
-  createRateLimitMiddleware({
-    maxRequests: 100,
-    windowMs: 60_000,
-    logger,
-  })
-);
+## Environment variables
 
-// Stricter limit for sensitive endpoints (10 req/min)
-router.post(
-  "/auth/login",
-  createEndpointRateLimiter({ maxRequests: 10, windowMs: 60_000 }),
-  handler
-);
-```
-
-**Custom Key Generator:**
-
-```typescript
-createRateLimitMiddleware({
-  maxRequests: 50,
-  windowMs: 60_000,
-  keyGenerator: (req) => req.user?.id || req.ip,
-});
-```
-
-**Skip Certain Requests:**
-
-```typescript
-createRateLimitMiddleware({
-  maxRequests: 100,
-  windowMs: 60_000,
-  skip: (req) => req.path === "/health",
-});
-```
-
-## Environment Variables
-
-See `.env.example` for full configuration options.
-
-| Variable                        | Default | Description                                      |
-| ------------------------------- | ------- | ------------------------------------------------ |
-| `JWT_SECRET`                    | —       | **Required** JWT signing secret (min 32 chars)   |
-| `JWT_EXPIRES_IN`                | `24h`   | Token expiration (s/m/h/d)                       |
-| `REQUIRE_AUTH`                  | `false` | Require authentication for all API routes        |
-| `LOCALHOST_ONLY`                | `false` | Restrict API access to localhost                 |
-| `API_KEY_<NAME>`                | —       | API keys for service accounts                    |
-| `AUDIT_LOGGING_ENABLED`         | `true`  | Enable audit logging                             |
-| `AUDIT_MAX_EVENTS`              | `10000` | Max events in memory                             |
-| `RATE_LIMIT_ENABLED`            | `true`  | Toggle global rate limiting middleware           |
-| `RATE_LIMIT_MAX_REQUESTS`       | `100`   | Requests per window for API routes               |
-| `RATE_LIMIT_WINDOW_MS`          | `60000` | Rate limit window for API routes (ms)            |
-| `RATE_LIMIT_AUTH_MAX_REQUESTS`  | `10`    | Requests per window for `/auth/token` issuance   |
-| `RATE_LIMIT_AUTH_WINDOW_MS`     | `60000` | Rate limit window for `/auth/token` (ms)         |
-
-## Security Best Practices
-
-1. **Always use HTTPS in production** — JWT tokens and API keys should never be transmitted over plain HTTP
-2. **Rotate JWT secrets regularly** — Use environment-specific secrets and rotate periodically
-3. **Use strong API keys** — Generate with `openssl rand -hex 32`
-4. **Enable all security features** — Set `REQUIRE_AUTH`, `AUDIT_LOGGING_ENABLED`, and `RATE_LIMIT_ENABLED` to `true`
-5. **Review audit logs regularly** — Monitor for suspicious activity
-6. **Use reverse proxy** — Deploy behind nginx/Caddy with additional security headers
-7. **Limit token expiration** — Use short-lived tokens (1-24 hours) for better security
-8. **Store secrets securely** — Use secret management systems in production (AWS Secrets Manager, HashiCorp Vault, etc.)
+| Variable | Default | Behavior |
+| --- | --- | --- |
+| `JWT_SECRET` | unavailable | Required for JWT verification and issuance |
+| `JWT_EXPIRES_IN` | `24h` | Token lifetime in `s`, `m`, `h`, or `d` |
+| `REQUIRE_AUTH` | `false` | Also require auth for safe API reads |
+| `LOCALHOST_ONLY` | `true` at supported entrypoint | Reject non-loopback clients |
+| `API_KEY_<NAME>` | unavailable | Direct configured API key |
+| `RATE_LIMIT_ENABLED` | `true` | Enable API rate limiting |
+| `RATE_LIMIT_MAX_REQUESTS` | `100` | API requests per window |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | API rate-limit window |
+| `RATE_LIMIT_AUTH_MAX_REQUESTS` | `20` | Token requests per window |
+| `RATE_LIMIT_AUTH_WINDOW_MS` | `60000` | Token rate-limit window |
 
 ## Testing
 
-Run unit tests:
-
 ```bash
-pnpm --filter @nw/prompt-vault test tests/auth.test.ts
-pnpm --filter @nw/prompt-vault test tests/audit.test.ts
-pnpm --filter @nw/prompt-vault test tests/rate-limit.test.ts
+pnpm exec vitest run tests/auth.test.ts tests/httpSecurity.test.ts tests/platformAuth.test.ts
 ```
 
-## Production Deployment
-
-See `docs/SECURITY.md` for:
-
-- Nginx/Caddy reverse proxy configuration
-- Kubernetes security contexts
-- Monitoring and alerting setup
-- Incident response procedures
-
-## Architecture
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                     Prompt Vault Server                     │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │                  Express Middleware                  │  │
-│  │                                                      │  │
-│  │  1. Rate Limit ──> 429 if exceeded                  │  │
-│  │                                                      │  │
-│  │  2. Auth ──────────> 401 if invalid/missing         │  │
-│  │                                                      │  │
-│  │  3. Audit ─────────> Log all requests               │  │
-│  │                                                      │  │
-│  │  4. Routes ────────> Business logic                 │  │
-│  └─────────────────────────────────────────────────────┘  │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │               Security Headers                       │  │
-│  │                                                      │  │
-│  │  • Strict-Transport-Security (HSTS)                 │  │
-│  │  • X-Frame-Options                                  │  │
-│  │  • X-Content-Type-Options                           │  │
-│  └─────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Limitations
-
-### In-Memory Storage
-
-Current implementation uses in-memory storage for:
-
-- Audit logs
-- Rate limit counters
-
-**Limitations:**
-
-- Data lost on server restart
-- Not suitable for multi-instance deployments (no shared state)
-
-**Production Alternatives:**
-
-- Audit logging: PostgreSQL, Elasticsearch, CloudWatch Logs
-- Rate limiting: Redis, Memcached
-
-### No User Management
-
-Current implementation provides authentication primitives but no user management:
-
-- No user registration/password reset
-- No role-based access control (RBAC)
-- No session management
-
-For production deployments with multiple users, integrate with:
-
-- Auth0
-- Keycloak
-- AWS Cognito
-- Custom user management system
-
-## Contributing
-
-When adding new security features:
-
-1. Add unit tests in `tests/`
-2. Update `.env.example` with new variables
-3. Update `docs/SECURITY.md` with configuration details
-4. Document in this README
-5. Follow principle of least privilege
-6. Fail closed (deny by default)
+For the exact supported behavior and data-at-rest limitations, see `docs/SECURITY.md`.
