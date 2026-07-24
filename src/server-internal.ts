@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import cors from "cors";
 import express, {
+  type Application,
   type ErrorRequestHandler,
   type NextFunction,
   type Request,
@@ -175,7 +176,7 @@ observability.indicator.setReadiness({
   details: { reason: "initialising" },
 });
 
-const database = new Database(config.databasePath);
+const database: Database.Database = new Database(config.databasePath);
 const service = new PromptVaultService(database, {
   telemetry: observability.telemetry,
   logger: logger.child({ component: "service" }),
@@ -183,7 +184,7 @@ const service = new PromptVaultService(database, {
   limits: config.limits,
 });
 
-const app = express();
+const app: Application = express();
 app.disable("x-powered-by");
 
 app.use(
@@ -475,7 +476,7 @@ const errorHandler: ErrorRequestHandler = (error, request, response, _next) => {
 
 app.use(errorHandler);
 
-const server = app.listen(config.port, () => {
+const server = app.listen(config.port, "127.0.0.1", () => {
   logger.info("server_started", {
     port: config.port,
     dbPath: config.databasePath,
@@ -493,50 +494,98 @@ const server = app.listen(config.port, () => {
 
 let shuttingDown = false;
 
-async function shutdown(exitCode = 0): Promise<void> {
+function removeProcessHandlers(): void {
+  process.off("SIGINT", handleSigint);
+  process.off("SIGTERM", handleSigterm);
+  process.off("uncaughtException", handleUncaughtException);
+  process.off("unhandledRejection", handleUnhandledRejection);
+  process.off("exit", handleProcessExit);
+}
+
+async function closeServerResources(): Promise<void> {
   if (shuttingDown) {
     return;
   }
   shuttingDown = true;
+  removeProcessHandlers();
   observability.indicator.setReadiness({
     status: "degraded",
     details: { reason: "shutdown" },
   });
-  await new Promise<void>((resolvePromise) => {
-    server.close(() => resolvePromise());
-  });
-  database.close();
+  if (server.listening) {
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      server.close((error) => {
+        if (error) {
+          rejectPromise(error);
+          return;
+        }
+        resolvePromise();
+      });
+    });
+  }
+  if (database.open) {
+    database.close();
+  }
   await observability.shutdown();
+}
+
+async function shutdown(exitCode = 0): Promise<void> {
+  await closeServerResources();
   process.exit(exitCode);
 }
 
-process.once("SIGINT", () => {
+function handleSigint(): void {
   logger.info("signal_received", { signal: "SIGINT" });
   void shutdown(130);
-});
+}
 
-process.once("SIGTERM", () => {
+function handleSigterm(): void {
   logger.info("signal_received", { signal: "SIGTERM" });
   void shutdown(143);
-});
+}
 
-process.on("uncaughtException", (error) => {
+function handleUncaughtException(error: Error): void {
   logger.error("uncaught_exception", {
     error: error instanceof Error ? (error.stack ?? error.message) : error,
   });
   void shutdown(1);
-});
+}
 
-process.on("unhandledRejection", (reason) => {
+function handleUnhandledRejection(reason: unknown): void {
   logger.error("unhandled_rejection", {
     reason: reason instanceof Error ? (reason.stack ?? reason.message) : reason,
   });
   void shutdown(1);
-});
+}
 
-process.on("exit", () => {
+function handleProcessExit(): void {
   if (!shuttingDown) {
     database.close();
     void observability.shutdown();
   }
-});
+}
+
+process.once("SIGINT", handleSigint);
+process.once("SIGTERM", handleSigterm);
+process.on("uncaughtException", handleUncaughtException);
+process.on("unhandledRejection", handleUnhandledRejection);
+process.on("exit", handleProcessExit);
+
+/**
+ * Deterministic in-process lifecycle seam for integration tests and embedders.
+ * The production entrypoint still installs signal handling and exits only from
+ * the signal/error shutdown path above.
+ */
+export async function closeServerForTests(): Promise<void> {
+  await closeServerResources();
+}
+
+export {
+  app,
+  authManager,
+  config,
+  database,
+  observability,
+  server,
+  service,
+};
