@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { PromptList } from "../components/PromptList";
 import { useToast } from "../components/Toast";
 import { copyTextToClipboard } from "../lib/clipboard";

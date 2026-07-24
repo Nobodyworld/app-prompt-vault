@@ -23,7 +23,7 @@ This inventory reflects `package.json` on the active pre-release branch. The pac
 | `express` | `^4.21.2` | Optional HTTP API and observability endpoints. | Keep body limits, auth, rate limiting, and error handling enabled. |
 | `react` / `react-dom` | `^19.2.0` | Desktop/web renderer. | Validate supported browser/webview behavior. |
 | `react-error-boundary` | `^6.0.0` | Renderer error containment. | Startup failures must remain visible. |
-| `react-router-dom` | `^7.9.4` | Client-side routing. | Playwright should cover primary navigation. |
+| `react-router` | `^8.3.0` | Client-side routing. | Playwright should cover primary navigation. |
 | `simple-git` | `^3.30.0` | Git-related prompt workflows. | Treat repository paths and subprocess failures as untrusted input. |
 | `yaml` | `^2.8.1` | YAML import/export. | Preserve size limits and schema validation. |
 | `zod` | `^4.1.12` | Runtime input/configuration validation. | Keep schemas authoritative at trust boundaries. |
