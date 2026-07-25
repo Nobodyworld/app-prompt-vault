@@ -9,5 +9,5 @@
 ## Risk Mitigation
 
 - Node 18.17+ requirement ensures we receive upstream security fixes and TLS improvements.
-- Encouraged automated tooling (`npm audit`, Dependabot/Renovate) to keep libraries current.
+- Encouraged automated tooling (`pnpm audit`, Dependabot/Renovate) to keep libraries current.
 - Limited transitive dependency surface by avoiding heavy frameworks until the UI layer is added.

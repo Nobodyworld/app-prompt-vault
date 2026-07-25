@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router";
 import { Layout } from "./components/Layout";
 import { CreatePromptPage } from "./pages/CreatePromptPage";
 import { EditPromptPage } from "./pages/EditPromptPage";

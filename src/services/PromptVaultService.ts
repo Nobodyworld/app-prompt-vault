@@ -1241,12 +1241,8 @@ export class PromptVaultService {
       "service.restorePrompt",
       { promptId },
       () => {
-        // Ensure the prompt exists and is deleted
-        const prompt = this.repository.getPromptById(promptId);
-        if (!prompt.deletedAt) {
-          throw new ValidationError(["Prompt is not deleted"]);
-        }
-
+        // The repository restore query deliberately targets deleted rows;
+        // normal prompt lookup excludes them from the active library.
         this.repository.restorePrompt(promptId);
         this.logger.info("prompt_restored", { promptId });
         // Note: Plugin events for restore not implemented yet
@@ -1283,9 +1279,8 @@ export class PromptVaultService {
       "service.permanentlyDeletePrompt",
       { promptId },
       () => {
-        // Ensure the prompt exists (could be deleted or not)
-        this.repository.getPromptById(promptId);
-
+        // Repository deletion accepts active or trashed rows and verifies that
+        // a record was actually removed.
         this.repository.permanentlyDeletePrompt(promptId);
         this.logger.info("prompt_permanently_deleted", { promptId });
         this.pluginHost.emit("onPromptDeleted", {

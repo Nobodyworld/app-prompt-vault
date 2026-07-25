@@ -1,15 +1,26 @@
 import { spawn } from "node:child_process";
 
-// # agent-safe-task: Runs dependency security audits with offline-aware fallbacks.
+// # agent-safe-task: Runs the production dependency audit with offline-aware fallbacks.
 
 function warn(message: string): void {
   console.warn(message);
 }
 
-const audit = spawn("npm", ["audit", "--omit=dev", "--json"], {
-  stdio: ["ignore", "pipe", "pipe"],
-  shell: true,
-});
+const packageManagerCli = process.env.npm_execpath;
+if (!packageManagerCli) {
+  console.error(
+    "security-scan: npm_execpath is unavailable; run this script through pnpm",
+  );
+  process.exit(1);
+}
+
+const audit = spawn(
+  process.execPath,
+  [packageManagerCli, "audit", "--prod", "--json"],
+  {
+    stdio: ["ignore", "pipe", "pipe"],
+  },
+);
 
 let stdout = "";
 let stderr = "";
@@ -24,51 +35,61 @@ audit.stderr.on("data", (chunk) => {
 
 audit.on("close", (code) => {
   if (code === 0) {
-    console.log("npm audit: no vulnerabilities found");
+    console.log("pnpm audit: no known production vulnerabilities found");
     process.exit(0);
     return;
   }
 
   if (stderr.includes("403") || stdout.includes('"statusCode": 403')) {
-    warn("npm audit warning: registry returned 403 Forbidden; skipping security scan for this run.");
+    warn(
+      "pnpm audit warning: registry returned 403 Forbidden; skipping security scan for this run.",
+    );
     process.exit(0);
     return;
   }
 
   try {
-    const payload = JSON.parse(stdout);
-    if (payload.error && typeof payload.error.code === "string") {
+    const payload = JSON.parse(stdout) as {
+      error?: { code?: string; summary?: string };
+      metadata?: { vulnerabilities?: Record<string, number> };
+    };
+    if (payload.error?.code) {
       if (payload.error.code === "ENOAUDIT") {
-        warn(`npm audit skipped: ${payload.error.summary}`);
+        warn(`pnpm audit skipped: ${payload.error.summary}`);
         process.exit(0);
         return;
       }
-      if (payload.error.code === "ENOTFOUND" || payload.error.code === "E403") {
-        warn(`npm audit warning: ${payload.error.summary ?? payload.error.code}`);
+      if (
+        payload.error.code === "ENOTFOUND" ||
+        payload.error.code === "E403"
+      ) {
+        warn(
+          `pnpm audit warning: ${payload.error.summary ?? payload.error.code}`,
+        );
         process.exit(0);
         return;
       }
     }
 
-    if (payload.metadata && payload.metadata.vulnerabilities) {
-      console.error("npm audit detected vulnerabilities:");
+    if (payload.metadata?.vulnerabilities) {
+      console.error("pnpm audit detected production vulnerabilities:");
       console.error(JSON.stringify(payload.metadata.vulnerabilities, null, 2));
     } else {
-      console.error("npm audit failed:");
+      console.error("pnpm audit failed:");
       console.error(stdout || stderr);
     }
   } catch (error) {
-    console.error("npm audit could not parse response:", error instanceof Error ? error.message : error);
+    console.error(
+      "pnpm audit could not parse response:",
+      error instanceof Error ? error.message : error,
+    );
     console.error(stdout || stderr);
   }
 
   process.exit(code ?? 1);
 });
 
-// If spawn fails (npm not available), handle gracefully so quality gate can continue in offline/dev environments
-audit.on('error', (err) => {
-  warn('security-scan: failed to spawn npm (skipping security scan)');
-  // Log the error for diagnostics, but do not fail the quality gate
-  console.debug('security-scan spawn error:', err);
-  process.exit(0);
+audit.on("error", (error) => {
+  console.error("security-scan: failed to start pnpm audit", error);
+  process.exit(1);
 });

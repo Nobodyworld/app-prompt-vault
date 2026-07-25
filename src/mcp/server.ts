@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -57,6 +58,13 @@ interface MCPManifest {
   tools: MCPTool[];
 }
 
+export interface PromptVaultMCPServerOptions {
+  readonly dbPath?: string;
+  readonly manifestPath?: string;
+  readonly temporaryDirectory?: string;
+  readonly executeCommand?: (command: string) => Promise<unknown>;
+}
+
 function toSlug(value: string): string {
   return value
     .toLowerCase()
@@ -97,9 +105,21 @@ class PromptVaultMCPServer {
   private promptService: PromptVaultService;
   private database: Database.Database;
   private observability: ReturnType<typeof bootstrapObservabilityFromEnv>;
+  private readonly manifestPath: string;
+  private readonly temporaryDirectory: string;
+  private readonly executeCommand: (command: string) => Promise<unknown>;
+  private closed = false;
 
-  constructor(dbPath?: string) {
-    const dbPathToUse = dbPath || defaultDbPath;
+  constructor(options: string | PromptVaultMCPServerOptions = {}) {
+    const normalizedOptions =
+      typeof options === "string" ? { dbPath: options } : options;
+    const dbPathToUse = normalizedOptions.dbPath || defaultDbPath;
+    this.manifestPath =
+      normalizedOptions.manifestPath ??
+      path.join(process.cwd(), "src", "mcp", "mcp.json");
+    this.temporaryDirectory =
+      normalizedOptions.temporaryDirectory ?? path.join(process.cwd(), "temp");
+    this.executeCommand = normalizedOptions.executeCommand ?? execAsync;
 
     // Initialize observability
     this.observability = bootstrapObservabilityFromEnv({
@@ -134,10 +154,7 @@ class PromptVaultMCPServer {
   private setupToolHandlers(): void {
     // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const mcpManifest = await fs.readFile(
-        path.join(process.cwd(), "src", "mcp", "mcp.json"),
-        "utf-8",
-      );
+      const mcpManifest = await fs.readFile(this.manifestPath, "utf-8");
       const manifest: MCPManifest = JSON.parse(mcpManifest);
 
       return {
@@ -604,17 +621,16 @@ class PromptVaultMCPServer {
       const latestFormat = prompt.latestVersion?.format ?? "markdown";
       const latestBody = prompt.latestVersion?.body ?? "";
 
-      const tempDir = path.join(process.cwd(), "temp");
-      await fs.mkdir(tempDir, { recursive: true });
+      await fs.mkdir(this.temporaryDirectory, { recursive: true });
 
       const tempFile = path.join(
-        tempDir,
+        this.temporaryDirectory,
         `${prompt.id}.${this.getExtension(latestFormat)}`,
       );
       await fs.writeFile(tempFile, latestBody, "utf-8");
 
       // Open in VS Code
-      await execAsync(`code "${tempFile}"`);
+      await this.executeCommand(`code "${tempFile}"`);
 
       return { success: true };
     } catch (error) {
@@ -731,7 +747,8 @@ class PromptVaultMCPServer {
     const { id } = args;
 
     try {
-      const prompt = await this.promptService.restorePrompt(id);
+      await this.promptService.restorePrompt(id);
+      const prompt = await this.promptService.getPrompt(id);
       return {
         success: true,
         prompt: {
@@ -765,7 +782,8 @@ class PromptVaultMCPServer {
         (a, b) => b.deletedAt!.getTime() - a.deletedAt!.getTime(),
       )[0];
 
-      const prompt = await this.promptService.restorePrompt(latestDeleted.id);
+      await this.promptService.restorePrompt(latestDeleted.id);
+      const prompt = await this.promptService.getPrompt(latestDeleted.id);
 
       return {
         success: true,
@@ -855,10 +873,28 @@ class PromptVaultMCPServer {
     }
   }
 
-  async start(): Promise<void> {
-    const transport = new StdioServerTransport();
+  public async connect(transport: Transport): Promise<void> {
     await this.server.connect(transport);
     this.observability.logger.info("Prompt Vault MCP Server started");
+  }
+
+  public async start(): Promise<void> {
+    await this.connect(new StdioServerTransport());
+  }
+
+  public async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    try {
+      await this.server.close();
+    } finally {
+      if (this.database.open) {
+        this.database.close();
+      }
+      await this.observability.shutdown();
+    }
   }
 }
 

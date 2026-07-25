@@ -12,10 +12,30 @@ This section describes draft PR #27. It is not a published release and has not p
 - Added dry-run, transactional, idempotence, schema-recognition, and main-database refusal tests for legacy migration.
 - Added runtime sidecar guards that derive a new `.platform.db` from the historical Core DB path rather than opening the legacy database.
 - Pinned the transitive `@hono/node-server` adapter to patched `2.0.11` after the production audit identified the Windows encoded-backslash path-traversal advisory.
+- Migrated the desktop router import to `react-router` 8.3.0 after the production audit identified GHSA-qwww-vcr4-c8h2 in React Router 7.18.1.
 - Added a standalone Node CI job configured to install pinned pnpm, generate a candidate lockfile, and run audit, lint, typecheck, build, and tests.
 - Expanded the dependency-free repository audit to reject private-package imports/declarations, unsafe migration regressions, broken public links, and unpinned actions.
 - Corrected public documentation, versioning, security contact, environment names, build scripts, and source-available license language.
 - Removed inactivity hiding and placeholder shell controls while improving accessible labels and stable Playwright expectations.
+
+### App-tier coverage validation
+
+The issue #47 coverage campaign exercises supported service, repository,
+compatibility-facade, MCP, HTTP lifecycle, observability, plugin, Git/sync,
+backup, conversion, and interoperability behavior using disposable resources.
+The complete local Vitest coverage run on Windows passed 40 files and 268 tests
+with the following measured coverage:
+
+| Dimension | Covered / total | Result | App-tier target |
+| --- | ---: | ---: | ---: |
+| Statements | 2,842 / 3,639 | 78.09% | 60% |
+| Branches | 1,446 / 2,383 | 60.67% | 50% |
+| Functions | 634 / 777 | 81.59% | 55% |
+| Lines | 2,768 / 3,511 | 78.83% | 60% |
+
+All four targets pass, so Prompt Vault now uses the shared `app` coverage tier.
+This is local quality-gate evidence for an unreleased child branch; it does not
+establish hosted validation, public deployment support, or release readiness.
 
 ### Intended upgrade steps
 

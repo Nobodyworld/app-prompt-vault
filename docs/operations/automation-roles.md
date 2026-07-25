@@ -8,7 +8,7 @@ This registry maps potential agent responsibilities to the scripts and guardrail
 - **Trigger:** On pull request open/update or nightly cron.
 - **Command:** `npm run quality:gate`
 - **Outputs:** Lint, build artifacts, test results, coverage summary (warns if V8 provider unavailable), security audit logs.
-- **Notes:** Respect `npm audit` 403 fallbacks; archive `coverage/` JSON for manual review.
+- **Notes:** Respect `pnpm audit` 403 fallbacks; archive `coverage/` JSON for manual review.
 
 ### Metrics Steward
 - **Trigger:** Weekly or before milestone releases.

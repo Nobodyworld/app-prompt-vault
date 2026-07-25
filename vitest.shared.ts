@@ -18,9 +18,7 @@ export const COVERAGE_THRESHOLDS: Record<CoverageTier, TierThresholds> = {
 };
 
 const PACKAGE_TIERS: Record<string, CoverageTier> = {
-  // Current no-regression floor for the public pre-alpha source preview.
-  // Raise this mapping to "app" only after the 60/60/50/55 release target is met.
-  "prompt-vault": "preAlpha",
+  "prompt-vault": "app",
 };
 
 export function getCoverageConfig(packageName: string): Partial<CoverageOptions> {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { isTauriAvailable } from "../lib/tauri";
 import { isUsingFallback, subscribeFallback } from "../services/promptApi";
 

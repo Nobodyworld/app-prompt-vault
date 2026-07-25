@@ -64,18 +64,13 @@ export class SyncService {
    * Export prompts from database to file system
    */
   async export(): Promise<void> {
-    const searchResult = await this.vaultService.searchPrompts({
-      text: "",
-      tags: [],
-      page: 0,
-      pageSize: 1000, // Get all prompts
-    });
+    const prompts = await this.vaultService.listAllPrompts();
 
     // Clear existing files
     await this.clearPromptsDir();
 
     // Export each prompt
-    for (const prompt of searchResult.prompts) {
+    for (const prompt of prompts) {
       const filePath = this.getPromptFilePath(prompt);
       const content = this.formatPromptForFile(prompt);
       await fs.writeFile(filePath, content, "utf-8");
@@ -96,6 +91,14 @@ export class SyncService {
       try {
         const existing = await this.vaultService.getPrompt(prompt.id);
         if (existing) {
+          const latest = existing.latestVersion;
+          if (
+            latest?.body === prompt.body &&
+            latest.semanticVersion === prompt.semanticVersion &&
+            latest.format === prompt.format
+          ) {
+            continue;
+          }
           // Update existing prompt by adding a new version
           this.vaultService.addVersion(
             existing.id,
@@ -246,7 +249,10 @@ ${Object.entries(frontmatter)
     }
 
     const frontmatter = frontmatterMatch[1];
-    const body = frontmatterMatch[2];
+    const capturedBody = frontmatterMatch[2];
+    const body = capturedBody.startsWith("\n")
+      ? capturedBody.slice(1)
+      : capturedBody;
 
     // Simple YAML parsing (in production, use a proper YAML parser)
     const metadata: Record<string, unknown> = {};
