@@ -228,6 +228,131 @@ describe("legacy tag sidecar migration", () => {
     expect(second.skippedTaggings).toBe(2);
   });
 
+  it("accepts the representative name-only legacy tag schema", () => {
+    const { source, target } = createFixture();
+    const sourceDatabase = new Database(source);
+    sourceDatabase.exec("ALTER TABLE tags DROP COLUMN label");
+    sourceDatabase.close();
+
+    const dryRun = migrateLegacyTagSidecar({
+      sourcePath: source,
+      targetPath: target,
+      dryRun: true,
+    });
+    expect(dryRun).toMatchObject({
+      dryRun: true,
+      sourceTags: 2,
+      sourceTaggings: 2,
+    });
+    expect(existsSync(target)).toBe(false);
+
+    const migrated = migrateLegacyTagSidecar({
+      sourcePath: source,
+      targetPath: target,
+    });
+    expect(migrated).toMatchObject({
+      insertedTags: 2,
+      insertedTaggings: 2,
+    });
+
+    const targetDatabase = new Database(target, { readonly: true });
+    const project = targetDatabase
+      .prepare(
+        "SELECT name, kind, color, description, is_archived FROM tags WHERE id = ?",
+      )
+      .get("tag-project");
+    targetDatabase.close();
+    expect(project).toEqual({
+      name: "project:demo-project",
+      kind: "project",
+      color: "#222222",
+      description: "Demo Project",
+      is_archived: 0,
+    });
+  });
+
+  it("rolls back earlier inserts when a later tagging id conflicts", () => {
+    const { source, target } = createFixture();
+    const targetDatabase = new Database(target);
+    targetDatabase.pragma("foreign_keys = ON");
+    targetDatabase.exec(`
+      CREATE TABLE tags (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'label',
+        color TEXT,
+        description TEXT,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(name, kind)
+      );
+      CREATE TABLE taggings (
+        id TEXT PRIMARY KEY,
+        tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        context TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        UNIQUE(tag_id, entity_type, entity_id, context)
+      );
+      CREATE INDEX idx_platform_tags_name_kind ON tags(name, kind);
+      CREATE INDEX idx_platform_taggings_entity ON taggings(entity_type, entity_id);
+      CREATE INDEX idx_platform_taggings_tag ON taggings(tag_id);
+    `);
+    targetDatabase
+      .prepare(
+        "INSERT INTO tags (id, name, kind, is_archived, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)",
+      )
+      .run(
+        "preexisting-tag",
+        "preexisting",
+        "label",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+      );
+    targetDatabase
+      .prepare(
+        "INSERT INTO taggings (id, tag_id, entity_type, entity_id, context, created_at) VALUES (?, ?, ?, ?, '', ?)",
+      )
+      .run(
+        "tagging-project",
+        "preexisting-tag",
+        "prompts",
+        "preexisting-prompt",
+        "2025-01-01T00:00:00.000Z",
+      );
+    targetDatabase.close();
+
+    expect(() =>
+      migrateLegacyTagSidecar({
+        sourcePath: source,
+        targetPath: target,
+      }),
+    ).toThrow(/UNIQUE constraint failed: taggings\.id/i);
+
+    const verification = new Database(target, { readonly: true });
+    const tags = verification
+      .prepare("SELECT id FROM tags ORDER BY id")
+      .all() as Array<{ id: string }>;
+    const taggings = verification
+      .prepare("SELECT id, entity_id FROM taggings ORDER BY id")
+      .all() as Array<{ id: string; entity_id: string }>;
+    const integrity = verification.pragma("integrity_check") as Array<{
+      integrity_check: string;
+    }>;
+    verification.close();
+
+    expect(tags).toEqual([{ id: "preexisting-tag" }]);
+    expect(taggings).toEqual([
+      {
+        id: "tagging-project",
+        entity_id: "preexisting-prompt",
+      },
+    ]);
+    expect(integrity).toEqual([{ integrity_check: "ok" }]);
+  });
+
   it("refuses a standalone Prompt Vault database that lacks Core DB markers", () => {
     const directory = mkdtempSync(join(tmpdir(), "prompt-vault-tag-safety-"));
     temporaryDirectories.push(directory);
