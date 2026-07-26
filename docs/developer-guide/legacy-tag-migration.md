@@ -8,13 +8,15 @@ Do not point the new runtime directly at an unreviewed legacy database. Migrate 
 
 ## Safety rules
 
-1. Stop Prompt Vault before copying or migrating databases.
-2. Back up the main prompt database and legacy Core DB.
-3. Keep the source and target paths different.
-4. Run a dry run before writing.
-5. Inspect the JSON counts and preserve the original source until restart/persistence verification is complete.
-6. Never pass the standalone Prompt Vault database as the migration source. A recognized legacy Core DB must contain `schema_migrations`, `settings`, `pages`, `tags`, and `taggings` with the expected legacy columns.
-7. Never use the main Prompt Vault database or the legacy Core DB itself as the target. Use a new app-owned sidecar path.
+1. Never migrate from, into, or run Prompt Vault against the original historical database.
+2. Open the source read-only and create a consistent disposable copy with SQLite's online backup API. A plain file copy is not authoritative when WAL/SHM sidecars exist.
+3. Record source database/WAL hashes before and after the online backup. If the database or WAL changes, stop; do not terminate another application to force acceptance.
+4. Back up the main prompt database independently, but never use it as a migration target.
+5. Keep the disposable source copy and target paths different.
+6. Run a dry run before writing.
+7. Inspect the JSON counts and preserve the original source until restart/persistence verification is complete.
+8. Never pass the standalone Prompt Vault database as the migration source. A recognized legacy Core DB must contain `schema_migrations`, `settings`, `pages`, `tags`, and `taggings` with the expected legacy columns.
+9. Never use the main Prompt Vault database or the legacy Core DB itself as the target. Use a new app-owned sidecar path.
 
 ## Dry run
 
@@ -64,7 +66,9 @@ Set the target path before starting Prompt Vault:
 PROMPT_VAULT_TAG_DB_PATH=./prompt-vault-platform.db
 ```
 
-For a network-accessible deployment, also set the required authentication and CORS variables described in the main README.
+The supported HTTP surface remains loopback-only. Public-network and
+public-internet deployments are unsupported. Unsafe methods require a Prompt
+Vault credential even when local reads are unauthenticated.
 
 ## Required verification
 
@@ -78,4 +82,10 @@ Before deleting or archiving the legacy source:
 6. Repeat the search and tag checks.
 7. Export a backup bundle.
 
-Issue #28 remains open until this procedure passes against a representative copy of an existing internal database and the automated test suite runs successfully on the current PR head.
+The 2026-07-25 [sanitized acceptance report](../releases/legacy-tag-migration-acceptance.md)
+records this procedure against a real historical copy. The copy contained one
+project tag and no taggings. It therefore proves real metadata migration and all
+disposable runtime, restart, refusal, idempotence, and rollback mechanics, but
+does not prove a real historical tag-to-entity relationship. Issue #28 should
+retain that precise limitation until a qualifying nonzero-relationship copy is
+available or the coordinator explicitly accepts the narrower evidence.

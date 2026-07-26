@@ -18,20 +18,36 @@ This section describes draft PR #27. It is not a published release and has not p
 - Corrected public documentation, versioning, security contact, environment names, build scripts, and source-available license language.
 - Removed inactivity hiding and placeholder shell controls while improving accessible labels and stable Playwright expectations.
 
+### Legacy tag migration acceptance
+
+Issue #28 acceptance was exercised on 2026-07-25 against a read-only online
+backup of a qualifying historical Nobodyworld Core DB. The source and copy
+passed SQLite integrity and foreign-key checks. Dry run, migration, compiled
+loopback runtime, restart persistence, exact project/tag search, API-key
+tag/untag, backup export, idempotence, nine malformed-copy refusals, and a
+write-time transaction rollback all passed using only disposable databases.
+
+The observed real schema matched the existing `name`-column mapping, so no
+production-code extension was required. The selected copy contained one project
+tag and zero taggings, and the other qualifying candidates contained no
+taggings. This evidence must not be described as real historical relationship
+proof. See the
+[sanitized acceptance report](legacy-tag-migration-acceptance.md).
+
 ### App-tier coverage validation
 
 The issue #47 coverage campaign exercises supported service, repository,
 compatibility-facade, MCP, HTTP lifecycle, observability, plugin, Git/sync,
 backup, conversion, and interoperability behavior using disposable resources.
-The complete local Vitest coverage run on Windows passed 40 files and 268 tests
+The complete local Vitest coverage run on Windows passed 41 files and 277 tests
 with the following measured coverage:
 
 | Dimension | Covered / total | Result | App-tier target |
 | --- | ---: | ---: | ---: |
-| Statements | 2,842 / 3,639 | 78.09% | 60% |
-| Branches | 1,446 / 2,383 | 60.67% | 50% |
+| Statements | 2,844 / 3,639 | 78.15% | 60% |
+| Branches | 1,448 / 2,383 | 60.76% | 50% |
 | Functions | 634 / 777 | 81.59% | 55% |
-| Lines | 2,768 / 3,511 | 78.83% | 60% |
+| Lines | 2,770 / 3,511 | 78.89% | 60% |
 
 All four targets pass, so Prompt Vault now uses the shared `app` coverage tier.
 This is local quality-gate evidence for an unreleased child branch; it does not
@@ -39,7 +55,9 @@ establish hosted validation, public deployment support, or release readiness.
 
 ### Intended upgrade steps
 
-These steps are **not yet execution-validated on the current head**:
+These operator steps have been exercised with disposable paths on the issue #28
+child branch. They are not authorization to operate on an original historical
+database or either normal Prompt Vault database:
 
 1. Back up the main Prompt Vault database and any legacy `*.core.db` file.
 2. Generate and review the repository `pnpm-lock.yaml` using Node 24 and pnpm 10.24.0.
@@ -84,7 +102,11 @@ See `docs/developer-guide/legacy-tag-migration.md` for the full procedure.
 
 ### Current validation limitation
 
-The last successful hosted repository audit predates the final extraction. GitHub currently fails even a no-action diagnostic job before its first step, so the current branch has no executed install, lint, typecheck, build, test, Playwright, Rust, or Tauri result. Issues #22, #23, #25, #26, and #28 remain open.
+The integrated parent has hosted Node, Playwright, Rust, and Windows packaging
+evidence, but release approval remains blocked by the governing release issues.
+The issue #28 child evidence is narrower than full historical-relationship
+acceptance because bounded discovery found no qualifying source with a tagging
+row. Do not merge or mark draft PR #27 ready based on this report alone.
 
 ## Earlier unreleased observability work
 
