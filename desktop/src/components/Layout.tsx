@@ -1,137 +1,51 @@
-import React, { useState, useEffect, useRef } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { isTauriAvailable } from "../lib/tauri";
-import { subscribeFallback, isUsingFallback } from "../services/promptApi";
-import { useI18n } from "../i18n";
+import { isUsingFallback, subscribeFallback } from "../services/promptApi";
 
 export function Layout(): React.JSX.Element {
-  const { t } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
-  const [isHidden, setIsHidden] = useState(false);
-  const [showOverlay, setShowOverlay] = useState(false);
-  const [hoverStartTime, setHoverStartTime] = useState<number | null>(null);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const inactivityTimerRef = useRef<number | null>(null);
-  const hoverTimerRef = useRef<number | null>(null);
   const isDesktop = isTauriAvailable();
   const [fallbackActiveState, setFallbackActiveState] =
     useState<boolean>(isUsingFallback());
 
-  const handleSidebarArrowClick = (): void => {
-    setSidebarExpanded(!sidebarExpanded);
-  };
-
-  const handleCreateClick = (
-    event: React.MouseEvent<HTMLAnchorElement>,
-  ): void => {
-    if (location.pathname === "/create") {
-      event.preventDefault();
-      // Dispatch custom event to trigger form submission
-      window.dispatchEvent(new CustomEvent("submit-create-form"));
-    }
-  };
-
   const handleMinimize = async (): Promise<void> => {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const window = getCurrentWindow();
-      await window.minimize();
+      await getCurrentWindow().minimize();
     } catch (error) {
       console.error("Failed to minimize window:", error);
     }
   };
 
-  const handleClose = async (): Promise<void> => {
-    console.log("Close button clicked");
+  const handleToggleMaximize = async (): Promise<void> => {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const window = getCurrentWindow();
-      console.log("Closing window...");
-      await window.close();
+      await getCurrentWindow().toggleMaximize();
+    } catch (error) {
+      console.error("Failed to resize window:", error);
+    }
+  };
+
+  const handleClose = async (): Promise<void> => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().close();
     } catch (error) {
       console.error("Failed to close window:", error);
     }
   };
 
-  // Reset inactivity timer on user activity
-  const resetInactivityTimer = (): void => {
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current);
-    }
-    setIsHidden(false);
-    inactivityTimerRef.current = setTimeout(() => {
-      setIsHidden(true);
-    }, 30000); // Hide after 30 seconds of inactivity
-  };
-
-  // Handle mouse movement for overlay detection
-  const handleMouseMove = (event: MouseEvent): void => {
-    resetInactivityTimer();
-
-    // Check if mouse is near the left edge (where window would be)
-    if (event.clientX < 50 && isHidden) {
-      setShowOverlay(true);
-      setHoverStartTime(Date.now());
-    } else {
-      setShowOverlay(false);
-      setHoverStartTime(null);
-      if (hoverTimerRef.current) {
-        clearTimeout(hoverTimerRef.current);
-      }
-    }
-  };
-
-  // Handle overlay hover
-  const handleOverlayHover = (): void => {
-    if (hoverStartTime && Date.now() - hoverStartTime >= 1000) {
-      setIsHidden(false);
-      setShowOverlay(false);
-      resetInactivityTimer();
-    }
-  };
-
   useEffect(() => {
-    const unsub = subscribeFallback((b) => setFallbackActiveState(b));
-    return () => unsub();
+    const unsubscribe = subscribeFallback((active) =>
+      setFallbackActiveState(active),
+    );
+    return () => unsubscribe();
   }, []);
-  useEffect(() => {
-    if (!isDesktop) return;
-
-    // Start inactivity timer
-    resetInactivityTimer();
-
-    // Add mouse move listener
-    document.addEventListener("mousemove", handleMouseMove);
-
-    return () => {
-      if (inactivityTimerRef.current) {
-        clearTimeout(inactivityTimerRef.current);
-      }
-      if (hoverTimerRef.current) {
-        clearTimeout(hoverTimerRef.current);
-      }
-      document.removeEventListener("mousemove", handleMouseMove);
-    };
-  }, [isHidden, isDesktop]);
-
-  useEffect(() => {
-    if (showOverlay && hoverStartTime) {
-      hoverTimerRef.current = setTimeout(() => {
-        handleOverlayHover();
-      }, 1000);
-    }
-
-    return () => {
-      if (hoverTimerRef.current) {
-        clearTimeout(hoverTimerRef.current);
-      }
-    };
-  }, [showOverlay, hoverStartTime]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
-      // Only handle shortcuts when not typing in an input/textarea
       const target = event.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||
@@ -141,116 +55,100 @@ export function Layout(): React.JSX.Element {
         return;
       }
 
-      // Ctrl/Cmd + N: Create new prompt
-      if ((event.ctrlKey || event.metaKey) && event.key === "n") {
+      const key = event.key.toLowerCase();
+
+      if ((event.ctrlKey || event.metaKey) && key === "n") {
         event.preventDefault();
         navigate("/create");
         return;
       }
 
-      // Ctrl/Cmd + K: Focus search (only on library page)
-      if ((event.ctrlKey || event.metaKey) && event.key === "k") {
+      if ((event.ctrlKey || event.metaKey) && key === "k") {
         event.preventDefault();
-        if (location.pathname === "/") {
-          // Dispatch custom event to focus search in PromptListPage
-          window.dispatchEvent(new CustomEvent("focus-search"));
-        }
+        navigate("/");
+        window.setTimeout(
+          () => window.dispatchEvent(new CustomEvent("focus-search")),
+          0,
+        );
         return;
       }
 
-      // Escape: Clear search or go back
-      if (event.key === "Escape") {
-        if (location.pathname === "/") {
-          // Dispatch custom event to clear search in PromptListPage
-          window.dispatchEvent(new CustomEvent("clear-search"));
-        }
-        return;
+      if (key === "escape" && location.pathname === "/") {
+        window.dispatchEvent(new CustomEvent("clear-search"));
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [navigate, location.pathname]);
+  }, [location.pathname, navigate]);
 
   return (
-    <>
-      {isDesktop && showOverlay && (
-        <div className="window-overlay" onMouseEnter={handleOverlayHover}>
-          <div className="overlay-icon">💬</div>
-        </div>
-      )}
+    <div className="app-shell">
       {isDesktop && (
-        <div className="window-controls-bar">
+        <div className="window-controls-bar" data-tauri-drag-region>
           <div className="window-controls">
             <button
+              type="button"
               className="window-control window-control--minimize"
-              onClick={handleMinimize}
-              title={t("window.minimize")}
+              onClick={() => void handleMinimize()}
+              title="Minimize"
+              aria-label="Minimize"
             >
-              ─
+              −
             </button>
             <button
-              className="window-control window-control--close"
-              onClick={handleClose}
-              title={t("window.close")}
+              type="button"
+              className="window-control"
+              onClick={() => void handleToggleMaximize()}
+              title="Maximize or restore"
+              aria-label="Maximize or restore"
             >
-              ✕
+              □
+            </button>
+            <button
+              type="button"
+              className="window-control window-control--close"
+              onClick={() => void handleClose()}
+              title="Close"
+              aria-label="Close"
+            >
+              ×
             </button>
           </div>
         </div>
       )}
-      <div
-        className={`app-shell ${isDesktop && isHidden ? "app-shell--hidden" : ""}`}
-      >
-        <div className="app-layout">
-          <aside
-            className={`app-sidebar ${sidebarExpanded ? "app-sidebar--expanded" : ""}`}
-          >
-            <div
-              className={`sidebar-arrow ${sidebarExpanded ? "sidebar-arrow--expanded" : ""}`}
-              onClick={handleSidebarArrowClick}
-            >
-              {sidebarExpanded ? "‹" : "›"}
-            </div>
-            <NavLink
-              to="/settings"
-              className="sidebar-icon"
-              title={t("sidebar.settings")}
-            >
-              ⚙️
+
+      <div className="app-layout">
+        <div className="app-main">
+          <header className="app-shell__header" data-tauri-drag-region>
+            <NavLink to="/" className="app-brand" aria-label="Prompt Vault home">
+              <span className="app-brand__mark" aria-hidden="true">
+                PV
+              </span>
+              <span className="app-brand__text">
+                <strong>Prompt Vault</strong>
+                <small>Local prompt library</small>
+              </span>
             </NavLink>
-            <div
-              className="sidebar-icon sidebar-profile"
-              title={t("sidebar.profile")}
-            >
-              👤
+
+            <nav aria-label="Primary navigation">
+              <NavLink to="/">Library</NavLink>
+              <NavLink to="/create">New prompt</NavLink>
+              <NavLink to="/settings">Settings</NavLink>
+            </nav>
+          </header>
+
+          {fallbackActiveState && (
+            <div className="offline-banner" role="status">
+              Local fallback mode is active.
             </div>
-          </aside>
-          <div className="app-main">
-            <header className="app-shell__header" data-tauri-drag-region>
-              <h1>{t("app.title")}</h1>
-              <nav>
-                <NavLink to="/" className="nav-highlight">
-                  {t("nav.library")}
-                </NavLink>
-                <NavLink
-                  to="/create"
-                  className="nav-highlight"
-                  onClick={handleCreateClick}
-                >
-                  {t("nav.create")}
-                </NavLink>
-              </nav>
-            </header>
-            {fallbackActiveState && (
-              <div className="offline-banner">{t("banner.offline")}</div>
-            )}
-            <main className="app-shell__content">
-              <Outlet />
-            </main>
-          </div>
+          )}
+
+          <main className="app-shell__content">
+            <Outlet />
+          </main>
         </div>
       </div>
-    </>
+    </div>
   );
 }

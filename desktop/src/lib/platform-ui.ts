@@ -1,6 +1,14 @@
-// Desktop UI adapter for shared @nw/* UI packages.
+export type Theme = "light" | "dark" | "system";
 
-export {
-  applyTheme,
-  type Theme,
-} from "@nw/ui-theme";
+function resolveTheme(theme: Theme): "light" | "dark" {
+  if (theme !== "system") return theme;
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
+}
+
+export function applyTheme(theme: Theme): void {
+  const resolved = resolveTheme(theme);
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.style.colorScheme = resolved;
+}

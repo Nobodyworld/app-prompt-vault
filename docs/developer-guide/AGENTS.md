@@ -1,19 +1,47 @@
-# Agent Notes (Prompt Vault in Nobodyworld)
+# Agent Notes
 
-In this repo (`nobodyworld_full_build`), Prompt Vault is developed via the **pnpm workspace**.
-Keep agent policy centralized at the root:
+Prompt Vault is now maintained as a standalone-first repository. The source tree must remain installable without the Nobodyworld monorepo, private `@nw/*` packages, parent configuration, or parent type roots.
 
-- Baseline invariants (no agent logs, Git Maintainer only, don’t restore deletions): `../../../../.github/instructions/nw.base.instructions.md`
-- Commit workflow (apps first, then root): `../../../../.github/instructions/nw.commit-workflow.instructions.md`
+## Checklist
 
-Checklist when working on Prompt Vault:
+1. Read `README.md`, `CONTRIBUTING.md`, and the open release issues before changing code.
+2. Preserve the app-owned platform boundary documented in `standalone-dependency-matrix.md`.
+3. Use repository scripts directly rather than pnpm workspace filters.
+4. Keep `CHANGELOG.md`, release notes, and relevant guides aligned with the implementation.
+5. Add tests for every persistence, migration, auth, HTTP, tool, widget, or native behavior change.
+6. Record exact validation commands and results. State clearly when GitHub runner startup or local dependencies prevent execution.
+7. Keep confirmed follow-up work in GitHub issues linked from the active PR.
 
-1. Prefer VS Code tasks (repeatable): `Prompt Vault: Full Check`.
-2. If working on observability, enable metrics: set `PROMPT_VAULT_METRICS=true` so `/observability/metrics`, `/healthz`, and `/readyz` reflect your changes.
-3. Prefer existing app scripts, but run them via pnpm filter (examples):
- - `pnpm --filter prompt-vault release:prepare -- <version>`
- - `pnpm --filter prompt-vault extension:scaffold -- <name>`
-4. Keep docs in sync with code (e.g. `CHANGELOG.md`, `docs/releases/notes.md`, and relevant guides).
-5. Tag follow-up work using `TODO(P#, <estimate>):` markers so prioritization remains machine-readable.
+## Common commands
 
-For deeper automation guardrails, see `docs/operations/automation.md` and `docs/guides/extension-guide.md`.
+```bash
+pnpm repository:audit
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm test
+pnpm test:coverage
+pnpm test:ui
+pnpm desktop:build
+pnpm release:prepare -- <version>
+pnpm extension:scaffold -- <name>
+pnpm tags:migrate-legacy -- --source <legacy.core.db> --target <platform.db> --dry-run
+```
+
+## Observability
+
+Set `PROMPT_VAULT_METRICS=true` when validating metrics and readiness behavior. Confirm `/observability/metrics`, `/healthz`, and `/readyz` without logging prompt bodies or secrets.
+
+## Standalone and migration guardrails
+
+- Do not add `workspace:*`, private `@nw/*`, or parent-repository paths.
+- Never use the main Prompt Vault database or a legacy Core DB as the new tag/project sidecar.
+- Use the explicit legacy migration command with a separate target and dry run.
+- Keep external Hub/orchestrator integration behind optional adapters.
+
+For deeper guardrails, see:
+
+- `docs/operations/automation.md`
+- `docs/developer-guide/guides/extension-guide.md`
+- `docs/developer-guide/legacy-tag-migration.md`
+- `docs/developer-guide/standalone-dependency-matrix.md`

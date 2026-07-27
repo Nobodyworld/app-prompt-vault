@@ -154,7 +154,7 @@ export function createHealthServer(
     writeJson(res, 404, { error: "Not found" });
   });
 
-  const host = options.host ?? "0.0.0.0";
+  const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 9464;
 
   server.listen(port, host, () => {

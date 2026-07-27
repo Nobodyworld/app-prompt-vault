@@ -1,15 +1,19 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
-import type { PromptSummary } from "../types/prompt";
-import type { PromptVersionSummary } from "../types/prompt";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
+import type {
+  PromptSummary,
+  PromptVersionSummary,
+} from "../types/prompt";
 import {
   addPromptVersion,
+  getPromptById,
   listPromptVersions,
   updatePrompt,
 } from "../services/promptApi";
 import { isTauriAvailable } from "../lib/tauri";
-import { useI18n } from "../i18n";
+
+const SEMANTIC_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
 function bumpPatch(version: string): string {
   const [major, minor, patch] = version.split(".");
@@ -17,15 +21,28 @@ function bumpPatch(version: string): string {
   const minorNum = Number.parseInt(minor ?? "0", 10);
   const patchNum = Number.parseInt(patch ?? "0", 10);
 
-  if (
-    Number.isNaN(majorNum) ||
-    Number.isNaN(minorNum) ||
-    Number.isNaN(patchNum)
-  ) {
-    return version || "1.0.1";
-  }
-
+  if ([majorNum, minorNum, patchNum].some(Number.isNaN)) return "1.0.1";
   return `${majorNum}.${minorNum}.${patchNum + 1}`;
+}
+
+function parseTags(input: string): string[] {
+  return Array.from(
+    new Set(
+      input
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function sameTags(left: readonly string[], right: readonly string[]): boolean {
+  const normalizedLeft = [...new Set(left)].toSorted();
+  const normalizedRight = [...new Set(right)].toSorted();
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((tag, index) => tag === normalizedRight[index])
+  );
 }
 
 interface EditLocationState {
@@ -33,299 +50,393 @@ interface EditLocationState {
 }
 
 export function EditPromptPage(): React.JSX.Element {
-  const { t } = useI18n();
   const navigate = useNavigate();
   const { state } = useLocation() as { state?: EditLocationState };
-  const { id } = useParams();
-  const prompt = state?.prompt;
+  const { id = "" } = useParams();
+  const routedPrompt =
+    state?.prompt?.id === id ? state.prompt : undefined;
+
+  const [prompt, setPrompt] = useState<PromptSummary | undefined>(routedPrompt);
+  const [isLoadingPrompt, setIsLoadingPrompt] = useState(!routedPrompt);
+  const [notFound, setNotFound] = useState(false);
+  const [title, setTitle] = useState(routedPrompt?.title ?? "");
+  const [body, setBody] = useState(routedPrompt?.latestVersion?.body ?? "");
+  const [tags, setTags] = useState(routedPrompt?.tags.join(", ") ?? "");
+  const [category, setCategory] = useState(routedPrompt?.category ?? "");
+  const [isFavorite, setIsFavorite] = useState(
+    Boolean(routedPrompt?.isFavorite),
+  );
+  const [rating, setRating] = useState(
+    routedPrompt?.rating == null ? "" : String(routedPrompt.rating),
+  );
+  const [semanticVersion, setSemanticVersion] = useState(
+    routedPrompt?.latestVersion
+      ? bumpPatch(routedPrompt.latestVersion.semanticVersion)
+      : "1.0.1",
+  );
+  const [changelog, setChangelog] = useState("");
+  const [versions, setVersions] = useState<PromptVersionSummary[]>([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const runtimeAvailable = isTauriAvailable();
 
-  // Early return if prompt is not available or doesn't match the ID
-  if (!prompt || !prompt.id || prompt.id !== id) {
-    return <div className="status">{t("edit.missingContext")}</div>;
-  }
-
-  // At this point, prompt is guaranteed to be defined
-  const safePrompt = prompt;
-  const latestVersion = safePrompt.latestVersion;
-  const initialBody = latestVersion?.body ?? "";
-  const defaultVersion = latestVersion
-    ? bumpPatch(latestVersion.semanticVersion)
-    : "1.0.1";
-
-  const [body, setBody] = useState(initialBody);
-  const [semanticVersion, setSemanticVersion] = useState(defaultVersion);
-  const [changelog, setChangelog] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
-  const [versions, setVersions] = useState<PromptVersionSummary[]>([]);
-  const [title, setTitle] = useState(safePrompt.title ?? "");
-  const [category, setCategory] = useState(safePrompt.category ?? "");
-  const [isFavorite, setIsFavorite] = useState(Boolean(safePrompt.isFavorite));
-  const [rating, setRating] = useState<string>(
-    safePrompt.rating == null ? "" : String(safePrompt.rating),
-  );
-
-  const promptId = safePrompt.id;
-
-  const hasBody = body.trim().length > 0;
-
   useEffect(() => {
-    let mounted = true;
-    setIsLoadingVersions(true);
-    void (async () => {
-      try {
-        const result = await listPromptVersions(promptId);
-        if (mounted) setVersions(result);
-      } catch (err: unknown) {
-        if (mounted) {
-          setError(err instanceof Error ? err.message : t("edit.failed"));
-        }
-      } finally {
-        if (mounted) setIsLoadingVersions(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [promptId, t]);
-
-  async function handleRevert(version: PromptVersionSummary): Promise<void> {
-    if (!runtimeAvailable) {
-      setError(t("edit.runtimeUnavailable"));
+    if (routedPrompt || !id) {
+      setIsLoadingPrompt(false);
+      setNotFound(!routedPrompt);
       return;
     }
 
-    const ok = window.confirm(
-      `Revert to v${version.semanticVersion}? This will create a new version.`,
+    let active = true;
+    setIsLoadingPrompt(true);
+    void getPromptById(id)
+      .then((loadedPrompt) => {
+        if (!active) return;
+        setPrompt(loadedPrompt);
+        setNotFound(!loadedPrompt);
+      })
+      .catch((caught: unknown) => {
+        if (!active) return;
+        setError(
+          caught instanceof Error ? caught.message : "Unable to load the prompt.",
+        );
+        setNotFound(true);
+      })
+      .finally(() => {
+        if (active) setIsLoadingPrompt(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [id, routedPrompt]);
+
+  useEffect(() => {
+    if (!prompt) return;
+    setTitle(prompt.title);
+    setBody(prompt.latestVersion?.body ?? "");
+    setTags(prompt.tags.join(", "));
+    setCategory(prompt.category ?? "");
+    setIsFavorite(Boolean(prompt.isFavorite));
+    setRating(prompt.rating == null ? "" : String(prompt.rating));
+    setSemanticVersion(
+      prompt.latestVersion ? bumpPatch(prompt.latestVersion.semanticVersion) : "1.0.1",
     );
-    if (!ok) return;
+  }, [prompt]);
+
+  useEffect(() => {
+    if (!prompt?.id) return;
+    let active = true;
+    setIsLoadingVersions(true);
+    void listPromptVersions(prompt.id)
+      .then((result) => {
+        if (active) setVersions(result);
+      })
+      .catch((caught: unknown) => {
+        if (active) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "Unable to load version history.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoadingVersions(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [prompt?.id]);
+
+  const parsedTags = useMemo(() => parseTags(tags), [tags]);
+
+  async function handleRevert(version: PromptVersionSummary): Promise<void> {
+    if (!prompt || !runtimeAvailable) return;
+    if (!window.confirm(`Revert to v${version.semanticVersion}? This will create a new version.`)) {
+      return;
+    }
 
     setIsSaving(true);
     setError(null);
-
     try {
-      const nextVersion = bumpPatch(
-        latestVersion?.semanticVersion ?? version.semanticVersion,
-      );
       await addPromptVersion({
-        promptId: safePrompt.id,
+        promptId: prompt.id,
         body: version.body,
-        semanticVersion: nextVersion,
+        semanticVersion: bumpPatch(
+          prompt.latestVersion?.semanticVersion ?? version.semanticVersion,
+        ),
         changelog: `Revert to v${version.semanticVersion}`,
       });
       navigate("/", { replace: true, state: { refresh: true } });
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("edit.failed"));
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : "Unable to revert.");
     } finally {
       setIsSaving(false);
     }
   }
 
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ): Promise<void> {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (!prompt) return;
+    setError(null);
+    setMessage(null);
 
     if (!runtimeAvailable) {
-      setError(t("edit.runtimeUnavailable"));
+      setError("Launch Prompt Vault from the desktop app to save changes.");
+      return;
+    }
+    if (!title.trim()) {
+      setError("Give the prompt a clear title.");
+      return;
+    }
+    if (!body.trim()) {
+      setError("Prompt text cannot be empty.");
       return;
     }
 
-    if (!hasBody) {
-      setError(t("edit.bodyEmpty"));
+    const ratingNumber = rating.trim() ? Number.parseInt(rating, 10) : null;
+    if (
+      ratingNumber !== null &&
+      (Number.isNaN(ratingNumber) || ratingNumber < 1 || ratingNumber > 5)
+    ) {
+      setError("Rating must be a whole number from 1 to 5 (or empty).");
+      return;
+    }
+
+    const normalizedCategory = category.trim();
+    const originalCategory = prompt.category?.trim() ?? "";
+    const titleChanged = title.trim() !== prompt.title.trim();
+    const categoryChanged = normalizedCategory !== originalCategory;
+    const favoriteChanged = isFavorite !== Boolean(prompt.isFavorite);
+    const ratingChanged = ratingNumber !== (prompt.rating ?? null);
+    const tagsChanged = !sameTags(parsedTags, prompt.tags);
+    const bodyChanged = body !== (prompt.latestVersion?.body ?? "");
+    const versionOptionsChanged =
+      semanticVersion.trim() !==
+        (prompt.latestVersion
+          ? bumpPatch(prompt.latestVersion.semanticVersion)
+          : "1.0.1") || Boolean(changelog.trim());
+    const metadataChanged =
+      titleChanged ||
+      categoryChanged ||
+      favoriteChanged ||
+      ratingChanged ||
+      tagsChanged;
+
+    if (!metadataChanged && !bodyChanged) {
+      setMessage(
+        versionOptionsChanged
+          ? "Change the prompt text before adding a version or changelog."
+          : "No changes to save.",
+      );
+      return;
+    }
+    if (bodyChanged && !SEMANTIC_VERSION_PATTERN.test(semanticVersion.trim())) {
+      setError("Semantic version must follow MAJOR.MINOR.PATCH.");
       return;
     }
 
     setIsSaving(true);
-    setError(null);
-
     try {
-      const ratingNumber =
-        rating.trim() === "" ? null : Number.parseInt(rating, 10);
-      if (
-        rating.trim() !== "" &&
-        (Number.isNaN(ratingNumber) || ratingNumber < 1 || ratingNumber > 5)
-      ) {
-        setError(t("create.ratingInvalid"));
-        setIsSaving(false);
-        return;
-      }
-
-      const titleChanged = title.trim() !== (safePrompt?.title ?? "");
-      const categoryChanged = category.trim() !== (safePrompt?.category ?? "");
-      const favoriteChanged = isFavorite !== Boolean(safePrompt.isFavorite);
-      const ratingChanged =
-        (safePrompt.rating ?? null) !== (ratingNumber ?? null);
-
-      // Update title and category if changed
-      if (titleChanged || categoryChanged || favoriteChanged || ratingChanged) {
+      if (metadataChanged) {
         await updatePrompt({
-          id: safePrompt.id,
-          title: title.trim() || undefined,
-          category: category.trim() || undefined,
-          isFavorite,
-          rating: ratingNumber,
+          id: prompt.id,
+          ...(titleChanged ? { title: title.trim() } : {}),
+          ...(categoryChanged
+            ? { category: normalizedCategory || null }
+            : {}),
+          ...(favoriteChanged ? { isFavorite } : {}),
+          ...(ratingChanged ? { rating: ratingNumber } : {}),
+          ...(tagsChanged ? { tags: parsedTags } : {}),
         });
       }
-
-      await addPromptVersion({
-        promptId: safePrompt.id,
-        body,
-        semanticVersion: semanticVersion.trim(),
-        changelog: changelog.trim() || undefined,
-      });
-
+      if (bodyChanged) {
+        await addPromptVersion({
+          promptId: prompt.id,
+          body,
+          semanticVersion: semanticVersion.trim(),
+          changelog: changelog.trim() || undefined,
+        });
+      }
       navigate("/", { replace: true, state: { refresh: true } });
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("edit.failed"));
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : "Unable to save changes.");
     } finally {
       setIsSaving(false);
     }
   }
 
+  if (isLoadingPrompt) {
+    return <div className="status">Loading prompt…</div>;
+  }
+
+  if (notFound || !prompt) {
+    return (
+      <section className="status" aria-labelledby="prompt-not-found-title">
+        <h2 id="prompt-not-found-title">Prompt not found</h2>
+        <p>This prompt may have been deleted or is no longer available.</p>
+        <Link to="/">Return to Library</Link>
+        {error && <p className="error">{error}</p>}
+      </section>
+    );
+  }
+
   return (
-    <form className="prompt-form" onSubmit={handleSubmit}>
-      <header>
-        <h2>{t("edit.title")}</h2>
-        <p>{t("edit.subtitle")}</p>
+    <form className="prompt-form prompt-form--focused" onSubmit={handleSubmit}>
+      <header className="form-heading">
+        <div>
+          <h2>Edit prompt</h2>
+          <p>Metadata saves in place. Changing prompt text creates one new version.</p>
+        </div>
       </header>
 
       <label>
-        {t("edit.label.title")}
+        Title
         <input
+          autoFocus
+          required
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder={t("edit.title.placeholder")}
-          required
         />
       </label>
 
       <label>
-        {t("edit.label.category")}
-        <input
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-          placeholder={t("create.category.placeholder")}
-        />
-      </label>
-
-      <label>
-        <input
-          type="checkbox"
-          checked={isFavorite}
-          onChange={(event) => setIsFavorite(event.target.checked)}
-        />
-        {t("edit.label.favorite")}
-      </label>
-
-      <label>
-        {t("edit.label.rating")}
-        <input
-          inputMode="numeric"
-          value={rating}
-          onChange={(event) => setRating(event.target.value)}
-          placeholder={t("create.rating.placeholder")}
-        />
-      </label>
-
-      <label>
-        {t("edit.label.body")}
+        Prompt
         <textarea
           required
-          rows={12}
+          rows={14}
           value={body}
           onChange={(event) => setBody(event.target.value)}
-          placeholder={t("edit.body.placeholder")}
         />
       </label>
 
       <label>
-        {t("edit.label.changelog")}
-        <textarea
-          rows={3}
-          value={changelog}
-          onChange={(event) => setChangelog(event.target.value)}
-          placeholder={t("edit.changelog.placeholder")}
-        />
-      </label>
-
-      <div className="metadata-preview">
-        <div>
-          <span className="metadata-label">{t("edit.meta.id")}</span>
-          <span className="metadata-value">{promptId}</span>
-        </div>
-        {latestVersion && (
-          <div>
-            <span className="metadata-label">
-              {t("edit.meta.currentVersion")}
-            </span>
-            <span className="metadata-value">
-              v{latestVersion.semanticVersion}
-            </span>
-          </div>
-        )}
-      </div>
-
-      <section className="metadata-preview" aria-label="Version history">
-        <div>
-          <span className="metadata-label">Version history</span>
-          <span className="metadata-value">
-            {isLoadingVersions ? "Loading…" : `${versions.length} version(s)`}
-          </span>
-        </div>
-        {!isLoadingVersions && versions.length > 0 && (
-          <div className="metadata-value version-history__content">
-            <ul className="version-history__list">
-              {versions.map((version) => (
-                <li key={version.id} className="version-history__item">
-                  <span>
-                    v{version.semanticVersion} ·{" "}
-                    {new Date(version.updatedAt).toLocaleString()}
-                  </span>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => void handleRevert(version)}
-                    disabled={isSaving}
-                  >
-                    Revert
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      <label>
-        {t("edit.label.newVersion")}
+        Tags <span className="field-optional">Optional</span>
         <input
-          value={semanticVersion}
-          onChange={(event) => setSemanticVersion(event.target.value)}
-          placeholder={t("edit.newVersion.placeholder")}
-          required
+          aria-label="Tags"
+          value={tags}
+          onChange={(event) => setTags(event.target.value)}
+          placeholder="writing, reporting, client-work"
         />
+        <small>Separate tags with commas. Repeated tags are removed.</small>
       </label>
 
+      <details className="advanced-fields">
+        <summary>Version and organization</summary>
+        <div className="advanced-fields__content">
+          <label>
+            Category
+            <input
+              aria-label="Category"
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              placeholder="Work, Personal, Research…"
+            />
+          </label>
+
+          <label>
+            Rating
+            <input
+              inputMode="numeric"
+              value={rating}
+              onChange={(event) => setRating(event.target.value)}
+              placeholder="1–5"
+            />
+          </label>
+
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={isFavorite}
+              onChange={(event) => setIsFavorite(event.target.checked)}
+            />
+            Mark as favorite
+          </label>
+
+          <label>
+            Next semantic version
+            <input
+              value={semanticVersion}
+              onChange={(event) => setSemanticVersion(event.target.value)}
+              placeholder="1.0.1"
+            />
+            <small>Used only when the prompt text changes.</small>
+          </label>
+
+          <label>
+            Changelog <span className="field-optional">Optional</span>
+            <textarea
+              rows={3}
+              value={changelog}
+              onChange={(event) => setChangelog(event.target.value)}
+            />
+          </label>
+
+          <div className="metadata-preview metadata-preview--quiet">
+            <div>
+              <span className="metadata-label">ID</span>
+              <span className="metadata-value">{prompt.id}</span>
+            </div>
+            {prompt.latestVersion && (
+              <div>
+                <span className="metadata-label">Current version</span>
+                <span className="metadata-value">
+                  {prompt.latestVersion.semanticVersion}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <section className="metadata-preview" aria-label="Version history">
+            <div>
+              <span className="metadata-label">Version history</span>
+              <span className="metadata-value">
+                {isLoadingVersions ? "Loading…" : `${versions.length} version(s)`}
+              </span>
+            </div>
+            {!isLoadingVersions && versions.length > 0 && (
+              <ul className="version-history__list">
+                {versions.map((version) => (
+                  <li key={version.id} className="version-history__item">
+                    <span>
+                      v{version.semanticVersion} ·{" "}
+                      {new Date(version.updatedAt).toLocaleString()}
+                    </span>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => void handleRevert(version)}
+                      disabled={isSaving}
+                    >
+                      Revert
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      </details>
+
+      {message && <p className="status">{message}</p>}
       {error && <p className="error">{error}</p>}
 
-      <div className="form-actions">
-        <button
-          className="secondary"
-          type="button"
-          onClick={() => navigate(-1)}
-        >
-          {t("actions.cancel")}
+      <div className="form-actions form-actions--balanced">
+        <button className="secondary" type="button" onClick={() => navigate(-1)}>
+          Cancel
         </button>
         <button type="submit" disabled={isSaving || !runtimeAvailable}>
-          {isSaving ? t("actions.saving") : t("actions.save")}
+          {isSaving ? "Saving…" : "Save changes"}
         </button>
       </div>
 
       {!runtimeAvailable && (
-        <p className="warning">{t("edit.warning.runtimeUnavailable")}</p>
+        <p className="warning">
+          Launch Prompt Vault from the desktop app to save prompt changes.
+        </p>
       )}
     </form>
   );

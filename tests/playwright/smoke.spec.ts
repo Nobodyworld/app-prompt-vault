@@ -1,103 +1,136 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from "@playwright/test";
 
 /**
- * Smoke tests for the Prompt Vault desktop application
- * These tests verify basic functionality and UI elements are working
+ * Stable shell checks for the standalone Prompt Vault product surface.
  */
+test.describe("Desktop App Smoke Tests", () => {
+  test("loads the focused prompt library", async ({ page }) => {
+    await page.goto("/");
 
-test.describe('Desktop App Smoke Tests', () => {
-    test('should load the application', async ({ page }) => {
-        await page.goto('/');
+    await expect(page).toHaveTitle("Prompt Vault Desktop");
+    await expect(
+      page.getByRole("link", { name: "Prompt Vault home" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Your prompt library" }),
+    ).toBeVisible();
+  });
 
-        // Check that the app loaded by looking for the title
-        await expect(page).toHaveTitle('Prompt Vault Desktop');
+  test("displays only the primary navigation", async ({ page }) => {
+    await page.goto("/");
 
-        // Check for main app header
-        const header = page.locator('h1:has-text("Prompt Vault")');
-        await expect(header).toBeVisible();
-    });
+    await expect(page.getByRole("link", { name: "Library" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "New prompt" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Advanced tools" }),
+    ).not.toBeVisible();
+  });
 
-    test('should display main navigation', async ({ page }) => {
-        await page.goto('/');
+  test("provides an accessible settings entry point", async ({ page }) => {
+    await page.goto("/");
 
-        // Check for navigation links
-        const libraryLink = page.locator('nav a:has-text("Library")');
-        const createLink = page.locator('nav a:has-text("Create")');
+    const settingsLink = page.getByRole("link", { name: "Settings" });
+    await expect(settingsLink).toBeVisible();
+    await settingsLink.focus();
+    await expect(settingsLink).toBeFocused();
+  });
 
-        await expect(libraryLink).toBeVisible();
-        await expect(createLink).toBeVisible();
-    });
+  test("navigates between library and prompt creation", async ({ page }) => {
+    await page.goto("/");
 
-    test('should display sidebar elements', async ({ page }) => {
-        await page.goto('/');
+    await page.getByRole("link", { name: "New prompt" }).click();
+    await expect(page).toHaveURL(/.*\/create/);
+    await expect(page.getByRole("heading", { name: "New prompt" })).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: "Title", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: "Prompt", exact: true }),
+    ).toBeVisible();
 
-        // Check for sidebar elements
-        const settingsIcon = page.locator('.sidebar-icon[title="Settings"]');
-        const profileIcon = page.locator('.sidebar-profile[title="Profile"]');
+    await page.getByRole("link", { name: "Library" }).click();
+    await expect(page).toHaveURL(/.*\/$/);
+  });
 
-        await expect(settingsIcon).toBeVisible();
-        await expect(profileIcon).toBeVisible();
-    });
+  test("keeps prompt saving explicit and preserves an unfinished draft", async ({
+    page,
+  }) => {
+    await page.goto("/create");
 
-    test('should navigate between pages', async ({ page }) => {
-        await page.goto('/');
+    const title = page.getByRole("textbox", { name: "Title", exact: true });
+    const prompt = page.getByRole("textbox", { name: "Prompt", exact: true });
+    await title.fill("Draft prompt title");
+    await prompt.fill("Draft prompt body");
 
-        // Click on Create link
-        await page.locator('nav a:has-text("Create")').click();
+    await page.getByRole("link", { name: "New prompt" }).click();
+    await expect(title).toHaveValue("Draft prompt title");
+    await expect(prompt).toHaveValue("Draft prompt body");
+    await expect(
+      page.getByText("Prompt creation requires the desktop runtime."),
+    ).not.toBeVisible();
 
-        // Should navigate to create page (check URL)
-        await expect(page).toHaveURL(/.*\/create/);
+    await page.getByRole("link", { name: "Library" }).click();
+    await page.getByRole("link", { name: "New prompt" }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Title", exact: true }),
+    ).toHaveValue("Draft prompt title");
+    await expect(
+      page.getByRole("textbox", { name: "Prompt", exact: true }),
+    ).toHaveValue("Draft prompt body");
+  });
 
-        // Click on Library link
-        await page.locator('nav a:has-text("Library")').click();
+  test("keeps advanced utilities outside the everyday library", async ({
+    page,
+  }) => {
+    await page.goto("/settings");
 
-        // Should navigate back to home
-        await expect(page).toHaveURL(/.*\/$/);
-    });
+    await expect(
+      page.getByRole("heading", { name: "Backup and local data" }),
+    ).toBeVisible();
+    const advancedLink = page.getByRole("link", { name: "Open advanced tools" });
+    await expect(advancedLink).toBeVisible();
+    await advancedLink.click();
+    await expect(page).toHaveURL(/.*\/advanced/);
+  });
 
-    test('should handle basic interactions', async ({ page }) => {
-        await page.goto('/');
+  test("remains functional after keyboard input", async ({ page }) => {
+    await page.goto("/");
+    await expect(
+      page.getByRole("heading", { name: "Your prompt library" }),
+    ).toBeVisible();
 
-        // Test that basic interactions work (keyboard shortcuts may not work in test environment)
-        // Test Escape key handling - should not crash the app
-        await page.keyboard.press('Escape');
+    await page.keyboard.press("Control+KeyK");
+    await expect(page.getByLabel("Search prompts")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByRole("heading", { name: "Your prompt library" }),
+    ).toBeVisible();
+  });
 
-        // App should still be functional after keyboard input
-        const header = page.locator('h1:has-text("Prompt Vault")');
-        await expect(header).toBeVisible();
+  test("renders at supported viewport sizes", async ({ page }) => {
+    await page.goto("/");
 
-        // Test that clicking navigation works
-        await page.locator('nav a:has-text("Create")').click();
-        await expect(page).toHaveURL(/.*\/create/);
+    for (const viewport of [
+      { width: 400, height: 600 },
+      { width: 768, height: 1024 },
+      { width: 1920, height: 1080 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expect(
+        page.getByRole("heading", { name: "Your prompt library" }),
+      ).toBeVisible();
+    }
+  });
 
-        // Navigate back
-        await page.locator('nav a:has-text("Library")').click();
-        await expect(page).toHaveURL(/.*\/$/);
-    });
+  test("does not show the error boundary during normal startup", async ({
+    page,
+  }) => {
+    await page.goto("/");
 
-    test('should be responsive on different viewport sizes', async ({ page }) => {
-        await page.goto('/');
-
-        // Test mobile viewport
-        await page.setViewportSize({ width: 375, height: 667 });
-        await expect(page.locator('h1:has-text("Prompt Vault")')).toBeVisible();
-
-        // Test tablet viewport
-        await page.setViewportSize({ width: 768, height: 1024 });
-        await expect(page.locator('h1:has-text("Prompt Vault")')).toBeVisible();
-
-        // Test desktop viewport
-        await page.setViewportSize({ width: 1920, height: 1080 });
-        await expect(page.locator('h1:has-text("Prompt Vault")')).toBeVisible();
-    });
-
-    test('should display error boundaries correctly', async ({ page }) => {
-        await page.goto('/');
-
-        // Test that error boundaries are working (if implemented)
-        // This test may need to be adjusted based on actual error boundary implementation
-        const errorBoundary = page.locator('[data-testid="error-boundary"], .error-boundary');
-        // Error boundary should not be visible on normal load
-        await expect(errorBoundary).not.toBeVisible();
-    });
+    const errorBoundary = page.locator(
+      '[data-testid="error-boundary"], .error-boundary',
+    );
+    await expect(errorBoundary).not.toBeVisible();
+  });
 });

@@ -1,91 +1,67 @@
-# Prompt Vault Documentation
+# Prompt Vault documentation
 
-## Doc Meta
+This directory contains product, development, operations, security, and release documentation for Prompt Vault.
 
-- **Tier:** 3
+> Source code, the repository README, and open release issues are authoritative when an older planning document conflicts with current behavior. Public-showcase blockers are tracked in issue #26.
 
-Welcome to the comprehensive documentation for Prompt Vault, a cross-platform desktop application for managing reusable prompts with versioning, tagging, and local persistence.
+## Start here
 
-## Documentation Structure
+- [Repository overview and release status](../README.md)
+- [Standalone product experience and validation record](product-experience.md)
+- [Getting started index](getting-started/README.md)
+- [Windows local desktop workflow](developer-guide/windows-local-desktop-workflow.md)
+- [Standalone dependency matrix](developer-guide/standalone-dependency-matrix.md)
+- [Legacy tag/project migration](developer-guide/legacy-tag-migration.md)
+- [Developer workflows](developer-guide/workflows.md)
+- [Architecture overview](developer-guide/architecture/overview.md)
+- [API specification](api-reference/SPEC.md)
 
-This documentation is organized following industry best practices to help you find what you need quickly:
+## Product guidance
 
-### 🚀 Getting Started
+- The Library is the primary surface.
+- Create, search, copy, edit, and backup are the everyday workflow.
+- Raw bundle text, cross-app payloads, and bulk administration are advanced tools.
+- The desktop app is independent even when integrated into a larger Nobodyworld system.
+- Windows uninstall currently preserves the local Prompt Vault database.
 
-New to Prompt Vault? Start here for installation, setup, and basic usage.
+See [Product experience](product-experience.md) for the detailed hierarchy, exact-head local validation record, installer hashes, and current/legacy data-location findings.
 
-- **[Quick Start Guide](getting-started/quick-start.md)** - Get up and running in minutes
-- **[Installation](getting-started/installation.md)** - System requirements and installation instructions
-- **[Basic Usage](getting-started/basic-usage.md)** - Core features and first steps
+## Development and automation
 
-### 📖 User Guide
+- [Contributing guide](../CONTRIBUTING.md)
+- [Agent instructions](AGENT_INSTRUCTIONS.md)
+- [Developer agent notes](developer-guide/AGENTS.md)
+- [Windows local desktop workflow](developer-guide/windows-local-desktop-workflow.md)
+- [Extension guide](developer-guide/guides/extension-guide.md)
+- [Git integration](developer-guide/git-integration.md)
 
-Learn how to use Prompt Vault effectively for your workflow.
+## Operations
 
-- **[Creating Prompts](user-guide/creating-prompts.md)** - How to add and organize prompts
-- **[Version Management](user-guide/version-management.md)** - Working with prompt versions
-- **[Tagging System](user-guide/tagging.md)** - Using tags for organization
-- **[Search & Filtering](user-guide/search-filtering.md)** - Finding prompts efficiently
+- [Operations index](operations/README.md)
+- [Automation operations](operations/automation.md)
+- [Automation roles](operations/automation-roles.md)
+- [Performance notes](operations/performance-notes.md)
+- [Telemetry guidance](operations/telemetry.md)
 
-### 🛠 Developer Guide
+## Security
 
-Contributing to Prompt Vault or extending its functionality.
+- [HTTP and deployment security guide](SECURITY.md)
+- [Security reporting policy](security/policies/security.md)
+- [Dependency inventory](operations/DEPENDENCIES.md)
 
-- **[Contributing](developer-guide/contributing.md)** - Development workflow and contribution guidelines
-- **[Architecture](developer-guide/architecture/)** - System design and technical architecture
-- **[Extension Guide](developer-guide/guides/extension-guide.md)** - Building plugins and extensions
-- **[Development Setup](developer-guide/development-setup.md)** - Local development environment
-- **[Code Style](developer-guide/style-guide.md)** - Coding standards and conventions
-- **[Agent Instructions](developer-guide/agents.md)** - Guidelines for AI-assisted development
+## Releases
 
-### 🔧 Operations
+- [Release notes](releases/notes.md)
+- [Changelog](../CHANGELOG.md)
+- [Project stage snapshot](../project-stage-snapshot.md) — historical assessment; verify against current source and issues
 
-Running and maintaining Prompt Vault in production.
+## Current release blockers
 
-- **[Deployment](operations/deployment.md)** - Production deployment guides
-- **[Monitoring](operations/monitoring.md)** - Observability and health checks
-- **[Backup & Recovery](operations/backup-recovery.md)** - Data backup and restoration
-- **[Performance](operations/performance.md)** - Performance tuning and optimization
-- **[Incident Response](operations/incident-response.md)** - Troubleshooting and incident handling
-- **[Dependencies](operations/dependencies.md)** - Managing project dependencies
-
-### 🔒 Security
-
-Security policies, compliance, and best practices.
-
-- **[Security Policy](security/security.md)** - Security guidelines and procedures
-- **[Compliance](security/compliance.md)** - Regulatory compliance information
-
-### 📚 API Reference
-
-Technical documentation for APIs and specifications.
-
-- **[API Specification](api-reference/spec.md)** - Technical specifications and APIs
-- **[Data Models](api-reference/data-models.md)** - Database schemas and data structures
-
-### 📋 Releases
-
-Version history and release information.
-
-- **[Release Notes](releases/notes.md)** - Changelog and version history
-- **[Upgrade Guide](releases/upgrade-guide.md)** - Upgrading between versions
-
-## Additional Resources
-
-- **[Task List](developer-guide/tasklist.md)** - Current development tasks and roadmap
-- **[Reports](developer-guide/reports/)** - Project reports and status updates
-- **[Ideas](developer-guide/ideas/)** - Feature ideas and brainstorming
-
-## Getting Help
-
-- **Issues**: [GitHub Issues](https://github.com/Nobodyworld/app-prompt-vault/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Nobodyworld/app-prompt-vault/discussions)
-- **Documentation Issues**: Report documentation problems in the [docs repository](https://github.com/Nobodyworld/app-prompt-vault)
-
-## Contributing to Documentation
-
-We welcome contributions to improve our documentation! See our [Contributing Guide](developer-guide/contributing.md) for details on how to contribute.
-
----
-
-*This documentation is maintained by the Prompt Vault development team.*
+- Issue #22: reviewed lockfile and clean-clone reproducibility proof
+- Issue #23: release-grade validation and verified artifacts
+- Issue #25: standalone UX, primary-flow automation, screenshots, and native acceptance
+- Issue #26: governing release tracker
+- Issue #28: legacy tag/project sidecar migration and persistence verification
+- Issue #29: legacy session-token decision and auth review
+- Issue #32: advisory reconciliation and artifact acceptance
+- Issue #36: application coverage target or approved threshold

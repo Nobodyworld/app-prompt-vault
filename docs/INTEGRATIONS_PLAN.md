@@ -1,83 +1,89 @@
-# Integrations Plan (app-prompt-vault)
+# Integrations Plan
 
-## Doc Meta
+## Objective
 
-- **Tier:** 3
+Prompt Vault is standalone-first. External Nobodyworld, Hub, marketplace, Planner, Buttons, or agent integrations must consume app-owned contracts through optional adapters and must not become installation prerequisites.
 
-This document tracks how `app-prompt-vault` integrates with the Nobodyworld OS platform and `app-hub`.
+## Stable identifiers
 
-## Identifiers
-
-- Marketplace package ID: `prompt-vault`
-- Orchestrator tool `source`: `prompt-vault`
+- App/package ID: `prompt-vault`
+- Tool `source`: `prompt-vault`
 - Widget `appId`: `prompt-vault`
+- Prompt lifecycle events:
+  - `pv:prompt_created`
+  - `pv:prompt_updated`
+  - `pv:prompt_deleted`
 
-## Entry Points
+## App-owned entry points
 
-- Platform wiring: `src/lib/nw-bridge.ts` → `initializeNwIntegrations()`
-- Tools: `src/tools/index.ts` → `registerPromptVaultTools()`
-- Widget manifest: `manifests/widgets.json`
+- Tool definitions and handlers: `src/tools/index.ts`
+- Tool registry and invocation: `src/lib/platform-orchestrator.ts`
+- Widget metadata: `src/widgets/index.ts`
+- Widget registry: `src/lib/platform-pages-widgets.ts`
+- Prompt lifecycle/event bridge: `src/lib/nw-bridge.ts`
+- Tag/project and auth compatibility: `src/lib/platform-core.ts`
+- Static widget manifest: `manifests/widgets.json`
 
-## Notes
+The historical `nw-bridge` filename is retained for compatibility, but its current dependencies are app-owned. Future adapters may be moved into separately installable packages.
 
-- Deeper integration docs live under `docs/developer-guide/`.
+## Integration principles
 
-## Cross-App Contracts
+1. Prompt Vault must install, build, test, and package without external platform packages.
+2. Integration adapters depend on Prompt Vault contracts; Prompt Vault does not depend on a specific Hub implementation.
+3. Network or agent-triggered writes retain confirmation and authentication requirements.
+4. Prompt bodies, credentials, and tokens never enter event payloads, logs, or telemetry.
+5. Adapter failures must not prevent local prompt CRUD, search, copy, versioning, export, or restart.
+6. Integration claims require an executable contract/integration test.
 
-### Event Bus Contracts
+## Event contracts
 
-Prompt Vault integrates with other apps via the shared event bus (`@nw/event-bus`). All events follow a consistent schema:
+The in-process event bus is typed by `PlatformEventMap` in `src/lib/platform-core.ts`.
+
+Published Prompt Vault events carry identifiers and optional actor/request context, not prompt content:
 
 ```typescript
-interface EventContract {
-  type: string;        // Event type identifier
-  payload: unknown;    // Type-safe payload
-  source: string;      // Source app identifier
-  timestamp: Date;     // Event timestamp
+interface PromptLifecycleEvent {
+  promptId: string;
+  actorUserId?: string;
+  requestId?: string;
 }
 ```
 
-**Published Events:**
+External adapters may forward these events, but should preserve the minimal payload and add transport metadata outside the domain event.
 
-- `pv:prompt_created`: Fired when a new prompt is created
-- `pv:prompt_updated`: Fired when a prompt is modified
-- `pv:prompt_deleted`: Fired when a prompt is deleted
+## Tool contracts
 
-**Consumed Events:**
+The authoritative definitions live in `promptVaultToolDefinitions` under `src/tools/index.ts`. The app-local registry supports registration, lookup, reset for tests, and direct invocation.
 
-- `marketplace:app-installed`: Triggers prompt import from installed apps
-- `workflow-buttons:button-executed`: May reference prompts for execution
-
-### Tool Payload Schemas
-
-All Prompt Vault tools (`pv_*`) follow consistent parameter and response schemas:
-
-**Common Parameters:**
+Common result shape:
 
 ```typescript
-interface CommonToolParams {
-  dbPath?: string;     // Optional database path override
-  limit?: number;      // Result limit for list/search operations
-  offset?: number;     // Pagination offset
-}
-```
-
-**Response Format:**
-
-```typescript
-interface ToolResponse {
+interface ToolResult {
   success: boolean;
-  data?: unknown;      // Operation result
-  error?: string;      // Error message if success=false
-  metadata?: {         // Optional metadata
-    count?: number;
-    total?: number;
-    page?: number;
-  };
+  data?: unknown;
+  error?: string;
+  code?: string;
+  validationErrors?: string[];
 }
 ```
 
-**Tool Schemas:**
+External orchestrators should translate their transport/runtime context into the app-owned `ToolContext` rather than requiring Prompt Vault to import a platform SDK.
 
-The authoritative tool definitions live in `src/tools/index.ts` via `promptVaultToolDefinitions`.
-Use those definitions as the contract surface for Hub/orchestrator.
+## Widget contracts
+
+The authoritative definitions live under `src/widgets/`. An external Hub adapter may consume the static manifest or `getRegisteredWidgets()` and translate definitions into its own registry.
+
+## Planned adapters
+
+- Nobodyworld Hub widget adapter
+- Nobodyworld orchestrator adapter
+- Planner AiDo import/export adapter
+- Workflow Buttons switchboard adapter
+- Marketplace prompt-pack installer
+- Optional external event transport
+
+Each adapter should live behind an explicit package or entry point and have its own compatibility tests.
+
+## Release status
+
+The standalone contracts are implemented but not current-head runtime validated because GitHub runner jobs fail before their first step. Do not claim these integrations work end to end until the relevant adapter and test evidence exist.

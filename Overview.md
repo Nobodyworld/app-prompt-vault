@@ -1,38 +1,53 @@
-# Prompt Vault — Overview (Snapshot)
+# Prompt Vault — Overview
 
-_Last updated: 2025-12-22._
+_Last updated: 2026-07-13._
 
-This file is a high-signal app snapshot intended to feed the monorepo `Overview.md` apps section.
+Prompt Vault is a local-first prompt library with SQLite persistence, semantic version history, search/filtering, import/export, CLI, HTTP API, React UI, Tauri shell, and automation contracts.
 
-## Root Overview Snippet
+## Current status
 
-<!-- nw-root-overview:start -->
+- **Stage:** substantial beta / pre-release.
+- **Source boundary:** standalone; no private `@nw/*` or `workspace:*` package is declared.
+- **Persistence:** main prompt database plus a separate app-owned tag/project sidecar.
+- **Automation:** tool and widget definitions use app-local registries; external Hub adapters are optional.
+- **Validation:** the last green hosted audit predates the final extraction. Current GitHub runner jobs fail before their first step, so the latest head is not runtime-validated.
 
-- **Goal**: Prompt vault with tagging, search, and multiple surfaces (CLI, HTTP API, desktop UI), with SQLite persistence.
-- **Status**:
-  - Active (most complete backend in repo): SQLite migrations + repository layer; CLI + Express HTTP API exist.
-  - Desktop UI exists (Vite config under `desktop/`); Tauri wrapper is available.
-- **Key deps**:
-  - Workspace: `@nw/core-db`, `@nw/orchestrator-sdk`, `@nw/secrets`, `@nw/ui-*` (plus other platform helpers).
-  - Runtime: Express + `better-sqlite3`.
-  - Testing: Vitest (plus Playwright UI tests where enabled).
-- **Gap vs design**:
-  - Hub/orchestrator widget + tool registration is not fully wired.
-  - Keep dev/build commands consistent across surfaces (Prompt Vault has separate CLI/API/Desktop entrypoints).
+## Current strengths
 
-<!-- nw-root-overview:end -->
+- Mature prompt/version repository and service layer.
+- CLI and Express HTTP surfaces.
+- Desktop React interface and Tauri configuration.
+- Authentication, rate limiting, observability, audit events, health, and metrics.
+- App-owned logging, events, API-key compatibility, tags/projects, tool registration, and widget registration.
+- Explicit legacy Core DB tag/project migration path with dry-run and safety tests.
 
-## Quickstart (repo root)
+## Remaining release blockers
 
-- CLI: `pnpm --filter prompt-vault dev`
-- Desktop UI: `pnpm --filter prompt-vault desktop:dev`
-- HTTP API: `pnpm --filter prompt-vault web:dev`
-- Desktop shell (Tauri): `pnpm --filter prompt-vault tauri:dev`
+- Reviewed `pnpm-lock.yaml` and frozen clean install.
+- Current-head lint, typecheck, build, unit/integration, coverage, and Playwright execution.
+- Cargo formatting, strict Clippy, tests, and Windows Tauri packaging.
+- Real legacy database migration plus restart/persistence verification.
+- Showcase-first UI hierarchy, screenshots/demo, and full primary-flow E2E proof.
 
-## Key References
+## Standalone commands
 
-- `README.md`
-- `docs/SPEC.md`
-- `../../docs/APPS/APP_PROMPT_VAULT.md`
-- `../../TASKLISTS/REVIEWS/prompt-vault.md`
-- `../../TASKLISTS/REVIEWS/prompt-vault-remediation-backlog.md`
+```bash
+corepack enable
+pnpm install
+pnpm repository:audit
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm desktop:build
+```
+
+These commands describe the intended checkout, not a completed release proof. Issue #26 remains the governing gate.
+
+## Key references
+
+- [`README.md`](README.md)
+- [`SPEC.md`](SPEC.md)
+- [`docs/SPEC.md`](docs/SPEC.md)
+- [`docs/developer-guide/standalone-dependency-matrix.md`](docs/developer-guide/standalone-dependency-matrix.md)
+- [`docs/developer-guide/legacy-tag-migration.md`](docs/developer-guide/legacy-tag-migration.md)
+- [Public showcase tracker](../../issues/26)

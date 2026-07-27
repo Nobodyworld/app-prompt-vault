@@ -1,39 +1,66 @@
-# Contributing
+# Contributing to Prompt Vault
 
-This app lives in the Nobodyworld OS monorepo (`nobodyworld_full_build`) under `apps/app-prompt-vault/`.
+Prompt Vault is proprietary source-available software maintained by Nobody Production. External bug reports and focused pull requests may be considered, but repository access does not grant a general right to modify, redistribute, or deploy the software. Review [LICENSE](LICENSE) before contributing.
 
-## Preferred verification (VS Code)
+## Current repository topology
 
-- `Prompt Vault: Full Check`
+The source tree is now self-contained: it declares no `workspace:*` dependencies, private `@nw/*` packages, parent-level configuration, or native package paths outside this repository.
 
-## Setup
+A standalone release is still **not proven**. The repository currently lacks a reviewed `pnpm-lock.yaml`, and the complete Node, Playwright, Rust, Tauri, Windows artifact, restart, and persistence validation matrix remains open in issues #22 and #23.
 
-- Read `../../docs/DEV/DEV_WORKFLOW.md` (submodule guardrails, Windows/WSL gotchas).
-- Install dependencies once at repo root:
+The intended bootstrap path is:
 
 ```bash
+corepack enable
 pnpm install
+pnpm repository:audit
+pnpm typecheck
+pnpm test
+pnpm desktop:build
 ```
 
-## Common commands (from repo root)
+Do not claim that a standalone clone or downloadable release is supported until the clean-clone acceptance criteria pass with a frozen lockfile in hosted CI.
+
+## Before opening a pull request
+
+Run the checks relevant to your change:
 
 ```bash
-pnpm --filter prompt-vault dev
-pnpm --filter prompt-vault desktop:dev
-pnpm --filter prompt-vault tauri:dev
-pnpm --filter prompt-vault lint
-pnpm --filter prompt-vault test
-pnpm --filter prompt-vault quality:gate
+pnpm repository:audit
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:coverage
+pnpm test:ui
+pnpm desktop:build
+pnpm tauri:build
 ```
 
-## Prompt Vault docs
+Native changes should also pass:
 
-- Dev workflows: `docs/developer-guide/workflows.md`
-- Extension/plugins: `docs/developer-guide/guides/extension-guide.md`
-- Automation guardrails: `docs/operations/automation.md`
+```bash
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
+```
 
-## Submodule workflow
+State exactly which checks ran, their results, and which checks could not run. Do not replace missing verification with a claim that the change is production-ready.
 
-Changes inside `apps/app-prompt-vault/` are changes to the app repo (submodule). Commit/push here first, then update the root repo submodule pointer.
+## Change requirements
 
-See `../../docs/DEV/DEV_WORKFLOW.md` and `../../.github/instructions/nw.commit-workflow.instructions.md`.
+- Keep prompt bodies, credentials, tokens, and personal data out of logs, fixtures, screenshots, and telemetry.
+- Add or update migrations rather than editing deployed schemas manually.
+- Preserve local-first behavior and make network exposure opt-in and explicit.
+- Add tests for changes to validation, persistence, migrations, HTTP contracts, Tauri commands, or import/export formats.
+- Keep public documentation aligned with actual scripts and supported installation paths.
+- Do not introduce private workspace packages or parent-repository paths into the standalone source boundary.
+- Record confirmed out-of-scope defects in GitHub issues and link them from the pull request.
+
+## Documentation
+
+- [Repository overview](README.md)
+- [Documentation index](docs/README.md)
+- [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
+- [Developer workflows](docs/developer-guide/workflows.md)
+- [Security policy](docs/security/policies/security.md)
+- [Public showcase tracker](../../issues/26)

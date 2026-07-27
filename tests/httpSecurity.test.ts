@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import type { AddressInfo } from "node:net";
 import Database from "better-sqlite3";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { StructuredLogger } from "../src/observability/logger.js";
 import { PromptVaultService } from "../src/services/PromptVaultService.js";
@@ -13,12 +13,63 @@ interface ServerContext {
   baseUrl: string;
   apiKey: string;
   authManager: AuthManager;
+  jwtSecret: string | undefined;
+}
+
+const DEFAULT_JWT_SECRET = "http-security-test-jwt-secret";
+
+function createSignedJwt(
+  secret: string,
+  header: unknown,
+  payload: unknown,
+): string {
+  const encodedHeader = Buffer.from(JSON.stringify(header), "utf8").toString("base64url");
+  const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest("base64url");
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+async function expectWriteDeniedWithoutMutation(options: {
+  baseUrl: string;
+  apiKey: string;
+  token: string;
+  slugPrefix: string;
+}): Promise<void> {
+  const slug = `${options.slugPrefix}-${randomUUID().slice(0, 8)}`;
+  const response = await fetch(`${options.baseUrl}/api/prompts`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${options.token}`,
+    },
+    body: JSON.stringify({
+      slug,
+      title: "Scope Denied",
+      body: "Must not be persisted",
+      semanticVersion: "1.0.0",
+    }),
+  });
+
+  expect(response.status).toBe(401);
+  const payload = await response.json();
+  expect(payload.error.code).toBe("UNAUTHORIZED");
+
+  const listResponse = await fetch(`${options.baseUrl}/api/prompts`, {
+    headers: { "x-api-key": options.apiKey },
+  });
+  expect(listResponse.status).toBe(200);
+  const listPayload = await listResponse.json();
+  expect(listPayload.data.pagination.total).toBe(0);
+  expect(listPayload.data.prompts).toEqual([]);
 }
 
 async function withSecureServer(
   handler: (context: ServerContext) => Promise<void>,
   options: {
     jwtExpiresIn?: string;
+    jwtSecret?: string | null;
     rateLimit?: { maxRequests?: number; windowMs?: number };
     includeAuthRouter?: boolean;
     authRateLimit?: { maxRequests?: number; windowMs?: number };
@@ -28,11 +79,16 @@ async function withSecureServer(
   const logger = new StructuredLogger({ level: "error" });
   const service = new PromptVaultService(database, { logger });
   const apiKey = "test-api-key";
+  const jwtSecret =
+    options.jwtSecret === null
+      ? undefined
+      : (options.jwtSecret ?? DEFAULT_JWT_SECRET);
   const authManager = new AuthManager(
     {
       apiKeys: { tester: apiKey },
       requireAuthByDefault: true,
       jwtExpiresIn: options.jwtExpiresIn ?? "1h",
+      jwtSecret,
     },
     logger
   );
@@ -112,7 +168,7 @@ async function withSecureServer(
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
   try {
-    await handler({ baseUrl, apiKey, authManager });
+    await handler({ baseUrl, apiKey, authManager, jwtSecret });
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     rateLimitStore.destroy();
@@ -164,9 +220,56 @@ describe("HTTP security middleware", () => {
     });
   });
 
-  it("allows authorized requests via JWT bearer token", async () => {
+  it("allows a configured API key in the supported Bearer fallback", async () => {
+    await withSecureServer(async ({ baseUrl, apiKey }) => {
+      const response = await fetch(`${baseUrl}/api/prompts`, {
+        headers: { authorization: `Bearer ${apiKey}` },
+      });
+
+      expect(response.status).toBe(200);
+    });
+  });
+
+  it("denies a valid JWT with missing scopes without creating a prompt", async () => {
+    await withSecureServer(async ({ baseUrl, apiKey, authManager }) => {
+      const token = authManager.generateToken({
+        userId: "user-no-scopes",
+        username: "no-scopes",
+      });
+
+      await expectWriteDeniedWithoutMutation({
+        baseUrl,
+        apiKey,
+        token,
+        slugPrefix: "jwt-missing-scopes",
+      });
+    });
+  });
+
+  it("denies a valid JWT with empty scopes without creating a prompt", async () => {
+    await withSecureServer(async ({ baseUrl, apiKey, authManager }) => {
+      const token = authManager.generateToken({
+        userId: "user-empty-scopes",
+        username: "empty-scopes",
+        scopes: [],
+      });
+
+      await expectWriteDeniedWithoutMutation({
+        baseUrl,
+        apiKey,
+        token,
+        slugPrefix: "jwt-empty-scopes",
+      });
+    });
+  });
+
+  it("allows a JWT with explicit write scope to perform a protected write", async () => {
     await withSecureServer(async ({ baseUrl, authManager }) => {
-      const token = authManager.generateToken({ userId: "user-1", username: "jwt-user" });
+      const token = authManager.generateToken({
+        userId: "user-1",
+        username: "jwt-user",
+        scopes: ["prompt-vault:write"],
+      });
 
       const response = await fetch(`${baseUrl}/api/prompts`, {
         method: "POST",
@@ -189,13 +292,100 @@ describe("HTTP security middleware", () => {
     });
   });
 
-  it("rejects expired JWT tokens", async () => {
-    await withSecureServer(
-      async ({ baseUrl, authManager }) => {
-        const token = authManager.generateToken({ userId: "user-2", username: "expired" });
+  it("allows a JWT with explicit wildcard scope to perform a protected write", async () => {
+    await withSecureServer(async ({ baseUrl, authManager }) => {
+      const token = authManager.generateToken({
+        userId: "user-wildcard",
+        username: "wildcard",
+        scopes: ["prompt-vault:*"],
+      });
 
-        await new Promise((resolve) => setTimeout(resolve, 2100));
+      const response = await fetch(`${baseUrl}/api/prompts`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          slug: `jwt-wildcard-${randomUUID().slice(0, 8)}`,
+          title: "JWT Wildcard Authorized",
+          body: "Body",
+          semanticVersion: "1.0.0",
+        }),
+      });
 
+      expect(response.status).toBe(201);
+      const payload = await response.json();
+      expect(payload.data.prompt.slug).toBeDefined();
+      expect(payload.data.prompt.latestVersion.semanticVersion).toBe("1.0.0");
+    });
+  });
+
+  it("rejects malformed and unsupported Bearer JWTs", async () => {
+    await withSecureServer(async ({ baseUrl, jwtSecret }) => {
+      const malformed = await fetch(`${baseUrl}/api/prompts`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer malformed.jwt.value",
+        },
+        body: JSON.stringify({
+          slug: `jwt-malformed-${randomUUID().slice(0, 8)}`,
+          title: "Malformed JWT",
+          body: "Body",
+          semanticVersion: "1.0.0",
+        }),
+      });
+      expect(malformed.status).toBe(401);
+
+      const now = Math.floor(Date.now() / 1000);
+      const unsupported = createSignedJwt(
+        jwtSecret as string,
+        { alg: "HS512", typ: "JWT" },
+        {
+          userId: "user-2",
+          username: "unsupported",
+          iat: now,
+          exp: now + 3600,
+        },
+      );
+      const unsupportedResponse = await fetch(`${baseUrl}/api/prompts`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${unsupported}`,
+        },
+        body: JSON.stringify({
+          slug: `jwt-unsupported-${randomUUID().slice(0, 8)}`,
+          title: "Unsupported JWT",
+          body: "Body",
+          semanticVersion: "1.0.0",
+        }),
+      });
+      expect(unsupportedResponse.status).toBe(401);
+    });
+  });
+
+  it("rejects expired and materially future-issued JWTs", async () => {
+    await withSecureServer(async ({ baseUrl, jwtSecret }) => {
+      const now = Math.floor(Date.now() / 1000);
+      const basePayload = {
+        userId: "user-2",
+        username: "invalid-time",
+        scopes: ["prompt-vault:write"],
+      };
+      const expired = createSignedJwt(
+        jwtSecret as string,
+        { alg: "HS256", typ: "JWT" },
+        { ...basePayload, iat: now - 600, exp: now - 120 },
+      );
+      const future = createSignedJwt(
+        jwtSecret as string,
+        { alg: "HS256", typ: "JWT" },
+        { ...basePayload, iat: now + 300, exp: now + 3600 },
+      );
+
+      for (const token of [expired, future]) {
         const response = await fetch(`${baseUrl}/api/prompts`, {
           method: "POST",
           headers: {
@@ -203,8 +393,8 @@ describe("HTTP security middleware", () => {
             authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            slug: `jwt-expired-${randomUUID().slice(0, 8)}`,
-            title: "JWT Expired",
+            slug: `jwt-time-${randomUUID().slice(0, 8)}`,
+            title: "Invalid JWT Time",
             body: "Body",
             semanticVersion: "1.0.0",
           }),
@@ -213,9 +403,44 @@ describe("HTTP security middleware", () => {
         expect(response.status).toBe(401);
         const payload = await response.json();
         expect(payload.error.code).toBe("UNAUTHORIZED");
-      },
-      { jwtExpiresIn: "1s" }
-    );
+      }
+    });
+  });
+
+  it("continues to enforce required JWT scopes", async () => {
+    await withSecureServer(async ({ baseUrl, authManager }) => {
+      const token = authManager.generateToken({
+        userId: "user-3",
+        username: "reader",
+        scopes: ["prompt-vault:read"],
+      });
+
+      const response = await fetch(`${baseUrl}/api/prompts`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          slug: `jwt-scope-${randomUUID().slice(0, 8)}`,
+          title: "Scope Required",
+          body: "Body",
+          semanticVersion: "1.0.0",
+        }),
+      });
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  it("does not accept direct legacy Core DB session tokens", async () => {
+    await withSecureServer(async ({ baseUrl }) => {
+      const response = await fetch(`${baseUrl}/api/prompts`, {
+        headers: { authorization: "Bearer legacy-core-db-session-token" },
+      });
+
+      expect(response.status).toBe(401);
+    });
   });
 
   it("enforces rate limits and returns 429", async () => {
@@ -258,6 +483,47 @@ describe("HTTP security middleware", () => {
         expect(response.status).toBe(200);
       },
       { includeAuthRouter: true, rateLimit: { maxRequests: 10, windowMs: 1000 } }
+    );
+  });
+
+  it("does not issue JWT without an explicitly configured signing secret", async () => {
+    await withSecureServer(
+      async ({ baseUrl, apiKey }) => {
+        const response = await fetch(`${baseUrl}/auth/token`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ apiKey }),
+        });
+
+        expect(response.status).toBe(503);
+        const payload = await response.json();
+        expect(payload.error.code).toBe("JWT_SIGNING_UNAVAILABLE");
+      },
+      {
+        includeAuthRouter: true,
+        jwtSecret: null,
+        rateLimit: { maxRequests: 10, windowMs: 1000 },
+      }
+    );
+  });
+
+  it("does not issue JWT for an invalid API key", async () => {
+    await withSecureServer(
+      async ({ baseUrl }) => {
+        const response = await fetch(`${baseUrl}/auth/token`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ apiKey: "invalid-api-key" }),
+        });
+
+        expect(response.status).toBe(401);
+        const payload = await response.json();
+        expect(payload.error.code).toBe("UNAUTHORIZED");
+      },
+      {
+        includeAuthRouter: true,
+        rateLimit: { maxRequests: 10, windowMs: 1000 },
+      }
     );
   });
 

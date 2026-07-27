@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Prompt Vault",
-  "version": "0.1.0",
-  "identifier": "com.promptvault.desktop",
+  "version": "0.2.0",
+  "identifier": "com.nobodyworld.promptvault",
   "build": {
-    "beforeDevCommand": "pnpm -C .. desktop:dev",
-    "beforeBuildCommand": "pnpm -C .. desktop:build",
+    "beforeDevCommand": "pnpm desktop:dev",
+    "beforeBuildCommand": "pnpm desktop:build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../desktop/dist"
   },
@@ -31,6 +31,13 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "Nobody Production",
+    "category": "Productivity",
+    "shortDescription": "A local-first library for creating, organizing, and reusing prompts.",
+    "longDescription": "Prompt Vault is an independent local-first desktop application for creating, finding, copying, editing, versioning, importing, and exporting reusable prompts.",
+    "copyright": "Copyright © 2025–2026 Nobody Production",
+    "license": "Proprietary",
+    "homepage": "https://github.com/Nobodyworld/app-prompt-vault",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

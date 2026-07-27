@@ -4,11 +4,9 @@ import { defineConfig } from "vitest/config";
 const coverageConfig: CoverageOptions = {
   provider: "v8",
   reporter: ["text", "json", "lcov", "html"],
-  // measure only desktop renderer sources
   include: ["desktop/src/**/*.ts", "desktop/src/**/*.tsx"],
   exclude: ["desktop/src/**/__tests__/**", "desktop/src/**/fixtures/**"],
-  // slightly lower thresholds for UI
-  check: {
+  thresholds: {
     lines: 70,
     statements: 70,
     functions: 70,

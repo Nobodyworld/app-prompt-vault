@@ -1,24 +1,30 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { promptVaultToolDefinitions, registerPromptVaultTools } from "../src/tools/index.js";
-
-const registerToolMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@nw/orchestrator-sdk", () => ({
-  registerTool: registerToolMock,
-}));
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  __resetToolsForTests,
+  getAllTools,
+} from "../src/lib/platform-orchestrator.js";
+import {
+  promptVaultToolDefinitions,
+  registerPromptVaultTools,
+} from "../src/tools/index.js";
 
 describe("registerPromptVaultTools", () => {
   beforeEach(() => {
-    registerToolMock.mockClear();
+    __resetToolsForTests();
   });
 
-  it("registers every Prompt Vault tool definition with the orchestrator", () => {
+  it("registers every Prompt Vault tool definition in the app-local registry", () => {
     registerPromptVaultTools();
 
-    expect(registerToolMock).toHaveBeenCalledTimes(promptVaultToolDefinitions.length);
+    const registered = getAllTools();
+    expect(registered).toHaveLength(promptVaultToolDefinitions.length);
 
-    const registeredNames = new Set(registerToolMock.mock.calls.map((call) => call[0].name));
-    const definitionNames = new Set(promptVaultToolDefinitions.map((def) => def.name));
+    const registeredNames = new Set(
+      registered.map((tool) => tool.definition.name),
+    );
+    const definitionNames = new Set(
+      promptVaultToolDefinitions.map((definition) => definition.name),
+    );
     expect(registeredNames).toEqual(definitionNames);
   });
 });

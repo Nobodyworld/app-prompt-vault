@@ -1,42 +1,58 @@
 # Security Policy
 
-## PRE-ALPHA SOURCE PREVIEW
+## Supported versions
 
-Prompt Vault has no supported release or production deployment. The public repository, when enabled, is a proprietary source-available pre-alpha preview. Security fixes may be applied to `main`, but no support window or remediation service-level agreement is offered.
+Prompt Vault is a **PRE-ALPHA SOURCE PREVIEW**. Security fixes are applied to the default branch and the active pre-release candidate when practical. There is no supported production release or service-level agreement.
+
+| Version | Supported |
+| --- | --- |
+| `main` | Best-effort pre-release fixes |
+| Draft PR #27 | Active standalone candidate; not a release |
+| Published installers/releases | None |
 
 ## Reporting a vulnerability
 
-Do **not** disclose suspected vulnerabilities, credentials, prompt data, database contents, or reproduction details in a public issue, discussion, pull request, or commit.
+Do **not** open a public issue or discussion containing vulnerability details.
 
-Use GitHub Private Vulnerability Reporting:
+Use GitHub Private Vulnerability Reporting through the repository **Security** tab and select **Report a vulnerability**. Before public visibility is enabled, the owner must confirm that this feature is enabled and visible.
 
-1. Open the repository **Security** tab.
-2. Select **Report a vulnerability**.
-3. Submit the report privately through the GitHub security advisory form.
-
-Before changing repository visibility, the repository owner must confirm that GitHub Private Vulnerability Reporting is enabled and that the **Report a vulnerability** action is visible. If that action is unavailable, do not publish vulnerability details publicly; wait for the owner to provide a verified private reporting channel.
+If private vulnerability reporting is unavailable, do not disclose details publicly. Wait for the repository owner to publish a verified private reporting channel.
 
 Include:
 
 - a concise description and expected impact;
-- the affected commit, branch, surface, and configuration;
+- affected version, commit, branch, surface, or configuration;
 - reproduction steps or a proof of concept;
 - any known mitigation;
-- whether disclosure has already occurred.
+- whether public disclosure has already occurred.
+
+Acknowledgement and assessment targets are best-effort during the pre-release period and are not a service-level agreement.
 
 ## Disclosure process
 
-- Reports will be reviewed on a best-effort basis during pre-alpha development.
+- We will verify the issue and define a remediation plan.
 - Coordinated disclosure is preferred.
-- Avoid publishing exploit details until a fix or mitigation is available.
-- Public access to source does not authorize testing against systems, accounts, data, or infrastructure you do not own or have explicit permission to test.
+- Please avoid publishing exploit details until a fix or mitigation is available.
+- Credit may be included in release notes unless anonymity is requested.
+
+## Release hardening checklist
+
+Before publishing a validated release candidate:
+
+- run the repository quality gate and full hosted CI matrix;
+- review runtime and development dependency advisories;
+- run Rust formatting, Clippy, tests, and Tauri packaging;
+- verify SQLite foreign keys, busy timeout, WAL behavior, migration, restart, and persistence;
+- validate all HTTP input and keep request-body limits enabled;
+- keep the supported HTTP entrypoint loopback-only with authentication for unsafe methods and explicit browser origins;
+- confirm logs and telemetry contain no prompt bodies, credentials, tokens, or personal data;
+- review generated installers and release artifacts before publication.
 
 ## Known residual risks
 
-- The default branch is not proven to install or build standalone.
-- Prompt content and local SQLite databases may be stored in plaintext.
-- Historical code may depend on private Nobodyworld workspace packages or configuration.
-- Authentication, migration, packaging, telemetry, and integration behavior are not validated release guarantees.
-- Dependency and secret scanning may be incomplete until the public validation workflows execute successfully.
-
-See [README.md](../../../README.md) for the current repository classification and limitations.
+- Prompt content and local SQLite databases are stored in plaintext.
+- The local-first threat model relies on operating-system permissions and full-disk encryption.
+- Safe reads may remain unauthenticated during local pre-alpha use; unsafe methods remain authenticated. Public-network deployment is unsupported.
+- Audit events are held in memory and are not a durable compliance log.
+- Dependency scanning may be incomplete when package registries are unavailable; unavailable scanning is not proof of safety.
+- Draft PR #27 has removed declared private workspace dependencies, but clean standalone installation, builds, tests, packaging, migration, and persistence remain unproven until the release gate passes.

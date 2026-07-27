@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
-import { getCoverageConfig } from "../../vitest.shared";
+import { getCoverageConfig } from "./vitest.shared";
 
-const coverage = getCoverageConfig("@nw/app-prompt-vault");
+const coverage = getCoverageConfig("prompt-vault");
 
 export default defineConfig({
   test: {
@@ -12,7 +12,7 @@ export default defineConfig({
       ...coverage,
       include: ["src/**/*.ts"],
       exclude: [
-        ...(coverage?.exclude ?? []),
+        ...(coverage.exclude ?? []),
         "desktop/**",
         "src-tauri/**",
         "dist/**",
