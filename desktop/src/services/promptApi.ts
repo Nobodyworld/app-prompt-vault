@@ -256,12 +256,13 @@ export function subscribeFallback(cb: (b: boolean) => void): () => void {
   return () => fallbackSubscribers.delete(cb);
 }
 
-function saveStore(): void {
+function saveStore(): boolean {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(inMemoryStore));
+    return true;
   } catch (err) {
-    // ignore storage errors
     console.warn("Failed to save inMemoryStore to localStorage", err);
+    return false;
   }
 }
 
@@ -512,6 +513,16 @@ function deletePromptFromMemory(promptId: string): void {
 function updatePromptInMemory(input: UpdatePromptInput): Summary {
   const prompt = inMemoryStore.prompts.find((p) => p.id === input.id);
   if (!prompt) throw new Error(`Prompt not found: ${input.id}`);
+  const previous = {
+    title: prompt.title,
+    description: prompt.description,
+    category: prompt.category,
+    isFavorite: prompt.isFavorite,
+    rating: prompt.rating,
+    tags: [...prompt.tags],
+    updatedAt: prompt.updatedAt,
+    latestVersion: prompt.latestVersion,
+  };
   if (input.title !== undefined) prompt.title = input.title;
   if (input.description !== undefined) prompt.description = input.description;
   if (input.category !== undefined) {
@@ -524,7 +535,12 @@ function updatePromptInMemory(input: UpdatePromptInput): Summary {
   prompt.latestVersion = prompt.versions.length
     ? prompt.versions[prompt.versions.length - 1]
     : undefined;
-  saveStore();
+  if (!saveStore()) {
+    Object.assign(prompt, previous);
+    throw new Error(
+      "Unable to save prompt changes to local browser storage. Check storage availability and try again.",
+    );
+  }
   notifyFallback(true);
   return {
     id: prompt.id,

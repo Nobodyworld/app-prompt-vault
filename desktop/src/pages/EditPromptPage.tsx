@@ -11,7 +11,6 @@ import {
   listPromptVersions,
   updatePrompt,
 } from "../services/promptApi";
-import { isTauriAvailable } from "../lib/tauri";
 
 const SEMANTIC_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
@@ -80,7 +79,6 @@ export function EditPromptPage(): React.JSX.Element {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const runtimeAvailable = isTauriAvailable();
 
   useEffect(() => {
     if (routedPrompt || !id) {
@@ -154,7 +152,7 @@ export function EditPromptPage(): React.JSX.Element {
   const parsedTags = useMemo(() => parseTags(tags), [tags]);
 
   async function handleRevert(version: PromptVersionSummary): Promise<void> {
-    if (!prompt || !runtimeAvailable) return;
+    if (!prompt) return;
     if (!window.confirm(`Revert to v${version.semanticVersion}? This will create a new version.`)) {
       return;
     }
@@ -184,10 +182,6 @@ export function EditPromptPage(): React.JSX.Element {
     setError(null);
     setMessage(null);
 
-    if (!runtimeAvailable) {
-      setError("Launch Prompt Vault from the desktop app to save changes.");
-      return;
-    }
     if (!title.trim()) {
       setError("Give the prompt a clear title.");
       return;
@@ -428,16 +422,11 @@ export function EditPromptPage(): React.JSX.Element {
         <button className="secondary" type="button" onClick={() => navigate(-1)}>
           Cancel
         </button>
-        <button type="submit" disabled={isSaving || !runtimeAvailable}>
+        <button type="submit" disabled={isSaving}>
           {isSaving ? "Saving…" : "Save changes"}
         </button>
       </div>
 
-      {!runtimeAvailable && (
-        <p className="warning">
-          Launch Prompt Vault from the desktop app to save prompt changes.
-        </p>
-      )}
     </form>
   );
 }
