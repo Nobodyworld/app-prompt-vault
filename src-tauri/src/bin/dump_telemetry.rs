@@ -6,8 +6,12 @@ use std::path::PathBuf;
 fn tail_file(path: &PathBuf, lines: usize) -> io::Result<()> {
     let file = fs::File::open(path)?;
     let reader = io::BufReader::new(file);
-    let all: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
-    let start = if all.len() > lines { all.len() - lines } else { 0 };
+    let all: Vec<String> = reader.lines().map_while(Result::ok).collect();
+    let start = if all.len() > lines {
+        all.len() - lines
+    } else {
+        0
+    };
     for line in &all[start..] {
         println!("{}", line);
     }
@@ -52,5 +56,8 @@ fn main() {
         return;
     }
 
-    eprintln!("Provided path is not a file or directory: {}", path.display());
+    eprintln!(
+        "Provided path is not a file or directory: {}",
+        path.display()
+    );
 }
