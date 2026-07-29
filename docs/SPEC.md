@@ -2,7 +2,7 @@
 
 ## Status
 
-Prompt Vault is a substantial beta / pre-release local-first application. The source graph is standalone, but release readiness still requires a reviewed lockfile, clean-install proof, current-head tests/builds, Playwright, Rust/Tauri packaging, Windows artifact validation, and legacy data migration verification.
+Prompt Vault is a substantial local-first proprietary source-available source preview. The accepted default-branch state has clean-install, test, audit, Rust/Tauri packaging, Windows artifact, and metadata-only historical migration evidence, but there is no supported downloadable release or GitHub Release.
 
 ## 1. Product purpose
 
@@ -117,4 +117,4 @@ A public release requires:
 - showcase screenshots or demo;
 - primary create → search → copy → edit → export → restart smoke test.
 
-Issue #26 is the governing release tracker.
+Closed issue #26 is historical release-planning context, not a current governing gate. Any future supported release still requires a fresh acceptance decision against the current source and artifacts.

@@ -7,7 +7,6 @@ Prompt Vault is a **PRE-ALPHA SOURCE PREVIEW**. Security fixes are applied to th
 | Version | Supported |
 | --- | --- |
 | `main` | Best-effort pre-release fixes |
-| Draft PR #27 | Active standalone candidate; not a release |
 | Published installers/releases | None |
 
 ## Reporting a vulnerability
@@ -55,4 +54,4 @@ Before publishing a validated release candidate:
 - Safe reads may remain unauthenticated during local pre-alpha use; unsafe methods remain authenticated. Public-network deployment is unsupported.
 - Audit events are held in memory and are not a durable compliance log.
 - Dependency scanning may be incomplete when package registries are unavailable; unavailable scanning is not proof of safety.
-- Draft PR #27 has removed declared private workspace dependencies, but clean standalone installation, builds, tests, packaging, migration, and persistence remain unproven until the release gate passes.
+- The accepted default-branch validation is evidence for the source preview only; unsigned workflow installers are not supported releases and still require native acceptance before any publication decision.

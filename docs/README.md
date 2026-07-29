@@ -2,7 +2,7 @@
 
 This directory contains product, development, operations, security, and release documentation for Prompt Vault.
 
-> Source code, the repository README, and open release issues are authoritative when an older planning document conflicts with current behavior. Public-showcase blockers are tracked in issue #26.
+> Source code, the repository README, and current acceptance records are authoritative when an older planning document conflicts with current behavior. Closed issue #26 is historical planning context, not a current governing release gate.
 
 ## Start here
 
@@ -55,13 +55,8 @@ See [Product experience](product-experience.md) for the detailed hierarchy, exac
 - [Changelog](../CHANGELOG.md)
 - [Project stage snapshot](../project-stage-snapshot.md) — historical assessment; verify against current source and issues
 
-## Current release blockers
+## Current product status
 
-- Issue #22: reviewed lockfile and clean-clone reproducibility proof
-- Issue #23: release-grade validation and verified artifacts
-- Issue #25: standalone UX, primary-flow automation, screenshots, and native acceptance
-- Issue #26: governing release tracker
-- Issue #28: legacy tag/project sidecar migration and persistence verification
-- Issue #29: legacy session-token decision and auth review
-- Issue #32: advisory reconciliation and artifact acceptance
-- Issue #36: application coverage target or approved threshold
+- Prompt Vault remains a proprietary source-available source preview with no supported downloadable release or GitHub Release.
+- The accepted default-branch validation record is documented in the repository README and [Product experience](product-experience.md).
+- Current work is product usability, native acceptance, and release preparation; unsigned workflow installers remain validation evidence only.
