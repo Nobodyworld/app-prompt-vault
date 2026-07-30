@@ -173,10 +173,17 @@ export function LibraryPage(): React.JSX.Element {
   }, [requestedActivePromptId, visiblePrompts]);
 
   useEffect(() => {
-    if (requestedActivePromptId !== activePromptId) {
-      setRequestedActivePromptId(activePromptId);
-    }
-  }, [activePromptId, requestedActivePromptId]);
+    setRequestedActivePromptId((currentPromptId) => {
+      if (
+        currentPromptId &&
+        visiblePrompts.some((prompt) => prompt.id === currentPromptId)
+      ) {
+        return currentPromptId;
+      }
+
+      return visiblePrompts[0]?.id ?? null;
+    });
+  }, [visiblePrompts]);
 
   const handleCopy = useCallback(
     async (prompt: PromptSummary): Promise<void> => {

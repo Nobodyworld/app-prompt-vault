@@ -105,6 +105,24 @@ function rowIds(): Array<string | null> {
     .map((row) => row.getAttribute("data-prompt-id"));
 }
 
+function promptRow(promptId: string): HTMLElement {
+  const row = screen
+    .getAllByTestId("prompt-row")
+    .find((candidate) => candidate.dataset.promptId === promptId);
+
+  if (!row) throw new Error(`Prompt row not found: ${promptId}`);
+  return row;
+}
+
+function expectOnlyActivePrompt(promptId: string): void {
+  const activeRows = screen
+    .getAllByTestId("prompt-row")
+    .filter((row) => row.getAttribute("aria-current") === "true");
+
+  expect(activeRows).toHaveLength(1);
+  expect(activeRows[0]).toBe(promptRow(promptId));
+}
+
 describe("LibraryPage", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -137,6 +155,12 @@ describe("LibraryPage", () => {
     await act(async () => resolvePrompts(prompts));
     await screen.findByText("3 prompts");
     expect(rowIds()).toEqual(["bravo", "alpha", "charlie"]);
+    await waitFor(() =>
+      expect(screen.getAllByTestId("prompt-row")[0]).toHaveAttribute(
+        "aria-current",
+        "true",
+      ),
+    );
   });
 
   it("surfaces initial load failures and provides a retry action", async () => {
@@ -201,10 +225,20 @@ describe("LibraryPage", () => {
   it("persists and restores the selected sort preference", async () => {
     const firstRender = renderLibrary();
     await screen.findByText("3 prompts");
+    const alphaRow = screen
+      .getAllByTestId("prompt-row")
+      .find((row) => row.getAttribute("data-prompt-id") === "alpha");
+    expect(alphaRow).toBeDefined();
+    fireEvent.pointerDown(alphaRow as HTMLElement);
+    await waitFor(() =>
+      expect(alphaRow).toHaveAttribute("aria-current", "true"),
+    );
+
     const sort = screen.getByRole("combobox", { name: "Sort" });
     fireEvent.change(sort, { target: { value: "title" } });
 
     expect(rowIds()).toEqual(["alpha", "bravo", "charlie"]);
+    expect(alphaRow).toHaveAttribute("aria-current", "true");
     expect(localStorage.getItem(LIBRARY_SORT_STORAGE_KEY)).toBe(
       '{"sort":"title"}',
     );
@@ -300,7 +334,7 @@ describe("LibraryPage", () => {
     );
   });
 
-  it("moves a newly favorited row while retaining it as the active prompt", async () => {
+  it("preserves explicit activation when favorite reordering races reconciliation", async () => {
     await renderLoadedLibrary();
     fireEvent.click(
       screen.getByRole("button", {
@@ -308,11 +342,16 @@ describe("LibraryPage", () => {
       }),
     );
 
-    await waitFor(() => expect(rowIds()[0]).toBe("alpha"));
-    expect(screen.getAllByTestId("prompt-row")[0]).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
+    await waitFor(() => {
+      const rows = screen.getAllByTestId("prompt-row");
+      const alphaRow = rows.find(
+        (row) => row.getAttribute("data-prompt-id") === "alpha",
+      );
+
+      expect(alphaRow).toBeDefined();
+      expect(rows[0]).toBe(alphaRow);
+      expect(alphaRow).toHaveAttribute("aria-current", "true");
+    });
   });
 
   it("reports copy success, copy failure, and empty-body attempts", async () => {
@@ -359,38 +398,64 @@ describe("LibraryPage", () => {
     ).toBeVisible();
   });
 
-  it("recovers the active prompt by ID when filters change", async () => {
+  it("selects the first remaining prompt when filtering removes the active prompt", async () => {
     await renderLoadedLibrary();
+    await waitFor(() =>
+      expect(screen.getAllByTestId("prompt-row")[0]).toHaveAttribute(
+        "data-prompt-id",
+        "bravo",
+      ),
+    );
     fireEvent.change(screen.getByRole("searchbox", { name: "Search prompts" }), {
       target: { value: "Charlie" },
     });
 
     const row = await screen.findByTestId("prompt-row");
-    expect(row).toHaveAttribute("data-prompt-id", "charlie");
-    expect(row).toHaveAttribute("aria-current", "true");
+    await waitFor(() => {
+      expect(row).toHaveAttribute("data-prompt-id", "charlie");
+      expect(row).toHaveAttribute("aria-current", "true");
+    });
     expect(screen.getByText("Active prompt: Charlie note")).toBeInTheDocument();
+  });
+
+  it("clears active state for empty results and restores a deterministic active row", async () => {
+    await renderLoadedLibrary();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search prompts" }), {
+      target: { value: "does not match" },
+    });
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "No prompts match the active filters",
+      }),
+    ).toBeVisible();
+    expect(screen.queryAllByTestId("prompt-row")).toHaveLength(0);
+    expect(
+      document.querySelector('[data-testid="prompt-row"][aria-current="true"]'),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset all filters" }));
+    await waitFor(() => {
+      const rows = screen.getAllByTestId("prompt-row");
+      expect(rows[0]).toHaveAttribute("data-prompt-id", "bravo");
+      expect(rows[0]).toHaveAttribute("aria-current", "true");
+    });
   });
 
   it("moves the active row with Up and Down and copies with Enter", async () => {
     await renderLoadedLibrary();
-    expect(screen.getAllByTestId("prompt-row")[0]).toHaveAttribute(
-      "data-prompt-id",
-      "bravo",
-    );
+    await waitFor(() => expectOnlyActivePrompt("bravo"));
 
     fireEvent.keyDown(document.body, { key: "ArrowDown" });
-    expect(screen.getAllByTestId("prompt-row")[1]).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
-    fireEvent.keyDown(document.body, { key: "Enter" });
+    await waitFor(() => expectOnlyActivePrompt("alpha"));
 
-    expect(clipboard.copyTextToClipboard).toHaveBeenCalledWith("alpha body");
-    fireEvent.keyDown(document.body, { key: "ArrowUp" });
-    expect(screen.getAllByTestId("prompt-row")[0]).toHaveAttribute(
-      "aria-current",
-      "true",
+    fireEvent.keyDown(document.body, { key: "Enter" });
+    await waitFor(() =>
+      expect(clipboard.copyTextToClipboard).toHaveBeenCalledWith("alpha body"),
     );
+
+    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    await waitFor(() => expectOnlyActivePrompt("bravo"));
   });
 
   it("edits with E and favorites with F for the active row", async () => {
