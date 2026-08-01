@@ -8,7 +8,12 @@
 >
 > Prompt Vault is an experimental local-first desktop application. Public access permits source inspection and limited evaluation under [LICENSE](LICENSE); it does not grant an open-source license or establish production, migration, signing, or release readiness.
 
-**Release status:** pre-release. There is no supported downloadable release, hosted service, or production deployment for this repository. Draft PR #27 must remain unmerged until its remaining product, migration, security, coverage, exact-head hosted-validation, and release gates are complete. Track the governing decision in [issue #26](../../issues/26).
+**Release status:** pre-release source preview only. There is no supported
+downloadable release, GitHub Release, hosted service, or production deployment
+for this repository. Unsigned installers produced by validation workflows are
+build evidence only and are not supported distribution artifacts. Historical
+public-showcase planning was tracked in closed [issue #26](../../issues/26);
+that closed milestone is not a current governing release gate.
 
 ## What Prompt Vault is
 
@@ -28,8 +33,9 @@ The Library is the product. Raw interoperability payloads, bundle text, cross-ap
 
 ### Everyday surfaces
 
-- Library and search
+- Library search, deterministic sorting, and fast filters
 - One-action copy
+- In-place favorites and keyboard row actions
 - New prompt
 - Edit and version history
 - Optional tag and category filters
@@ -74,38 +80,46 @@ Supported credentials are Prompt Vault `HS256` JWTs signed with an explicitly in
 
 Without `JWT_SECRET`, the local server can still start and configured API keys can authenticate, but JWT verification and issuance remain disabled. A valid API key sent to `/auth/token` receives a deliberate `503`; Prompt Vault does not create a process-local random signing authority. See [HTTP security](docs/SECURITY.md) for the exact token schema, 60-second clock-skew rule, and plaintext-data limitations.
 
-## Exact-head local validation
+## Accepted default-branch validation
 
-Commit `91a335fd09f0611059c5edc17319bc021bc8db27` was validated locally on Windows with Node 24.12.0, pnpm 10.24.0, Rust 1.97.0, and Tauri 2.
+The accepted source-preview baseline is:
 
-Recorded successful checks:
+```text
+Main:           df39c5f3ee148a6c6469b9cb3e2eb806afd77699
+Workflow:       30308626325
+Event / branch: push / main
+Result:         all four jobs passed
+```
 
-- frozen dependency installation;
-- repository audit, ESLint, TypeScript typecheck, and production build;
-- 28 Vitest files and 130 tests;
-- 7 Playwright tests;
-- Rust formatting, strict Clippy, and Rust tests;
-- Windows-target dependency proof showing `glib` absent;
-- fresh MSI and NSIS bundle generation;
-- manual install, launch, restart persistence, uninstall, reinstall, and prompt recovery.
+The workflow passed Public-release invariants, Rust validation, Windows Tauri
+bundle, and Standalone Node validation. Its recorded results include:
 
-Recorded coverage:
+```text
+Vitest:     277 / 277 across 41 files
+Playwright: 9 / 9
+Rust tests: 6 / 6
+```
 
-- statements: 45.60%;
-- functions: 46.54%;
-- branches/blocks: 33.78%;
-- lines: 45.91%.
+Accepted Istanbul coverage:
 
-Coverage remains an open quality gate.
+| Dimension | Covered / total | Result | Configured app threshold |
+| --- | ---: | ---: | ---: |
+| Statements | 2,843 / 3,639 | 78.12% | >= 60% |
+| Branches | 1,450 / 2,383 | 60.84% | >= 50% |
+| Functions | 634 / 777 | 81.59% | >= 55% |
+| Lines | 2,770 / 3,511 | 78.89% | >= 60% |
 
-Fresh local unsigned acceptance artifacts:
+These are measured results, not new required floors. In particular, 78.15% is
+not a configured statements threshold.
 
-| Artifact | Size | SHA-256 |
-| --- | ---: | --- |
-| `Prompt Vault_0.2.0_x64_en-US.msi` | 4,612,096 bytes | `9624f37d70b173da33e9b678b2e1e8625c52a2627b1776db0534acbe96b3591a` |
-| `Prompt Vault_0.2.0_x64-setup.exe` | 3,137,481 bytes | `2624a3a0f141b99acd0340672031b898ac10261beebbfdcbe4ff9f3cb28d4154` |
+The Windows job's unsigned MSI and NSIS installers are validation evidence
+only. No supported downloadable release or GitHub Release exists, and those
+artifacts must not be presented or distributed as an approved release.
 
-These hashes document local acceptance evidence only. Do not distribute these unsigned files as a release.
+The accepted legacy-migration evidence is metadata-only. A qualifying
+historical source proved recognition and migration of one project tag, but no
+observed qualifying historical source contained relationship/tagging rows.
+This evidence must not be described as real historical relationship proof.
 
 ## Architecture
 
@@ -151,18 +165,19 @@ pnpm quality:gate              # Repository quality gate
 
 See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md) for the difference between the hot-reloading development window, release preview, and Windows-installed application.
 
-## Remaining release work
+## Next product work
 
-- validate the UX cleanup in the native desktop app;
-- revalidate the latest PR #43 head after documentation and package-metadata changes;
-- refresh deterministic generated Tauri schemas in a focused change;
-- replace or repair the JavaScript production dependency audit that reaches a retired endpoint;
-- decide and prove legacy desktop-database migration behavior;
-- complete primary-flow Playwright coverage;
-- raise coverage or approve a documented threshold;
-- reconcile exact-head hosted checks and artifact evidence;
-- produce truthful screenshots or a short demo;
-- complete all governing release criteria in issue #26.
+- complete focused native acceptance of the daily Library workspace at the
+  supported 400×600 logical minimum using only disposable test data;
+- continue improving local-data protection and clearly communicate that prompt
+  text and databases remain plaintext;
+- decide how the historical `com.promptvault.desktop` data location should be
+  detected or migrated, including relationship-row evidence that has not yet
+  been observed;
+- produce truthful screenshots or a short demo only from an accepted product
+  state;
+- keep signing, installer distribution, and any release decision in separately
+  reviewed work. The current repository remains a source preview.
 
 ## Documentation
 

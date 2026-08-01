@@ -19,8 +19,9 @@ The Library is the primary product surface. Raw interoperability payloads, bundl
 ### Primary
 
 - Library
-- Search
+- Search, sorting, and fast filters
 - Copy
+- In-place favorite control
 - New prompt
 - Edit prompt
 
@@ -40,6 +41,33 @@ The Library is the primary product surface. Raw interoperability payloads, bundl
 - Compatibility and migration utilities
 
 Advanced tools remain available at `/advanced`, linked from Settings rather than the primary navigation.
+
+## Daily Library workspace
+
+The Library organizes prompts locally without adding a server-side preference
+or database column:
+
+- the default order is favorites first and then most recently updated;
+- alternate orders are recently updated, title A–Z, and rating high-to-low
+  with unrated prompts last;
+- the selected order is stored under
+  `prompt-vault:library-sort:v1`, with unknown or unreadable values falling
+  back to the default;
+- query, Favorites, tag, and category filters combine locally before sorting,
+  and one Reset all action clears the full filter state;
+- every row keeps copy as its primary action while exposing category, rating,
+  useful tag context, timestamps, Edit, and a persisted favorite control;
+- Up and Down choose a visible row, Enter copies it, E opens Edit, and F changes
+  favorite state. These row shortcuts are scoped to the Library and pause while
+  an input, textarea, select, button, link, or contenteditable element owns
+  focus;
+- `Ctrl/Cmd+N`, `Ctrl/Cmd+K`, and Escape retain their create, search-focus, and
+  Library-reset behavior.
+
+Favorite changes reuse the existing cross-platform prompt-update boundary. The
+row updates immediately, suppresses duplicate writes for the same prompt, and
+reconciles the persisted response. A failed write restores the prior favorite
+state and order and produces actionable feedback.
 
 ## Shared web and desktop UI
 
@@ -74,84 +102,49 @@ The current application did not overwrite that legacy database. Detection, migra
 
 The current uninstall behavior is data-preserving. Documentation must not imply that uninstall deletes prompts. A future delete-local-data flow, if added, should be explicit and separate from routine uninstall.
 
-## Exact-head local validation record
+## Accepted default-branch validation record
 
-Validated commit:
+The accepted source-preview baseline is exact default-branch commit
+`df39c5f3ee148a6c6469b9cb3e2eb806afd77699`. Workflow run
+`30308626325` was a `push` on `main`; all four jobs passed:
+Public-release invariants, Rust validation, Windows Tauri bundle, and
+Standalone Node validation.
 
-```text
-91a335fd09f0611059c5edc17319bc021bc8db27
-```
-
-Validated environment:
-
-- Node 24.12.0
-- npm 11.6.2
-- pnpm 10.24.0
-- rustc 1.97.0
-- cargo 1.97.0
-
-Successful checks recorded locally:
-
-- frozen pnpm installation;
-- repository audit;
-- ESLint;
-- TypeScript typecheck;
-- production Node build;
-- 28 Vitest files and 130 tests;
-- Playwright: 7 tests;
-- Rust formatting;
-- strict Clippy with warnings denied;
-- Rust tests;
-- Windows-target dependency proof showing `glib` absent;
-- Tauri 2 MSI and NSIS bundle generation;
-- manual install, launch, restart persistence, uninstall, reinstall, and data recovery.
-
-Coverage from the exact-head run:
-
-- statements: 45.60%;
-- functions: 46.54%;
-- blocks/branches: 33.78%;
-- lines: 45.91%.
-
-Coverage remains a release-quality work item rather than a completed gate.
-
-Fresh local installer inventory from the final recorded build:
-
-| Artifact | Size | SHA-256 |
-| --- | ---: | --- |
-| `Prompt Vault_0.2.0_x64_en-US.msi` | 4,612,096 bytes | `9624f37d70b173da33e9b678b2e1e8625c52a2627b1776db0534acbe96b3591a` |
-| `Prompt Vault_0.2.0_x64-setup.exe` | 3,137,481 bytes | `2624a3a0f141b99acd0340672031b898ac10261beebbfdcbe4ff9f3cb28d4154` |
-
-These unsigned local artifacts are acceptance-test evidence, not a supported release or distribution channel.
-
-## PR #43 Windows workflow validation
-
-The new local desktop workflows were exercised on Windows at commit:
+Recorded totals:
 
 ```text
-20dca24ee8b1e38276538497aba8f1db5c3235bf
+Vitest:     277 / 277 across 41 files
+Playwright: 9 / 9
+Rust tests: 6 / 6
 ```
 
-Observed results:
+| Dimension | Covered / total | Result | Configured app threshold |
+| --- | ---: | ---: | ---: |
+| Statements | 2,843 / 3,639 | 78.12% | >= 60% |
+| Branches | 1,450 / 2,383 | 60.84% | >= 50% |
+| Functions | 634 / 777 | 81.59% | >= 55% |
+| Lines | 2,770 / 3,511 | 78.89% | >= 60% |
 
-- `pnpm desktop:preview-release` completed twice and launched `src-tauri\target\release\prompt-vault-app.exe` both times;
-- the two same-source preview builds produced different executable hashes:
-  - `345628904f5ac6be97c8723a987c6c7b00a3e6b69d0b0b4a443f0310a5d75a20`;
-  - `238e72dc3de392315385cfa7f9f6b107bf1050a862729c3d4950b98c80f64b77`;
-- this proves successful repeat construction, but not byte-for-byte reproducibility;
-- `pnpm desktop:refresh-installed` built fresh MSI and NSIS bundles, removed the existing MSI registration, installed the current local build, preserved the application database, and launched the refreshed installed copy;
-- the MSI installed by that run had SHA-256 `0ab510e1017244dd09c0f5a256716e2bfb196e5449122f0e0492d54c05d07601`;
-- Tauri regenerated four tracked schema files during packaging; their diff was saved for review and the working tree copies were restored.
+The measured percentages are not required floors. No supported downloadable
+release or GitHub Release exists. Unsigned workflow-produced installers are
+validation evidence only.
 
-These results validate the local workflow scripts at `20dca24...`. Later package-metadata and README-audit commits still require ordinary exact-head validation before PR #43 can be integrated.
+The accepted real historical migration exercise observed one project-tag
+metadata row and no relationship/tagging rows in qualifying sources. It proves
+the metadata-only path and must not be represented as observed historical
+relationship migration.
 
 ## Known follow-up work
 
-- validate PR #43 visually and functionally in the native app, including close, minimize, maximize/restore, dragging, window placement, light/dark themes, and 400×600 usability;
-- refresh the deterministic Tauri-generated schemas in a focused change;
-- replace or repair the JavaScript production dependency audit that currently reaches a retired endpoint;
-- decide and test legacy `com.promptvault.desktop` data migration behavior;
-- add create → search → copy → edit → export Playwright coverage against the real primary workflow;
-- raise coverage or approve and document a revised threshold;
-- produce accurate screenshots or a short demo only after the visual cleanup is validated in the native app;
-- keep PR #27 draft until the remaining release gates are complete.
+- complete focused native acceptance of the daily Library workspace with a
+  disposable database, including 400×600 layout, row shortcuts, favorite
+  persistence, and clipboard behavior;
+- decide and test legacy `com.promptvault.desktop` data detection or migration,
+  including relationship rows that have not yet been observed in qualifying
+  historical evidence;
+- improve protection and user guidance for plaintext prompt and database data;
+- produce accurate screenshots or a short demo only after the current product
+  state is accepted;
+- treat signing, installer distribution, and any release decision as separate
+  reviewed work. Prompt Vault remains a proprietary source-available preview
+  with a loopback-only optional network boundary.

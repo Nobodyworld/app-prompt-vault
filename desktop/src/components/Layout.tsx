@@ -46,16 +46,22 @@ export function Layout(): React.JSX.Element {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
-      const target = event.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.contentEditable === "true"
-      ) {
+      const key = event.key.toLowerCase();
+      if (key === "escape" && location.pathname === "/") {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent("clear-search"));
         return;
       }
 
-      const key = event.key.toLowerCase();
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest(
+          'input, textarea, select, button, [contenteditable]:not([contenteditable="false"])',
+        )
+      ) {
+        return;
+      }
 
       if ((event.ctrlKey || event.metaKey) && key === "n") {
         event.preventDefault();
@@ -73,9 +79,6 @@ export function Layout(): React.JSX.Element {
         return;
       }
 
-      if (key === "escape" && location.pathname === "/") {
-        window.dispatchEvent(new CustomEvent("clear-search"));
-      }
     };
 
     document.addEventListener("keydown", handleKeyDown);

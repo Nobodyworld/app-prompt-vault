@@ -1,11 +1,24 @@
 # Prompt Vault Release Notes
 
-## Unreleased standalone-boundary work
+## Unreleased v0.3 daily Library workspace
 
-This section describes draft PR #27. It is not a published release and has not passed the full release gate.
+This section describes source-preview product work. It is not a published
+release, supported installer distribution, or public-network deployment.
 
 ### Highlights
 
+- Added deterministic Library sorting for favorites/recent activity, recent
+  activity, title, and rating, with a versioned local sort preference.
+- Added combined query, Favorites, tag, and category filtering with clear active
+  state, accessible result counts, and one reset action.
+- Added in-place favorite persistence through the existing Tauri, HTTP, and
+  browser-fallback update boundary, including pending-write containment and
+  failure rollback.
+- Added active-row keyboard actions for Up/Down, Enter copy, E edit, and F
+  favorite while preserving native control and editable-field behavior.
+- Reworked prompt rows around accessible native copy, favorite, and Edit
+  controls with category, rating, tags, and timestamp context at the 400×600
+  logical minimum.
 - Removed all declared private `@nw/*`, `workspace:*`, parent configuration, parent type-root, and external native-package dependencies.
 - Added app-owned implementations for logging, events, scoped environment API keys, process-local compatibility utilities, tags/projects, tool registration, and widget registration.
 - Added an app-owned SQLite tag/project sidecar and explicit legacy Nobodyworld Core DB migration utility.
@@ -44,14 +57,18 @@ with the following measured coverage:
 
 | Dimension | Covered / total | Result | App-tier target |
 | --- | ---: | ---: | ---: |
-| Statements | 2,844 / 3,639 | 78.15% | 60% |
-| Branches | 1,448 / 2,383 | 60.76% | 50% |
+| Statements | 2,843 / 3,639 | 78.12% | 60% |
+| Branches | 1,450 / 2,383 | 60.84% | 50% |
 | Functions | 634 / 777 | 81.59% | 55% |
 | Lines | 2,770 / 3,511 | 78.89% | 60% |
 
-All four targets pass, so Prompt Vault now uses the shared `app` coverage tier.
-This is local quality-gate evidence for an unreleased child branch; it does not
-establish hosted validation, public deployment support, or release readiness.
+All four configured `app` targets pass. These percentages are measured results,
+not new required floors; 78.15% is not a required statements threshold.
+
+The accepted default-branch record is commit
+`df39c5f3ee148a6c6469b9cb3e2eb806afd77699`, workflow run `30308626325`,
+event/branch `push` / `main`. All four jobs passed, with 277/277 Vitest tests
+across 41 files, 9/9 Playwright tests, and 6/6 Rust tests.
 
 ### Intended upgrade steps
 
@@ -100,13 +117,15 @@ See `docs/developer-guide/legacy-tag-migration.md` for the full procedure.
 - External Hub, orchestrator, widget, event, and platform integrations now require optional adapters built against Prompt Vault's app-owned contracts.
 - Existing legacy tag/project data requires the explicit migration procedure; it is not silently upgraded in place.
 
-### Current validation limitation
+### Current validation boundary
 
-The integrated parent has hosted Node, Playwright, Rust, and Windows packaging
-evidence, but release approval remains blocked by the governing release issues.
-The issue #28 child evidence is narrower than full historical-relationship
+The accepted default branch has hosted Node, Playwright, Rust, and Windows
+packaging evidence. That evidence does not create a supported downloadable
+release or GitHub Release; unsigned installers remain validation artifacts only.
+The issue #28 historical exercise remains narrower than full relationship
 acceptance because bounded discovery found no qualifying source with a tagging
-row. Do not merge or mark draft PR #27 ready based on this report alone.
+row. Prompt/database content also remains plaintext, and the optional network
+surface remains loopback-only.
 
 ## Earlier unreleased observability work
 

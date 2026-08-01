@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { useToast } from "../components/Toast";
-import { isTauriAvailable } from "../lib/tauri";
 import { createPrompt } from "../services/promptApi";
 
 interface FormState {
@@ -66,12 +65,10 @@ export function CreatePromptPage(): React.JSX.Element {
   const { addToast } = useToast();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [slugSuffix, setSlugSuffix] = useState(createSlugSuffix);
-  const [runtimeAvailable, setRuntimeAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    setRuntimeAvailable(isTauriAvailable());
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) setForm(parseSavedForm(saved));
@@ -105,11 +102,6 @@ export function CreatePromptPage(): React.JSX.Element {
   ): Promise<void> => {
     event.preventDefault();
     setError(null);
-
-    if (!runtimeAvailable) {
-      setError("Prompt creation requires the desktop runtime.");
-      return;
-    }
 
     if (!form.title.trim()) {
       setError("Give the prompt a clear title.");
@@ -260,10 +252,6 @@ export function CreatePromptPage(): React.JSX.Element {
       </details>
 
       {error && <p className="error">{error}</p>}
-      {!runtimeAvailable && (
-        <p className="warning">Open the native desktop app to save prompts.</p>
-      )}
-
       <div className="form-actions form-actions--balanced">
         <button
           type="button"
@@ -282,7 +270,7 @@ export function CreatePromptPage(): React.JSX.Element {
           >
             Clear draft
           </button>
-          <button type="submit" disabled={isSubmitting || !runtimeAvailable}>
+          <button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save prompt"}
           </button>
         </div>

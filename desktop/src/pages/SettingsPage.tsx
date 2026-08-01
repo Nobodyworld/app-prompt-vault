@@ -252,7 +252,9 @@ export function SettingsPage(): React.JSX.Element {
 
       <footer className="settings-footer">
         <span>
-          Shortcuts: <kbd>Ctrl+K</kbd> search · <kbd>Ctrl+N</kbd> new prompt
+          Shortcuts: <kbd>Ctrl+K</kbd> search · <kbd>Ctrl+N</kbd> new prompt ·{" "}
+          <kbd>↑/↓</kbd> choose · <kbd>Enter</kbd> copy · <kbd>E</kbd> edit ·{" "}
+          <kbd>F</kbd> favorite
         </span>
         <button type="button" className="text-button" onClick={() => navigate(-1)}>
           Done

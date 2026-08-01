@@ -238,6 +238,8 @@ async function browserApiCallVoid(
 
 // --- Persistence and fallback state management ---
 const LOCAL_STORAGE_KEY = "prompt-vault:inMemoryStore:v1";
+const STORAGE_PERSISTENCE_ERROR =
+  "Unable to save prompt changes to local browser storage. Check storage availability and try again.";
 let fallbackActive = false;
 const fallbackSubscribers = new Set<(b: boolean) => void>();
 
@@ -256,13 +258,20 @@ export function subscribeFallback(cb: (b: boolean) => void): () => void {
   return () => fallbackSubscribers.delete(cb);
 }
 
-function saveStore(): void {
+function saveStore(): boolean {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(inMemoryStore));
+    return true;
   } catch (err) {
-    // ignore storage errors
     console.warn("Failed to save inMemoryStore to localStorage", err);
+    return false;
   }
+}
+
+function persistStoreOrRollback(rollback: () => void): void {
+  if (saveStore()) return;
+  rollback();
+  throw new Error(STORAGE_PERSISTENCE_ERROR);
 }
 
 function loadStore(): void {
@@ -454,8 +463,11 @@ function createPromptInMemory(input: CreatePromptInput): Summary {
     versions: [version],
   };
 
+  const insertionIndex = inMemoryStore.prompts.length;
   inMemoryStore.prompts.push(prompt);
-  saveStore();
+  persistStoreOrRollback(() => {
+    inMemoryStore.prompts.splice(insertionIndex, 1);
+  });
   notifyFallback(true);
   return {
     id: prompt.id,
@@ -475,6 +487,9 @@ function createPromptInMemory(input: CreatePromptInput): Summary {
 function addPromptVersionInMemory(input: AddPromptVersionInput): Version {
   const prompt = inMemoryStore.prompts.find((p) => p.id === input.promptId);
   if (!prompt) throw new Error(`Prompt not found: ${input.promptId}`);
+  const previousVersions = [...prompt.versions];
+  const previousLatestVersion = prompt.latestVersion;
+  const previousUpdatedAt = prompt.updatedAt;
   const v: Version = {
     id: makeId("v"),
     semanticVersion: input.semanticVersion,
@@ -484,7 +499,15 @@ function addPromptVersionInMemory(input: AddPromptVersionInput): Version {
   prompt.versions.push(v);
   prompt.latestVersion = v;
   prompt.updatedAt = v.updatedAt;
-  saveStore();
+  persistStoreOrRollback(() => {
+    prompt.versions.splice(
+      0,
+      prompt.versions.length,
+      ...previousVersions,
+    );
+    prompt.latestVersion = previousLatestVersion;
+    prompt.updatedAt = previousUpdatedAt;
+  });
   notifyFallback(true);
   return v;
 }
@@ -498,20 +521,32 @@ function listPromptVersionsFromMemory(promptId: string): Version[] {
 
 function deletePromptFromMemory(promptId: string): void {
   loadStore();
-  const before = inMemoryStore.prompts.length;
-  inMemoryStore.prompts = inMemoryStore.prompts.filter(
-    (p) => p.id !== promptId,
+  const promptIndex = inMemoryStore.prompts.findIndex(
+    (prompt) => prompt.id === promptId,
   );
-  if (inMemoryStore.prompts.length === before) {
+  if (promptIndex === -1) {
     throw new Error(`Prompt not found: ${promptId}`);
   }
-  saveStore();
+  const [deletedPrompt] = inMemoryStore.prompts.splice(promptIndex, 1);
+  persistStoreOrRollback(() => {
+    inMemoryStore.prompts.splice(promptIndex, 0, deletedPrompt);
+  });
   notifyFallback(true);
 }
 
 function updatePromptInMemory(input: UpdatePromptInput): Summary {
   const prompt = inMemoryStore.prompts.find((p) => p.id === input.id);
   if (!prompt) throw new Error(`Prompt not found: ${input.id}`);
+  const previous = {
+    title: prompt.title,
+    description: prompt.description,
+    category: prompt.category,
+    isFavorite: prompt.isFavorite,
+    rating: prompt.rating,
+    tags: [...prompt.tags],
+    updatedAt: prompt.updatedAt,
+    latestVersion: prompt.latestVersion,
+  };
   if (input.title !== undefined) prompt.title = input.title;
   if (input.description !== undefined) prompt.description = input.description;
   if (input.category !== undefined) {
@@ -524,7 +559,9 @@ function updatePromptInMemory(input: UpdatePromptInput): Summary {
   prompt.latestVersion = prompt.versions.length
     ? prompt.versions[prompt.versions.length - 1]
     : undefined;
-  saveStore();
+  persistStoreOrRollback(() => {
+    Object.assign(prompt, previous);
+  });
   notifyFallback(true);
   return {
     id: prompt.id,
