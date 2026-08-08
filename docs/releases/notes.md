@@ -1,6 +1,32 @@
 # Prompt Vault Release Notes
 
-## Unreleased v0.3 daily Library workspace
+## Unreleased v0.4 data safety and recovery
+
+This source-preview milestone adds deterministic full-history backup `2.0`,
+complete validation before mutation, an exact preview/execution restore plan,
+explicit skip, missing-version merge, and import-as-copy conflict policies, and
+transactional native, Node/HTTP, and browser-fallback execution.
+
+Settings now reports bounded storage metadata without prompt content, records
+only minimal last-backup verification metadata, and exposes a deliberate
+choose-through-verify recovery workflow. Backup `1.0` remains compatible and is
+explicitly described as latest-version-only.
+
+On native Windows, historical
+`%LOCALAPPDATA%\com.promptvault.desktop\prompt-vault.db` detection is manual and
+read-only. Compatible sources use the same recovery plan and transaction engine
+only after explicit preview and confirmation. They are never imported at
+startup or modified in place. Prompt content, backups, and databases remain
+plaintext; this work does not add encryption, automatic backups, cloud sync,
+signing, installer distribution, or production readiness.
+
+See [Data safety and recovery](../developer-guide/data-safety-recovery.md) for
+the format, transaction, conflict, and legacy-source contracts.
+
+## Completed v0.3 daily Library workspace
+
+The v0.3 workspace is merged on `main` at
+`34e710c08b5a28b381f3080e4b022bb317a00117`.
 
 This section describes source-preview product work. It is not a published
 release, supported installer distribution, or public-network deployment.
