@@ -86,7 +86,7 @@ test.describe("Desktop App Smoke Tests", () => {
     await page.goto("/settings");
 
     await expect(
-      page.getByRole("heading", { name: "Backup and local data" }),
+      page.getByRole("heading", { name: "Data safety and recovery" }),
     ).toBeVisible();
     const advancedLink = page.getByRole("link", { name: "Open advanced tools" });
     await expect(advancedLink).toBeVisible();

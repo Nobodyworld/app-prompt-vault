@@ -18,6 +18,47 @@ const createInput = (
   tags: ["daily"],
 });
 
+function backupContent(slug: string): string {
+  return JSON.stringify({
+    format: "prompt-vault-backup",
+    version: "2.0",
+    exportedAt: "2026-07-01T00:00:00.000Z",
+    summary: { promptCount: 1, versionCount: 2 },
+    prompts: [
+      {
+        sourceId: "source-prompt",
+        slug,
+        title: "Recovered browser prompt",
+        description: null,
+        category: "Recovery",
+        isFavorite: true,
+        rating: 5,
+        tags: ["browser", "recovery"],
+        createdAt: "2026-07-01T00:00:00.000Z",
+        updatedAt: "2026-07-02T00:00:00.000Z",
+        versions: [
+          {
+            sourceId: "source-version-1",
+            semanticVersion: "1.0.0",
+            body: "Recovered original body",
+            changelog: "Initial",
+            createdAt: "2026-07-01T00:00:00.000Z",
+            updatedAt: "2026-07-01T00:00:00.000Z",
+          },
+          {
+            sourceId: "source-version-2",
+            semanticVersion: "1.1.0",
+            body: "Recovered second body",
+            changelog: "Second",
+            createdAt: "2026-07-02T00:00:00.000Z",
+            updatedAt: "2026-07-02T00:00:00.000Z",
+          },
+        ],
+      },
+    ],
+  });
+}
+
 describe("promptApi browser fallback persistence", () => {
   let api: typeof PromptApiModule;
 
@@ -188,5 +229,62 @@ describe("promptApi browser fallback persistence", () => {
       JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}").prompts,
     ).toEqual([]);
     unsubscribe();
+  });
+
+  it("previews without mutation and persists a complete browser restore once", async () => {
+    const content = backupContent("browser-recovery");
+    const preview = await api.previewBackupRestore(content);
+    expect(preview.validation).toMatchObject({
+      valid: true,
+      promptCount: 1,
+      versionCount: 2,
+    });
+    expect(preview.plan?.entries[0].kind).toBe("new-prompt");
+    expect(await api.listPrompts()).toEqual([]);
+
+    await expect(
+      api.executeBackupRestore({
+        content,
+        plan: preview.plan!,
+        policy: "skip-existing",
+      }),
+    ).resolves.toMatchObject({
+      newPrompts: 1,
+      integrityResult: "unavailable",
+    });
+    const [restored] = await api.listPrompts();
+    expect(restored).toMatchObject({
+      slug: "browser-recovery",
+      isFavorite: true,
+      rating: 5,
+      tags: ["browser", "recovery"],
+      latestVersion: { body: "Recovered second body" },
+    });
+    await expect(api.listPromptVersions(restored.id)).resolves.toHaveLength(2);
+  });
+
+  it("restores the complete browser snapshot when final persistence fails", async () => {
+    const existing = await api.createPrompt(createInput("existing", "Existing"));
+    const content = backupContent("failed-browser-recovery");
+    const preview = await api.previewBackupRestore(content);
+    const before = localStorage.getItem(STORAGE_KEY);
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("storage full");
+      });
+
+    await expect(
+      api.executeBackupRestore({
+        content,
+        plan: preview.plan!,
+        policy: "skip-existing",
+      }),
+    ).rejects.toThrow(STORAGE_ERROR);
+    setItem.mockRestore();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
+    const prompts = await api.listPrompts();
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0].id).toBe(existing.id);
   });
 });
