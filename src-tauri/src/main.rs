@@ -14,6 +14,7 @@ use std::io::Read;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::SystemTime;
 use tauri::{AppHandle, Manager, State};
 use thiserror::Error;
 use uuid::Uuid;
@@ -93,7 +94,7 @@ struct PromptVersionSummary {
     body: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct RecoveryVersion {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,7 +107,7 @@ struct RecoveryVersion {
     updated_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct RecoveryPrompt {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -123,7 +124,7 @@ struct RecoveryPrompt {
     versions: Vec<RecoveryVersion>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct RecoveryDocument {
     format: String,
@@ -133,7 +134,7 @@ struct RecoveryDocument {
     prompts: Vec<RecoveryPrompt>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct RestorePlanEntry {
     source_slug: String,
@@ -145,7 +146,7 @@ struct RestorePlanEntry {
     copy_title: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct RestorePlan {
     plan_version: String,
@@ -378,24 +379,33 @@ async fn get_storage_status(
 }
 
 #[tauri::command]
-async fn inspect_legacy_database(app: AppHandle) -> Result<LegacySourceStatus, String> {
+async fn inspect_legacy_database(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LegacySourceStatus, String> {
     let base_dir = app
         .path()
         .app_local_data_dir()
         .map_err(|error| error.to_string())?;
-    Ok(inspect_legacy_path(&resolve_legacy_database_path(
-        &base_dir,
-    )))
+    let source_path = resolve_legacy_database_path(&base_dir);
+    ensure_legacy_source_is_not_target(&source_path, &state.database_path)
+        .map_err(|error| error.to_string())?;
+    Ok(inspect_legacy_path(&source_path))
 }
 
 #[tauri::command]
-async fn preview_legacy_recovery(app: AppHandle) -> Result<LegacyRecoveryPreview, String> {
+async fn preview_legacy_recovery(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LegacyRecoveryPreview, String> {
     let base_dir = app
         .path()
         .app_local_data_dir()
         .map_err(|error| error.to_string())?;
-    read_legacy_recovery_document(&resolve_legacy_database_path(&base_dir))
-        .map_err(|error| error.to_string())
+    let source_path = resolve_legacy_database_path(&base_dir);
+    ensure_legacy_source_is_not_target(&source_path, &state.database_path)
+        .map_err(|error| error.to_string())?;
+    read_legacy_recovery_document(&source_path).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -409,23 +419,34 @@ async fn execute_legacy_restore(
         .app_local_data_dir()
         .map_err(|error| error.to_string())?;
     let source_path = resolve_legacy_database_path(&base_dir);
+    ensure_legacy_source_is_not_target(&source_path, &state.database_path)
+        .map_err(|error| error.to_string())?;
     let preview = read_legacy_recovery_document(&source_path).map_err(|error| error.to_string())?;
     if preview.source_hash != payload.source_hash {
         return Err("The legacy source changed after preview. Create a new preview.".into());
     }
-    let result = execute_backup_restore_inner(
-        state,
+    let source_inventory =
+        inventory_legacy_source(&source_path).map_err(|error| error.to_string())?;
+    if source_inventory.database.sha256.as_deref() != Some(payload.source_hash.as_str()) {
+        return Err("The legacy source changed after preview. Create a new preview.".into());
+    }
+    let mut connection = state
+        .connection
+        .lock()
+        .map_err(|_| "database lock poisoned".to_string())?;
+    let result = execute_backup_restore_on_connection_with_pre_commit(
+        &mut connection,
         ExecuteRestorePayload {
             document: preview.document,
             plan: payload.plan,
             policy: payload.policy,
         },
+        None,
+        Some(&|| verify_legacy_source_unchanged(&source_path, &source_inventory)),
     )
     .map_err(|error| error.to_string())?;
-    let hash_after = sha256_file(&source_path).map_err(|error| error.to_string())?;
-    if hash_after != payload.source_hash {
-        return Err("The legacy source changed during recovery.".into());
-    }
+    verify_legacy_source_unchanged(&source_path, &source_inventory)
+        .map_err(|error| error.to_string())?;
     Ok(result)
 }
 
@@ -1135,6 +1156,154 @@ fn sha256_file(path: &Path) -> Result<String, AppError> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LegacyFileInventory {
+    exists: bool,
+    size: Option<u64>,
+    modified: Option<SystemTime>,
+    sha256: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LegacySourceInventory {
+    database: LegacyFileInventory,
+    wal: LegacyFileInventory,
+    shm: LegacyFileInventory,
+}
+
+fn legacy_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    PathBuf::from(format!("{}-{suffix}", path.display()))
+}
+
+fn inventory_legacy_file(path: &Path) -> Result<LegacyFileInventory, AppError> {
+    match std::fs::metadata(path) {
+        Ok(metadata) => Ok(LegacyFileInventory {
+            exists: true,
+            size: Some(metadata.len()),
+            modified: metadata.modified().ok(),
+            sha256: Some(sha256_file(path)?),
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(LegacyFileInventory {
+            exists: false,
+            size: None,
+            modified: None,
+            sha256: None,
+        }),
+        Err(error) => Err(AppError::Internal(error.to_string())),
+    }
+}
+
+fn inventory_legacy_source(path: &Path) -> Result<LegacySourceInventory, AppError> {
+    Ok(LegacySourceInventory {
+        database: inventory_legacy_file(path)?,
+        wal: inventory_legacy_file(&legacy_sidecar_path(path, "wal"))?,
+        shm: inventory_legacy_file(&legacy_sidecar_path(path, "shm"))?,
+    })
+}
+
+fn verify_legacy_source_unchanged(
+    path: &Path,
+    expected: &LegacySourceInventory,
+) -> Result<(), AppError> {
+    if inventory_legacy_source(path)? != *expected {
+        return Err(AppError::Validation(
+            "The legacy source changed during recovery. No recovery writes were committed.".into(),
+        ));
+    }
+    Ok(())
+}
+
+struct LegacyReadSnapshot {
+    source_path: PathBuf,
+    source_inventory: LegacySourceInventory,
+    snapshot_path: PathBuf,
+    snapshot_directory: PathBuf,
+}
+
+impl LegacyReadSnapshot {
+    fn create(source_path: &Path) -> Result<Self, AppError> {
+        let source_inventory = inventory_legacy_source(source_path)?;
+        if !source_inventory.database.exists {
+            return Err(AppError::Validation(
+                "No historical Prompt Vault database was found.".into(),
+            ));
+        }
+        let snapshot_directory =
+            std::env::temp_dir().join(format!("prompt-vault-legacy-read-{}", Uuid::new_v4()));
+        std::fs::create_dir(&snapshot_directory)
+            .map_err(|error| AppError::Internal(error.to_string()))?;
+        let file_name = source_path
+            .file_name()
+            .ok_or_else(|| AppError::Validation("The legacy source path is invalid.".into()))?;
+        let snapshot_path = snapshot_directory.join(file_name);
+        let copy_result = (|| -> Result<(), AppError> {
+            std::fs::copy(source_path, &snapshot_path)
+                .map_err(|error| AppError::Internal(error.to_string()))?;
+            for (suffix, inventory) in [
+                ("wal", &source_inventory.wal),
+                ("shm", &source_inventory.shm),
+            ] {
+                if inventory.exists {
+                    std::fs::copy(
+                        legacy_sidecar_path(source_path, suffix),
+                        legacy_sidecar_path(&snapshot_path, suffix),
+                    )
+                    .map_err(|error| AppError::Internal(error.to_string()))?;
+                }
+            }
+            verify_legacy_source_unchanged(source_path, &source_inventory)
+        })();
+        if let Err(error) = copy_result {
+            let _ = std::fs::remove_dir_all(&snapshot_directory);
+            return Err(error);
+        }
+        Ok(Self {
+            source_path: source_path.to_path_buf(),
+            source_inventory,
+            snapshot_path,
+            snapshot_directory,
+        })
+    }
+
+    fn verify_source(&self) -> Result<(), AppError> {
+        verify_legacy_source_unchanged(&self.source_path, &self.source_inventory)
+    }
+}
+
+impl Drop for LegacyReadSnapshot {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.snapshot_directory);
+    }
+}
+
+fn with_legacy_snapshot<T>(
+    source_path: &Path,
+    operation: impl FnOnce(&Path, &LegacySourceInventory) -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    let snapshot = LegacyReadSnapshot::create(source_path)?;
+    let result = operation(&snapshot.snapshot_path, &snapshot.source_inventory);
+    snapshot.verify_source()?;
+    result
+}
+
+fn ensure_legacy_source_is_not_target(
+    source_path: &Path,
+    target_path: &Path,
+) -> Result<(), AppError> {
+    let source = std::fs::canonicalize(source_path).map_err(|error| {
+        AppError::Validation(format!("The legacy source path is unavailable: {error}"))
+    })?;
+    let target = std::fs::canonicalize(target_path).map_err(|error| {
+        AppError::Internal(format!("The active database path is unavailable: {error}"))
+    })?;
+    if source == target {
+        return Err(AppError::Validation(
+            "The historical source cannot be the active Prompt Vault database.".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn database_count(connection: &Connection, table: &str) -> Result<i64, AppError> {
     let sql = format!("SELECT COUNT(*) FROM {table}");
     Ok(connection.query_row(&sql, [], |row| row.get(0))?)
@@ -1244,89 +1413,74 @@ fn read_only_user_data_integrity(connection: &Connection) -> Result<bool, AppErr
 }
 
 fn inspect_legacy_path(path: &Path) -> LegacySourceStatus {
-    if !path.exists() {
-        return legacy_empty_status("not-found", path, Vec::new());
-    }
-    let hash_before = match sha256_file(path) {
-        Ok(hash) => hash,
-        Err(error) => return legacy_empty_status("unreadable", path, vec![error.to_string()]),
-    };
-    let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    let connection = match Connection::open_with_flags(path, flags) {
-        Ok(connection) => connection,
+    match with_legacy_snapshot(path, |snapshot_path, inventory| {
+        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let connection = Connection::open_with_flags(snapshot_path, flags)?;
+        if !read_only_user_data_integrity(&connection)? {
+            return Err(AppError::Validation(
+                "SQLite user-data integrity check failed.".into(),
+            ));
+        }
+        let compatible = has_table(&connection, "prompts")?
+            && has_table(&connection, "prompt_versions")?
+            && has_column(&connection, "prompts", "id")?
+            && has_column(&connection, "prompts", "slug")?
+            && has_column(&connection, "prompt_versions", "id")?
+            && has_column(&connection, "prompt_versions", "prompt_id")?
+            && has_column(&connection, "prompt_versions", "body")?
+            && has_column(&connection, "prompt_versions", "semantic_version")?;
+        let optional_count = |table: &str| -> Option<i64> {
+            if has_table(&connection, table).unwrap_or(false) {
+                database_count(&connection, table).ok()
+            } else {
+                None
+            }
+        };
+        Ok(LegacySourceStatus {
+            state: if compatible {
+                "compatible".into()
+            } else {
+                "unsupported-schema".into()
+            },
+            file_name: path
+                .file_name()
+                .map(|value| value.to_string_lossy().to_string()),
+            file_size: inventory.database.size,
+            sha256: inventory.database.sha256.clone(),
+            sqlite_user_version: get_user_version(&connection).ok(),
+            recognized_schema: compatible.then(|| "prompt-vault-sqlite-v1".into()),
+            prompt_count: optional_count("prompts"),
+            version_count: optional_count("prompt_versions"),
+            tag_count: optional_count("tags"),
+            relationship_count: optional_count("prompt_tags"),
+            integrity_status: "ok".into(),
+            warnings: if compatible {
+                vec![
+                    "Older schemas may not contain favorite, rating, category, or changelog fields."
+                        .into(),
+                ]
+            } else {
+                vec![
+                    "The source schema is not recognized; no recovery writes are available.".into(),
+                ]
+            },
+        })
+    }) {
+        Ok(status) => status,
         Err(error) => {
-            let state = match &error {
-                SqlError::SqliteFailure(details, _)
-                    if details.code == ErrorCode::DatabaseCorrupt =>
-                {
-                    "corrupt"
-                }
-                _ => "unreadable",
+            let message = error.to_string();
+            let state = if !path.exists() {
+                "not-found"
+            } else if message.contains("database disk image is malformed")
+                || message.contains("not a database")
+                || message.contains("SQLite user-data integrity")
+            {
+                "corrupt"
+            } else {
+                "unreadable"
             };
-            return legacy_empty_status(state, path, vec![error.to_string()]);
+            legacy_empty_status(state, path, vec![message])
         }
-    };
-    let integrity = match read_only_user_data_integrity(&connection) {
-        Ok(value) => value,
-        Err(error) => return legacy_empty_status("corrupt", path, vec![error.to_string()]),
-    };
-    if !integrity {
-        return legacy_empty_status(
-            "corrupt",
-            path,
-            vec!["SQLite user-data integrity check failed.".into()],
-        );
-    }
-    let compatible = has_table(&connection, "prompts").unwrap_or(false)
-        && has_table(&connection, "prompt_versions").unwrap_or(false)
-        && has_column(&connection, "prompts", "id").unwrap_or(false)
-        && has_column(&connection, "prompts", "slug").unwrap_or(false)
-        && has_column(&connection, "prompt_versions", "body").unwrap_or(false)
-        && has_column(&connection, "prompt_versions", "semantic_version").unwrap_or(false);
-    let hash_after = match sha256_file(path) {
-        Ok(hash) => hash,
-        Err(error) => return legacy_empty_status("unreadable", path, vec![error.to_string()]),
-    };
-    if hash_before != hash_after {
-        return legacy_empty_status(
-            "unreadable",
-            path,
-            vec!["The legacy source changed during read-only inspection.".into()],
-        );
-    }
-    let optional_count = |table: &str| -> Option<i64> {
-        if has_table(&connection, table).unwrap_or(false) {
-            database_count(&connection, table).ok()
-        } else {
-            None
-        }
-    };
-    LegacySourceStatus {
-        state: if compatible {
-            "compatible".into()
-        } else {
-            "unsupported-schema".into()
-        },
-        file_name: path
-            .file_name()
-            .map(|value| value.to_string_lossy().to_string()),
-        file_size: std::fs::metadata(path).ok().map(|value| value.len()),
-        sha256: Some(hash_before),
-        sqlite_user_version: get_user_version(&connection).ok(),
-        recognized_schema: compatible.then(|| "prompt-vault-sqlite-v1".into()),
-        prompt_count: optional_count("prompts"),
-        version_count: optional_count("prompt_versions"),
-        tag_count: optional_count("tags"),
-        relationship_count: optional_count("prompt_tags"),
-        integrity_status: "ok".into(),
-        warnings: if compatible {
-            vec![
-                "Older schemas may not contain favorite, rating, category, or changelog fields."
-                    .into(),
-            ]
-        } else {
-            vec!["The source schema is not recognized; no recovery writes are available.".into()]
-        },
     }
 }
 
@@ -1359,128 +1513,131 @@ fn read_legacy_recovery_document(path: &Path) -> Result<LegacyRecoveryPreview, A
         .sha256
         .clone()
         .ok_or_else(|| AppError::Internal("Legacy source hash is unavailable.".into()))?;
-    let connection = Connection::open_with_flags(
-        path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )?;
-    let exported_at = std::fs::metadata(path)
-        .ok()
-        .and_then(|metadata| metadata.modified().ok())
-        .map(chrono::DateTime::<chrono::Utc>::from)
-        .unwrap_or_else(chrono::Utc::now)
-        .to_rfc3339();
-    let title = legacy_column_expression(&connection, "prompts", "title", "slug");
-    let description = legacy_column_expression(&connection, "prompts", "description", "NULL");
-    let category = legacy_column_expression(&connection, "prompts", "category", "NULL");
-    let favorite = legacy_column_expression(&connection, "prompts", "is_favorite", "0");
-    let rating = legacy_column_expression(&connection, "prompts", "rating", "NULL");
-    let created = legacy_column_expression(&connection, "prompts", "created_at", "NULL");
-    let updated = legacy_column_expression(&connection, "prompts", "updated_at", "NULL");
-    let active_filter = if has_column(&connection, "prompts", "deleted_at")? {
-        " WHERE deleted_at IS NULL"
-    } else {
-        ""
-    };
-    let prompt_sql = format!(
+    let document = with_legacy_snapshot(path, |snapshot_path, inventory| {
+        if inventory.database.sha256.as_deref() != Some(source_hash.as_str()) {
+            return Err(AppError::Validation(
+                "The legacy source changed during read-only preview. Inspect it again before recovery."
+                    .into(),
+            ));
+        }
+        let connection = Connection::open_with_flags(
+            snapshot_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        let exported_at = inventory
+            .database
+            .modified
+            .map(chrono::DateTime::<chrono::Utc>::from)
+            .unwrap_or_else(chrono::Utc::now)
+            .to_rfc3339();
+        let title = legacy_column_expression(&connection, "prompts", "title", "slug");
+        let description = legacy_column_expression(&connection, "prompts", "description", "NULL");
+        let category = legacy_column_expression(&connection, "prompts", "category", "NULL");
+        let favorite = legacy_column_expression(&connection, "prompts", "is_favorite", "0");
+        let rating = legacy_column_expression(&connection, "prompts", "rating", "NULL");
+        let created = legacy_column_expression(&connection, "prompts", "created_at", "NULL");
+        let updated = legacy_column_expression(&connection, "prompts", "updated_at", "NULL");
+        let active_filter = if has_column(&connection, "prompts", "deleted_at")? {
+            " WHERE deleted_at IS NULL"
+        } else {
+            ""
+        };
+        let prompt_sql = format!(
         "SELECT id, slug, {title}, {description}, {category}, {favorite}, {rating}, {created}, {updated} FROM prompts{active_filter} ORDER BY LOWER(slug), id"
     );
-    let mut prompt_statement = connection.prepare(&prompt_sql)?;
-    let prompt_rows = prompt_statement.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, i64>(5)?,
-            row.get::<_, Option<i32>>(6)?,
-            row.get::<_, Option<String>>(7)?,
-            row.get::<_, Option<String>>(8)?,
-        ))
-    })?;
-    let version_changelog =
-        legacy_column_expression(&connection, "prompt_versions", "changelog", "NULL");
-    let version_created =
-        legacy_column_expression(&connection, "prompt_versions", "created_at", "NULL");
-    let version_updated =
-        legacy_column_expression(&connection, "prompt_versions", "updated_at", "NULL");
-    let version_sql = format!(
+        let mut prompt_statement = connection.prepare(&prompt_sql)?;
+        let prompt_rows = prompt_statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, Option<i32>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+            ))
+        })?;
+        let version_changelog =
+            legacy_column_expression(&connection, "prompt_versions", "changelog", "NULL");
+        let version_created =
+            legacy_column_expression(&connection, "prompt_versions", "created_at", "NULL");
+        let version_updated =
+            legacy_column_expression(&connection, "prompt_versions", "updated_at", "NULL");
+        let version_sql = format!(
         "SELECT id, semantic_version, body, {version_changelog}, {version_created}, {version_updated} FROM prompt_versions WHERE prompt_id = ?1 ORDER BY COALESCE({version_created}, {version_updated}), rowid"
     );
-    let has_tags = has_table(&connection, "tags")?
-        && has_table(&connection, "prompt_tags")?
-        && has_column(&connection, "prompt_tags", "prompt_id")?
-        && has_column(&connection, "prompt_tags", "tag_id")?;
-    let tag_label = if has_column(&connection, "tags", "label")? {
-        Some("label")
-    } else if has_column(&connection, "tags", "name")? {
-        Some("name")
-    } else {
-        None
-    };
-    let mut prompts = Vec::new();
-    for row in prompt_rows {
-        let (id, slug, title, description, category, favorite, rating, created, updated) = row?;
-        let prompt_updated = updated.unwrap_or_else(|| exported_at.clone());
-        let prompt_created = created.unwrap_or_else(|| prompt_updated.clone());
-        let mut version_statement = connection.prepare(&version_sql)?;
-        let versions = version_statement
-            .query_map([id.as_str()], |version| {
-                let body: String = version.get(2)?;
-                let version_updated: Option<String> = version.get(5)?;
-                let updated_at = version_updated.unwrap_or_else(|| prompt_updated.clone());
-                let version_created: Option<String> = version.get(4)?;
-                Ok(RecoveryVersion {
-                    source_id: Some(version.get(0)?),
-                    semantic_version: version.get(1)?,
-                    body_hash: sha256_text(&body),
-                    body,
-                    changelog: version.get(3)?,
-                    created_at: version_created.unwrap_or_else(|| updated_at.clone()),
-                    updated_at,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut tags = Vec::new();
-        if has_tags {
-            if let Some(label) = tag_label {
-                let tag_sql = format!(
+        let has_tags = has_table(&connection, "tags")?
+            && has_table(&connection, "prompt_tags")?
+            && has_column(&connection, "prompt_tags", "prompt_id")?
+            && has_column(&connection, "prompt_tags", "tag_id")?;
+        let tag_label = if has_column(&connection, "tags", "label")? {
+            Some("label")
+        } else if has_column(&connection, "tags", "name")? {
+            Some("name")
+        } else {
+            None
+        };
+        let mut prompts = Vec::new();
+        for row in prompt_rows {
+            let (id, slug, title, description, category, favorite, rating, created, updated) = row?;
+            let prompt_updated = updated.unwrap_or_else(|| exported_at.clone());
+            let prompt_created = created.unwrap_or_else(|| prompt_updated.clone());
+            let mut version_statement = connection.prepare(&version_sql)?;
+            let versions = version_statement
+                .query_map([id.as_str()], |version| {
+                    let body: String = version.get(2)?;
+                    let version_updated: Option<String> = version.get(5)?;
+                    let updated_at = version_updated.unwrap_or_else(|| prompt_updated.clone());
+                    let version_created: Option<String> = version.get(4)?;
+                    Ok(RecoveryVersion {
+                        source_id: Some(version.get(0)?),
+                        semantic_version: version.get(1)?,
+                        body_hash: sha256_text(&body),
+                        body,
+                        changelog: version.get(3)?,
+                        created_at: version_created.unwrap_or_else(|| updated_at.clone()),
+                        updated_at,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut tags = Vec::new();
+            if has_tags {
+                if let Some(label) = tag_label {
+                    let tag_sql = format!(
                     "SELECT t.{label} FROM tags t JOIN prompt_tags pt ON pt.tag_id = t.id WHERE pt.prompt_id = ?1 ORDER BY LOWER(t.{label}), t.{label}"
                 );
-                let mut tag_statement = connection.prepare(&tag_sql)?;
-                tags = tag_statement
-                    .query_map([id.as_str()], |tag| tag.get(0))?
-                    .collect::<Result<Vec<String>, _>>()?;
+                    let mut tag_statement = connection.prepare(&tag_sql)?;
+                    tags = tag_statement
+                        .query_map([id.as_str()], |tag| tag.get(0))?
+                        .collect::<Result<Vec<String>, _>>()?;
+                }
             }
+            prompts.push(RecoveryPrompt {
+                source_id: Some(id),
+                slug: slug.trim().to_lowercase(),
+                title: title.unwrap_or_else(|| slug.clone()),
+                description,
+                category,
+                is_favorite: favorite != 0,
+                rating,
+                tags,
+                created_at: prompt_created,
+                updated_at: prompt_updated,
+                versions,
+            });
         }
-        prompts.push(RecoveryPrompt {
-            source_id: Some(id),
-            slug: slug.trim().to_lowercase(),
-            title: title.unwrap_or_else(|| slug.clone()),
-            description,
-            category,
-            is_favorite: favorite != 0,
-            rating,
-            tags,
-            created_at: prompt_created,
-            updated_at: prompt_updated,
-            versions,
-        });
-    }
-    let hash_after = sha256_file(path)?;
-    if hash_after != source_hash {
-        return Err(AppError::Validation(
-            "The legacy source changed during read-only preview.".into(),
-        ));
-    }
-    let document = RecoveryDocument {
-        format: "prompt-vault-backup".into(),
-        source_version: "2.0".into(),
-        exported_at,
-        history_coverage: "full-history".into(),
-        prompts,
-    };
-    validate_recovery_document(&document)?;
+        let document = RecoveryDocument {
+            format: "prompt-vault-backup".into(),
+            source_version: "2.0".into(),
+            exported_at,
+            history_coverage: "full-history".into(),
+            prompts,
+        };
+        validate_recovery_document(&document)?;
+        Ok(document)
+    })?;
     Ok(LegacyRecoveryPreview {
         status,
         source_hash,
@@ -1633,6 +1790,161 @@ fn fingerprint_library(library: &[(String, RecoveryPrompt)]) -> Result<String, A
     let encoded =
         serde_json::to_string(&canonical).map_err(|error| AppError::Internal(error.to_string()))?;
     Ok(sha256_text(&encoded))
+}
+
+fn copied_title(title: &str) -> String {
+    if title.ends_with(" (imported copy)") {
+        title.into()
+    } else {
+        format!("{title} (imported copy)")
+    }
+}
+
+fn recovery_tag_keys(tags: &[String]) -> Vec<String> {
+    let mut keys: Vec<String> = tags.iter().map(|tag| tag.to_lowercase()).collect();
+    keys.sort_by(|left, right| compare_javascript_text(left, right));
+    keys
+}
+
+fn build_restore_plan(
+    document: &RecoveryDocument,
+    current_library: &[(String, RecoveryPrompt)],
+) -> Result<RestorePlan, AppError> {
+    let current_by_slug: std::collections::HashMap<&str, &(String, RecoveryPrompt)> =
+        current_library
+            .iter()
+            .map(|entry| (entry.1.slug.as_str(), entry))
+            .collect();
+    let mut reserved_slugs: std::collections::HashSet<String> = current_by_slug
+        .keys()
+        .map(|slug| (*slug).to_string())
+        .collect();
+    let mut entries = Vec::with_capacity(document.prompts.len());
+    for source in &document.prompts {
+        let Some((current_id, current)) = current_by_slug.get(source.slug.as_str()).copied() else {
+            reserved_slugs.insert(source.slug.clone());
+            entries.push(RestorePlanEntry {
+                source_slug: source.slug.clone(),
+                kind: "new-prompt".into(),
+                current_prompt_id: None,
+                missing_version_identities: source
+                    .versions
+                    .iter()
+                    .map(recovery_version_identity)
+                    .collect(),
+                skipped_version_identities: Vec::new(),
+                copy_slug: None,
+                copy_title: None,
+            });
+            continue;
+        };
+        let current_identities: std::collections::HashSet<String> = current
+            .versions
+            .iter()
+            .map(recovery_version_identity)
+            .collect();
+        let missing_version_identities: Vec<String> = source
+            .versions
+            .iter()
+            .map(recovery_version_identity)
+            .filter(|identity| !current_identities.contains(identity))
+            .collect();
+        let skipped_version_identities: Vec<String> = source
+            .versions
+            .iter()
+            .map(recovery_version_identity)
+            .filter(|identity| current_identities.contains(identity))
+            .collect();
+        let current_semantics: std::collections::HashMap<&str, &str> = current
+            .versions
+            .iter()
+            .map(|version| {
+                (
+                    version.semantic_version.as_str(),
+                    version.body_hash.as_str(),
+                )
+            })
+            .collect();
+        let semantic_body_conflict = source.versions.iter().any(|version| {
+            current_semantics
+                .get(version.semantic_version.as_str())
+                .is_some_and(|hash| *hash != version.body_hash)
+        });
+        let metadata_equal = current.title == source.title
+            && current.description == source.description
+            && current.category == source.category
+            && current.is_favorite == source.is_favorite
+            && current.rating == source.rating
+            && recovery_tag_keys(&current.tags) == recovery_tag_keys(&source.tags);
+        let kind = if missing_version_identities.is_empty() && metadata_equal {
+            "existing-exact-duplicate"
+        } else if missing_version_identities.is_empty() {
+            "existing-slug-conflict"
+        } else if semantic_body_conflict {
+            "copy-required-conflict"
+        } else if !skipped_version_identities.is_empty() {
+            "mergeable-missing-versions"
+        } else {
+            "existing-slug-conflict"
+        };
+        let base_slug = format!("{}-imported", source.slug);
+        let mut copy_slug = base_slug.clone();
+        let mut suffix = 2_usize;
+        while reserved_slugs.contains(&copy_slug) {
+            copy_slug = format!("{base_slug}-{suffix}");
+            suffix += 1;
+        }
+        reserved_slugs.insert(copy_slug.clone());
+        entries.push(RestorePlanEntry {
+            source_slug: source.slug.clone(),
+            kind: kind.into(),
+            current_prompt_id: Some(current_id.clone()),
+            missing_version_identities,
+            skipped_version_identities,
+            copy_slug: Some(copy_slug),
+            copy_title: Some(copied_title(&source.title)),
+        });
+    }
+    let document_fingerprint = sha256_text(
+        &serde_json::to_string(document).map_err(|error| AppError::Internal(error.to_string()))?,
+    );
+    let current_library_fingerprint = fingerprint_library(current_library)?;
+    let warnings = if document.history_coverage == "latest-version-only" {
+        vec!["Backup 1.0 contains only the latest available version.".into()]
+    } else {
+        Vec::new()
+    };
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PlanCore<'a> {
+        plan_version: &'a str,
+        source_version: &'a str,
+        document_fingerprint: &'a str,
+        current_library_fingerprint: &'a str,
+        entries: &'a [RestorePlanEntry],
+        warnings: &'a [String],
+    }
+    let plan_core = PlanCore {
+        plan_version: "1",
+        source_version: &document.source_version,
+        document_fingerprint: &document_fingerprint,
+        current_library_fingerprint: &current_library_fingerprint,
+        entries: &entries,
+        warnings: &warnings,
+    };
+    let plan_id = sha256_text(
+        &serde_json::to_string(&plan_core)
+            .map_err(|error| AppError::Internal(error.to_string()))?,
+    );
+    Ok(RestorePlan {
+        plan_version: "1".into(),
+        plan_id,
+        source_version: document.source_version.clone(),
+        document_fingerprint,
+        current_library_fingerprint,
+        entries,
+        warnings,
+    })
 }
 
 fn validate_recovery_document(document: &RecoveryDocument) -> Result<(), AppError> {
@@ -1848,6 +2160,15 @@ fn execute_backup_restore_on_connection(
     payload: ExecuteRestorePayload,
     failure_point: Option<&str>,
 ) -> Result<RestoreResult, AppError> {
+    execute_backup_restore_on_connection_with_pre_commit(connection, payload, failure_point, None)
+}
+
+fn execute_backup_restore_on_connection_with_pre_commit(
+    connection: &mut Connection,
+    payload: ExecuteRestorePayload,
+    failure_point: Option<&str>,
+    pre_commit_validation: Option<&dyn Fn() -> Result<(), AppError>>,
+) -> Result<RestoreResult, AppError> {
     validate_recovery_document(&payload.document)?;
     if !matches!(
         payload.policy.as_str(),
@@ -1855,46 +2176,12 @@ fn execute_backup_restore_on_connection(
     ) {
         return Err(AppError::Validation("Unsupported restore policy.".into()));
     }
-    let encoded_document = serde_json::to_string(&payload.document)
-        .map_err(|error| AppError::Internal(error.to_string()))?;
-    if sha256_text(&encoded_document) != payload.plan.document_fingerprint
-        || payload.plan.source_version != payload.document.source_version
-        || payload.plan.plan_version != "1"
-    {
-        return Err(AppError::Validation(
-            "The recovery source or plan changed after preview. Create a new preview.".into(),
-        ));
-    }
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct PlanCore<'a> {
-        plan_version: &'a str,
-        source_version: &'a str,
-        document_fingerprint: &'a str,
-        current_library_fingerprint: &'a str,
-        entries: &'a [RestorePlanEntry],
-        warnings: &'a [String],
-    }
-    let plan_core = PlanCore {
-        plan_version: &payload.plan.plan_version,
-        source_version: &payload.plan.source_version,
-        document_fingerprint: &payload.plan.document_fingerprint,
-        current_library_fingerprint: &payload.plan.current_library_fingerprint,
-        entries: &payload.plan.entries,
-        warnings: &payload.plan.warnings,
-    };
-    let encoded_plan =
-        serde_json::to_string(&plan_core).map_err(|error| AppError::Internal(error.to_string()))?;
-    if sha256_text(&encoded_plan) != payload.plan.plan_id {
-        return Err(AppError::Validation(
-            "The restore plan signature is invalid.".into(),
-        ));
-    }
-
     let current = read_recovery_library(connection)?;
-    if fingerprint_library(&current)? != payload.plan.current_library_fingerprint {
+    let rebuilt_plan = build_restore_plan(&payload.document, &current)?;
+    if rebuilt_plan != payload.plan {
         return Err(AppError::Validation(
-            "The current library changed after preview. Create a new preview.".into(),
+            "The recovery source, restore plan, or current library changed after preview. Create a new preview."
+                .into(),
         ));
     }
     let current_by_slug: std::collections::HashMap<&str, &(String, RecoveryPrompt)> = current
@@ -2051,6 +2338,9 @@ fn execute_backup_restore_on_connection(
         return Err(AppError::Database(
             "Post-restore verification failed; all writes were rolled back.".into(),
         ));
+    }
+    if let Some(validate) = pre_commit_validation {
+        validate()?;
     }
     transaction.commit()?;
     Ok(RestoreResult {
@@ -2620,55 +2910,13 @@ mod tests {
     fn recovery_plan(
         connection: &Connection,
         document: &RecoveryDocument,
-        kind: &str,
+        _kind: &str,
     ) -> RestorePlan {
         let current = read_recovery_library(connection).expect("read current recovery library");
-        let current_prompt = current
-            .iter()
-            .find(|entry| entry.1.slug == document.prompts[0].slug);
-        let current_identities: std::collections::HashSet<String> = current_prompt
-            .map(|entry| {
-                entry
-                    .1
-                    .versions
-                    .iter()
-                    .map(recovery_version_identity)
-                    .collect()
-            })
-            .unwrap_or_default();
-        let missing_version_identities = document.prompts[0]
-            .versions
-            .iter()
-            .map(recovery_version_identity)
-            .filter(|identity| !current_identities.contains(identity))
-            .collect();
-        let skipped_version_identities = document.prompts[0]
-            .versions
-            .iter()
-            .map(recovery_version_identity)
-            .filter(|identity| current_identities.contains(identity))
-            .collect();
-        let document_fingerprint =
-            sha256_text(&serde_json::to_string(document).expect("serialize recovery document"));
-        let entry = RestorePlanEntry {
-            source_slug: document.prompts[0].slug.clone(),
-            kind: kind.into(),
-            current_prompt_id: current_prompt.map(|entry| entry.0.clone()),
-            missing_version_identities,
-            skipped_version_identities,
-            copy_slug: current_prompt.map(|_| format!("{}-imported", document.prompts[0].slug)),
-            copy_title: current_prompt.map(|_| "Recovery fixture (imported copy)".into()),
-        };
-        let mut plan = RestorePlan {
-            plan_version: "1".into(),
-            plan_id: String::new(),
-            source_version: document.source_version.clone(),
-            document_fingerprint,
-            current_library_fingerprint: fingerprint_library(&current)
-                .expect("fingerprint current library"),
-            entries: vec![entry],
-            warnings: Vec::new(),
-        };
+        build_restore_plan(document, &current).expect("build recovery plan")
+    }
+
+    fn recompute_plan_id(plan: &mut RestorePlan) {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
         struct TestPlanCore<'a> {
@@ -2690,7 +2938,6 @@ mod tests {
             })
             .expect("serialize recovery plan"),
         );
-        plan
     }
 
     fn recovery_database_snapshot(connection: &Connection) -> Vec<String> {
@@ -2732,6 +2979,148 @@ mod tests {
         let mut unicode_tags = vec!["\u{e000}", "alpha", "😀", "Alpha"];
         unicode_tags.sort_by(|left, right| compare_recovery_tags(left, right));
         assert_eq!(unicode_tags, vec!["Alpha", "alpha", "😀", "\u{e000}"]);
+    }
+
+    #[test]
+    fn native_recovery_rejects_rehashed_tampered_restore_plans() {
+        for tamper in 0..5 {
+            let mut connection = Connection::open_in_memory().expect("open database");
+            apply_migrations(&connection).expect("apply migrations");
+            create_prompt_in_connection(
+                &mut connection,
+                CreatePromptPayload {
+                    slug: "native-tamper".into(),
+                    title: "Recovery fixture".into(),
+                    description: Some("Disposable source".into()),
+                    category: Some("Safety".into()),
+                    is_favorite: Some(true),
+                    rating: Some(5),
+                    body: "Original recovery body".into(),
+                    semantic_version: "1.0.0".into(),
+                    changelog: Some("Initial".into()),
+                    tags: vec!["alpha".into(), "recovery".into()],
+                },
+            )
+            .expect("create matching prompt");
+            connection
+                .execute(
+                    "UPDATE prompts SET created_at = ?1, updated_at = ?1 WHERE slug = 'native-tamper'",
+                    ["2026-01-01T00:00:00.000Z"],
+                )
+                .expect("normalize prompt timestamp");
+            connection
+                .execute(
+                    "UPDATE prompt_versions SET created_at = ?1, updated_at = ?1 WHERE semantic_version = '1.0.0'",
+                    ["2026-01-01T00:00:00.000Z"],
+                )
+                .expect("normalize version timestamp");
+            let document = recovery_document("native-tamper", false);
+            let mut plan = recovery_plan(&connection, &document, "existing-exact-duplicate");
+            match tamper {
+                0 => plan.entries[0].copy_slug = Some("tampered-copy".into()),
+                1 => plan.entries[0].copy_title = Some("Tampered title".into()),
+                2 => plan.entries[0].kind = "new-prompt".into(),
+                3 => plan.entries.clear(),
+                _ => plan.warnings.push("Tampered warning".into()),
+            }
+            recompute_plan_id(&mut plan);
+            let before = recovery_database_snapshot(&connection);
+            let error = execute_backup_restore_on_connection(
+                &mut connection,
+                ExecuteRestorePayload {
+                    document,
+                    plan,
+                    policy: "skip-existing".into(),
+                },
+                None,
+            )
+            .expect_err("tampered plan must be rejected");
+            assert!(error.to_string().contains("Create a new preview"));
+            assert_eq!(recovery_database_snapshot(&connection), before);
+        }
+    }
+
+    #[test]
+    fn native_legacy_source_cannot_be_the_active_database() {
+        let temp = TempDir::new().expect("create tempdir");
+        let path = temp.path().join("prompt-vault.db");
+        Connection::open(&path).expect("create database");
+        let error = ensure_legacy_source_is_not_target(&path, &path)
+            .expect_err("source and target aliases must be rejected");
+        assert!(error.to_string().contains("cannot be the active"));
+    }
+
+    #[test]
+    fn native_legacy_source_change_before_commit_rolls_back_target() {
+        let temp = TempDir::new().expect("create tempdir");
+        let source_path = temp.path().join("legacy-source.db");
+        std::fs::write(&source_path, b"synthetic legacy source").expect("write source");
+        let source_inventory = inventory_legacy_source(&source_path).expect("inventory source");
+        let mut target = Connection::open_in_memory().expect("open target");
+        apply_migrations(&target).expect("migrate target");
+        let document = recovery_document("source-change", false);
+        let plan = recovery_plan(&target, &document, "new-prompt");
+        let before = recovery_database_snapshot(&target);
+        let error = execute_backup_restore_on_connection_with_pre_commit(
+            &mut target,
+            ExecuteRestorePayload {
+                document,
+                plan,
+                policy: "skip-existing".into(),
+            },
+            None,
+            Some(&|| {
+                std::fs::write(&source_path, b"changed during restore")
+                    .map_err(|write_error| AppError::Internal(write_error.to_string()))?;
+                verify_legacy_source_unchanged(&source_path, &source_inventory)
+            }),
+        )
+        .expect_err("changed source must prevent commit");
+        assert!(error.to_string().contains("legacy source changed"));
+        assert_eq!(recovery_database_snapshot(&target), before);
+    }
+
+    #[test]
+    fn legacy_detection_rejects_each_missing_required_column() {
+        for (table, column) in [
+            ("prompts", "id"),
+            ("prompts", "slug"),
+            ("prompt_versions", "id"),
+            ("prompt_versions", "prompt_id"),
+            ("prompt_versions", "body"),
+            ("prompt_versions", "semantic_version"),
+        ] {
+            let temp = TempDir::new().expect("create tempdir");
+            let path = temp.path().join(format!("missing-{table}-{column}.db"));
+            let prompt_columns = [("id", "TEXT PRIMARY KEY"), ("slug", "TEXT NOT NULL")]
+                .into_iter()
+                .filter(|(name, _)| !(table == "prompts" && *name == column))
+                .map(|(name, definition)| format!("{name} {definition}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let version_columns = [
+                ("id", "TEXT PRIMARY KEY"),
+                ("prompt_id", "TEXT NOT NULL"),
+                ("semantic_version", "TEXT NOT NULL"),
+                ("body", "TEXT NOT NULL"),
+            ]
+            .into_iter()
+            .filter(|(name, _)| !(table == "prompt_versions" && *name == column))
+            .map(|(name, definition)| format!("{name} {definition}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+            Connection::open(&path)
+                .expect("create fixture")
+                .execute_batch(&format!(
+                    "CREATE TABLE prompts ({prompt_columns}); CREATE TABLE prompt_versions ({version_columns});"
+                ))
+                .expect("create schema fixture");
+            assert_eq!(
+                inspect_legacy_path(&path).state,
+                "unsupported-schema",
+                "missing {table}.{column} must be classified before preview"
+            );
+        }
     }
 
     #[test]
@@ -2876,6 +3265,49 @@ mod tests {
         assert_eq!(preview.document.prompts[0].tags, vec!["native"]);
         assert_eq!(preview.source_hash, before);
         assert_eq!(sha256_file(&path).expect("hash after"), before);
+    }
+
+    #[test]
+    fn legacy_wal_and_shm_are_preserved_through_inspection_preview_and_restore() {
+        let temp = TempDir::new().expect("create tempdir");
+        let source_path = temp.path().join("wal-legacy.db");
+        let mut source = Connection::open(&source_path).expect("open legacy fixture");
+        source
+            .pragma_update(None, "journal_mode", "WAL")
+            .expect("enable WAL mode");
+        source
+            .pragma_update(None, "wal_autocheckpoint", 0)
+            .expect("disable WAL autocheckpoint");
+        apply_migrations(&source).expect("apply migrations");
+        create_prompt_in_connection(&mut source, category_prompt_payload(Some("Legacy")))
+            .expect("create legacy prompt");
+        let before = inventory_legacy_source(&source_path).expect("inventory legacy source");
+        assert!(before.wal.exists, "fixture must retain a WAL sidecar");
+        assert!(before.shm.exists, "fixture must retain an SHM sidecar");
+
+        let status = inspect_legacy_path(&source_path);
+        assert_eq!(status.state, "compatible", "status: {status:?}");
+        let preview = read_legacy_recovery_document(&source_path).expect("preview WAL source");
+        let mut target = Connection::open_in_memory().expect("open target");
+        apply_migrations(&target).expect("migrate target");
+        let plan = recovery_plan(&target, &preview.document, "new-prompt");
+        let result = execute_backup_restore_on_connection_with_pre_commit(
+            &mut target,
+            ExecuteRestorePayload {
+                document: preview.document,
+                plan,
+                policy: "skip-existing".into(),
+            },
+            None,
+            Some(&|| verify_legacy_source_unchanged(&source_path, &before)),
+        )
+        .expect("restore immutable WAL source");
+        assert_eq!(result.new_prompts, 1);
+        assert_eq!(
+            inventory_legacy_source(&source_path).expect("inventory source after"),
+            before,
+            "inspection, preview, and restore must not alter DB, WAL, or SHM"
+        );
     }
 
     #[test]

@@ -21,6 +21,7 @@ import type {
   RestoreResult,
   StorageStatus,
 } from "../../../src/domain/recovery";
+import { RECOVERY_LIMITS } from "../../../src/domain/recovery";
 
 type WindowPlacement = "left" | "right";
 type RecoverySource = "backup" | "legacy";
@@ -209,6 +210,13 @@ export function SettingsPage(): React.JSX.Element {
     const file = input.files?.[0];
     if (!file) return;
     resetRecovery();
+    if (file.size > RECOVERY_LIMITS.maxBytes) {
+      setError(
+        `Backup files must be ${formatBytes(RECOVERY_LIMITS.maxBytes)} or smaller. No data was changed.`,
+      );
+      input.value = "";
+      return;
+    }
     setSourceKind("backup");
     setSourceName(file.name);
     setIsPreviewing(true);

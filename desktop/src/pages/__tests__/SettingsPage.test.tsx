@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { RestorePlan, StorageStatus } from "../../../../src/domain/recovery";
+import { RECOVERY_LIMITS } from "../../../../src/domain/recovery";
 import { SettingsPage } from "../SettingsPage";
 
 const api = vi.hoisted(() => ({
@@ -181,6 +182,27 @@ describe("Settings data safety and recovery", () => {
     expect(api.executeBackupRestore).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel preview" }));
     expect(screen.queryByText("Previewed restore plan")).not.toBeInTheDocument();
+    expect(api.executeBackupRestore).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized backup before reading it", async () => {
+    const { container } = renderSettings();
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    const file = new File(["small placeholder"], "oversized-backup.json", {
+      type: "application/json",
+    });
+    Object.defineProperty(file, "size", { value: RECOVERY_LIMITS.maxBytes + 1 });
+    const read = vi.fn();
+    Object.defineProperty(file, "text", { value: read });
+
+    fireEvent.change(input!, { target: { files: [file] } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /Backup files must be 10\.0 MB or smaller\. No data was changed\./,
+    );
+    expect(read).not.toHaveBeenCalled();
+    expect(api.previewBackupRestore).not.toHaveBeenCalled();
     expect(api.executeBackupRestore).not.toHaveBeenCalled();
   });
 
