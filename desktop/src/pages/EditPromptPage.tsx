@@ -44,6 +44,33 @@ function sameTags(left: readonly string[], right: readonly string[]): boolean {
   );
 }
 
+interface CompareLine {
+  readonly number: number;
+  readonly historical: string;
+  readonly current: string;
+  readonly changed: boolean;
+}
+
+function buildBoundedComparison(
+  historical: string,
+  current: string,
+  maxLines = 200,
+): { lines: CompareLine[]; truncated: boolean } {
+  const historicalLines = historical.split("\n");
+  const currentLines = current.split("\n");
+  const total = Math.max(historicalLines.length, currentLines.length);
+  const rendered = Math.min(total, maxLines);
+  return {
+    lines: Array.from({ length: rendered }, (_, index) => ({
+      number: index + 1,
+      historical: historicalLines[index] ?? "",
+      current: currentLines[index] ?? "",
+      changed: (historicalLines[index] ?? "") !== (currentLines[index] ?? ""),
+    })),
+    truncated: total > maxLines,
+  };
+}
+
 interface EditLocationState {
   prompt?: PromptSummary;
 }
@@ -75,6 +102,7 @@ export function EditPromptPage(): React.JSX.Element {
   );
   const [changelog, setChangelog] = useState("");
   const [versions, setVersions] = useState<PromptVersionSummary[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -150,6 +178,20 @@ export function EditPromptPage(): React.JSX.Element {
   }, [prompt?.id]);
 
   const parsedTags = useMemo(() => parseTags(tags), [tags]);
+  const selectedVersion = useMemo(
+    () => versions.find((version) => version.id === selectedVersionId) ?? null,
+    [selectedVersionId, versions],
+  );
+  const comparison = useMemo(
+    () =>
+      selectedVersion
+        ? buildBoundedComparison(
+            selectedVersion.body,
+            prompt?.latestVersion?.body ?? "",
+          )
+        : null,
+    [prompt?.latestVersion?.body, selectedVersion],
+  );
 
   async function handleRevert(version: PromptVersionSummary): Promise<void> {
     if (!prompt) return;
@@ -397,19 +439,79 @@ export function EditPromptPage(): React.JSX.Element {
                   <li key={version.id} className="version-history__item">
                     <span>
                       v{version.semanticVersion} ·{" "}
-                      {new Date(version.updatedAt).toLocaleString()}
+                      {new Date(version.createdAt ?? version.updatedAt).toLocaleString()}
+                      {version.changelog ? " · Changelog" : ""}
                     </span>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => void handleRevert(version)}
-                      disabled={isSaving}
-                    >
-                      Revert
-                    </button>
+                    <span className="version-history__actions">
+                      <button
+                        type="button"
+                        className="secondary"
+                        aria-pressed={selectedVersionId === version.id}
+                        onClick={() => setSelectedVersionId(version.id)}
+                      >
+                        Preview
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => void handleRevert(version)}
+                        disabled={isSaving}
+                      >
+                        Revert
+                      </button>
+                    </span>
                   </li>
                 ))}
               </ul>
+            )}
+            {selectedVersion && comparison && (
+              <section className="version-history__preview" aria-live="polite">
+                <header>
+                  <strong>Preview v{selectedVersion.semanticVersion}</strong>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setSelectedVersionId(null)}
+                  >
+                    Close preview
+                  </button>
+                </header>
+                <p>
+                  {new Date(
+                    selectedVersion.createdAt ?? selectedVersion.updatedAt,
+                  ).toLocaleString()}
+                </p>
+                <p>
+                  <strong>Changelog:</strong>{" "}
+                  {selectedVersion.changelog || "No changelog was recorded."}
+                </p>
+                <pre className="version-history__body">
+                  {selectedVersion.body.slice(0, 50_000)}
+                </pre>
+                {selectedVersion.body.length > 50_000 && (
+                  <p>Preview truncated at 50,000 characters.</p>
+                )}
+                <details className="version-history__compare">
+                  <summary>Compare with current version</summary>
+                  <div className="version-history__compare-grid" role="table" aria-label="Historical and current line comparison">
+                    <div className="version-history__compare-heading" role="row">
+                      <strong role="columnheader">Historical</strong>
+                      <strong role="columnheader">Current</strong>
+                    </div>
+                    {comparison.lines.map((line) => (
+                      <div
+                        key={line.number}
+                        className={line.changed ? "is-changed" : ""}
+                        role="row"
+                      >
+                        <code role="cell">{line.number}: {line.historical}</code>
+                        <code role="cell">{line.number}: {line.current}</code>
+                      </div>
+                    ))}
+                  </div>
+                  {comparison.truncated && <p>Comparison limited to the first 200 lines.</p>}
+                </details>
+              </section>
             )}
           </section>
         </div>

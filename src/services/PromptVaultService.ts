@@ -47,6 +47,24 @@ import {
   untagSharedPrompt,
 } from "../lib/platform-core.js";
 import type { SharedTag } from "../lib/platform-core.js";
+import {
+  buildBackupDocumentV2,
+  buildRestorePlan,
+  parseBackupText,
+  serializeBackupDocument,
+  verifyBackupExport,
+  type BackupValidationResult,
+  type RecoveryLibraryPrompt,
+  type RestorePlan,
+  type RestorePolicy,
+  type RestoreResult,
+  type StorageStatus,
+} from "../domain/recovery.js";
+import {
+  executeRecoveryTransaction,
+  readRecoveryLibrary,
+  type RecoveryFailurePoint,
+} from "../repositories/RecoveryRepository.js";
 
 export interface PromptVaultServiceOptions {
   readonly telemetry?: Telemetry;
@@ -140,6 +158,124 @@ export class PromptVaultService {
         prompts.map((prompt) => this.enrichPromptWithTags(prompt)),
       );
     });
+  }
+
+  private async getRecoveryLibrary(): Promise<{
+    readonly prompts: RecoveryLibraryPrompt[];
+    readonly tagOverrides: ReadonlyMap<string, readonly string[]>;
+  }> {
+    const visiblePrompts = await this.listAllPrompts();
+    const tagOverrides = new Map(
+      visiblePrompts.map((prompt) => [
+        prompt.id,
+        prompt.tags.map((tag) => tag.label),
+      ] as const),
+    );
+    return {
+      prompts: readRecoveryLibrary(this.repository.getDatabase(), tagOverrides),
+      tagOverrides,
+    };
+  }
+
+  public async exportBackupV2(exportedAt = new Date().toISOString()): Promise<{
+    readonly content: string;
+    readonly verification: ReturnType<typeof verifyBackupExport>;
+  }> {
+    const { prompts } = await this.getRecoveryLibrary();
+    const document = buildBackupDocumentV2(prompts, exportedAt);
+    const verification = verifyBackupExport(document);
+    if (!verification.verified) {
+      throw new ValidationError([
+        "Backup verification failed before export.",
+        ...verification.errors,
+      ]);
+    }
+    return { content: serializeBackupDocument(document), verification };
+  }
+
+  public async previewBackupRestore(content: string): Promise<{
+    readonly validation: Omit<BackupValidationResult, "document">;
+    readonly plan?: RestorePlan;
+  }> {
+    const validation = parseBackupText(content);
+    const { document: _document, ...publicValidation } = validation;
+    if (!validation.valid || !validation.document) {
+      return { validation: publicValidation };
+    }
+    const { prompts } = await this.getRecoveryLibrary();
+    return {
+      validation: publicValidation,
+      plan: buildRestorePlan(validation.document, prompts),
+    };
+  }
+
+  public async executeBackupRestore(input: {
+    readonly content: string;
+    readonly plan: RestorePlan;
+    readonly policy: RestorePolicy;
+    readonly failurePoint?: RecoveryFailurePoint;
+  }): Promise<RestoreResult> {
+    const validation = parseBackupText(input.content);
+    if (!validation.valid || !validation.document) {
+      throw new ValidationError(validation.errors.length > 0 ? validation.errors : ["Backup validation failed."]);
+    }
+    const { tagOverrides } = await this.getRecoveryLibrary();
+    try {
+      return executeRecoveryTransaction({
+        database: this.repository.getDatabase(),
+        document: validation.document,
+        plan: input.plan,
+        policy: input.policy,
+        tagOverrides,
+        failurePoint: input.failurePoint,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/changed after preview|plan source|plan signature/i.test(message)) {
+        throw new ValidationError([message]);
+      }
+      throw error;
+    }
+  }
+
+  public getStorageStatus(integrityRequested = false): StorageStatus {
+    const database = this.repository.getDatabase();
+    const databasePath = (database as { name?: string }).name ?? null;
+    const isFile = Boolean(databasePath && databasePath !== ":memory:");
+    const fileStat = isFile && databasePath && fs.existsSync(databasePath)
+      ? fs.statSync(databasePath)
+      : null;
+    const walPath = isFile && databasePath ? `${databasePath}-wal` : null;
+    const shmPath = isFile && databasePath ? `${databasePath}-shm` : null;
+    const count = (table: string): number => {
+      const row = database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
+      return row.count;
+    };
+    const integrity = integrityRequested
+      ? (database.pragma("integrity_check", { simple: true }) as string) === "ok"
+        ? "ok"
+        : "failed"
+      : "not-requested";
+    return {
+      runtime: "http",
+      storage: "sqlite",
+      databasePath,
+      databaseExists: isFile ? Boolean(fileStat) : true,
+      databaseSize: fileStat?.size ?? null,
+      sqliteUserVersion: database.pragma("user_version", { simple: true }) as number,
+      promptCount: count("prompts"),
+      versionCount: count("prompt_versions"),
+      tagCount: count("tags"),
+      relationshipCount: count("prompt_tags"),
+      walExists: walPath ? fs.existsSync(walPath) : false,
+      walSize: walPath && fs.existsSync(walPath) ? fs.statSync(walPath).size : 0,
+      shmExists: shmPath ? fs.existsSync(shmPath) : false,
+      shmSize: shmPath && fs.existsSync(shmPath) ? fs.statSync(shmPath).size : 0,
+      integrityStatus: integrity,
+      nativeSqliteAvailable: true,
+      legacyRecoveryAvailable: false,
+      plaintextWarning: "Prompt content and local databases are plaintext. Use operating-system permissions and full-disk encryption.",
+    };
   }
 
   /**
@@ -1602,13 +1738,22 @@ export class PromptVaultService {
 
   private async enrichPromptWithTags(prompt: Prompt): Promise<Prompt> {
     await this.ensureCoreDb();
+    const storedTags = this.repository.getStoredTagsForPrompt(prompt.id);
     const sharedTags = await listSharedTagsForEntity({
       entityType: "prompts",
       entityId: prompt.id,
     });
+    const tags = new Map(
+      storedTags.map((tag) => [tag.label.toLowerCase(), tag] as const),
+    );
+    for (const tag of sharedTags.map((value) => this.toDomainTag(value))) {
+      tags.set(tag.label.toLowerCase(), tag);
+    }
     return {
       ...prompt,
-      tags: sharedTags.map((tag) => this.toDomainTag(tag)),
+      tags: [...tags.values()].sort((left, right) =>
+        left.label.localeCompare(right.label, undefined, { sensitivity: "base" }),
+      ),
     };
   }
 

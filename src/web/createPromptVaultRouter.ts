@@ -13,6 +13,7 @@ import {
 } from "../domain/errors.js";
 import type { Prompt, PromptVersion } from "../domain/models.js";
 import { executePromptTemplate } from "../lib/promptService.js";
+import type { RestorePlan, RestorePolicy } from "../domain/recovery.js";
 
 const semanticVersionSchema = z
   .string()
@@ -99,6 +100,32 @@ const promptExecuteSchema = z.object({
   variables: z
     .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
     .optional(),
+});
+
+const restorePlanSchema = z.object({
+  planVersion: z.literal("1"),
+  planId: z.string().length(64),
+  sourceVersion: z.enum(["1.0", "2.0"]),
+  documentFingerprint: z.string().length(64),
+  currentLibraryFingerprint: z.string().length(64),
+  entries: z.array(
+    z.object({
+      sourceSlug: z.string(),
+      kind: z.enum([
+        "new-prompt",
+        "existing-exact-duplicate",
+        "existing-slug-conflict",
+        "mergeable-missing-versions",
+        "copy-required-conflict",
+      ]),
+      currentPromptId: z.string().nullable(),
+      missingVersionIdentities: z.array(z.string()),
+      skippedVersionIdentities: z.array(z.string()),
+      copySlug: z.string().nullable(),
+      copyTitle: z.string().nullable(),
+    }),
+  ),
+  warnings: z.array(z.string()),
 });
 
 const promptIdParamSchema = z.object({
@@ -240,6 +267,62 @@ export function createPromptVaultRouter(
 
       response.setHeader("Content-Type", result.mimeType);
       response.send(result.content);
+    }),
+  );
+
+  router.get(
+    "/storage/status",
+    asyncHandler("storage-status", async (request, response) => {
+      const query = z
+        .object({ integrity: z.coerce.boolean().default(false) })
+        .parse(request.query);
+      response.json({ data: service.getStorageStatus(query.integrity) });
+    }),
+  );
+
+  router.get(
+    "/recovery/export",
+    asyncHandler("export-recovery-backup", async (_request, response) => {
+      const result = await service.exportBackupV2();
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.setHeader(
+        "Content-Disposition",
+        `attachment; filename="prompt-vault-backup-${new Date().toISOString().slice(0, 10)}.json"`,
+      );
+      response.setHeader("X-Prompt-Vault-Backup-Verified", "true");
+      response.send(result.content);
+    }),
+  );
+
+  router.post(
+    "/recovery/preview",
+    asyncHandler("preview-recovery", async (request, response) => {
+      const payload = z.object({ content: z.string().min(1) }).parse(request.body);
+      const preview = await service.previewBackupRestore(payload.content);
+      response.json({ data: preview });
+    }),
+  );
+
+  router.post(
+    "/recovery/execute",
+    asyncHandler("execute-recovery", async (request, response) => {
+      const payload = z
+        .object({
+          content: z.string().min(1),
+          plan: restorePlanSchema,
+          policy: z.enum([
+            "skip-existing",
+            "add-missing-versions",
+            "import-as-copy",
+          ]),
+        })
+        .parse(request.body);
+      const result = await service.executeBackupRestore({
+        content: payload.content,
+        plan: payload.plan as RestorePlan,
+        policy: payload.policy as RestorePolicy,
+      });
+      response.json({ data: result });
     }),
   );
 

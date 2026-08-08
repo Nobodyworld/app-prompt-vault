@@ -295,7 +295,10 @@ app.use(
   }),
 );
 
-app.use(express.json({ limit: "1mb" }));
+// Recovery sources are independently bounded to 10 MiB after JSON decoding.
+// Keep enough transport headroom for JSON escaping while retaining a finite
+// process-wide request limit.
+app.use(express.json({ limit: "24mb" }));
 app.use(
   (
     error: unknown,

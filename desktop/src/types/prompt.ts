@@ -1,6 +1,8 @@
 export interface PromptVersionSummary {
   id: string;
   semanticVersion: string;
+  changelog?: string | null;
+  createdAt?: string;
   updatedAt: string;
   body: string;
 }
