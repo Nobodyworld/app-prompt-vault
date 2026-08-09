@@ -388,9 +388,8 @@ async fn inspect_legacy_database(
         .app_local_data_dir()
         .map_err(|error| error.to_string())?;
     let source_path = resolve_legacy_database_path(&base_dir);
-    ensure_legacy_source_is_not_target(&source_path, &state.database_path)
-        .map_err(|error| error.to_string())?;
-    Ok(inspect_legacy_path(&source_path))
+    inspect_legacy_database_inner(&source_path, &state.database_path)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -403,9 +402,8 @@ async fn preview_legacy_recovery(
         .app_local_data_dir()
         .map_err(|error| error.to_string())?;
     let source_path = resolve_legacy_database_path(&base_dir);
-    ensure_legacy_source_is_not_target(&source_path, &state.database_path)
-        .map_err(|error| error.to_string())?;
-    read_legacy_recovery_document(&source_path).map_err(|error| error.to_string())
+    preview_legacy_recovery_inner(&source_path, &state.database_path)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -419,35 +417,17 @@ async fn execute_legacy_restore(
         .app_local_data_dir()
         .map_err(|error| error.to_string())?;
     let source_path = resolve_legacy_database_path(&base_dir);
-    ensure_legacy_source_is_not_target(&source_path, &state.database_path)
-        .map_err(|error| error.to_string())?;
-    let preview = read_legacy_recovery_document(&source_path).map_err(|error| error.to_string())?;
-    if preview.source_hash != payload.source_hash {
-        return Err("The legacy source changed after preview. Create a new preview.".into());
-    }
-    let source_inventory =
-        inventory_legacy_source(&source_path).map_err(|error| error.to_string())?;
-    if source_inventory.database.sha256.as_deref() != Some(payload.source_hash.as_str()) {
-        return Err("The legacy source changed after preview. Create a new preview.".into());
-    }
     let mut connection = state
         .connection
         .lock()
         .map_err(|_| "database lock poisoned".to_string())?;
-    let result = execute_backup_restore_on_connection_with_pre_commit(
+    execute_legacy_restore_on_connection(
         &mut connection,
-        ExecuteRestorePayload {
-            document: preview.document,
-            plan: payload.plan,
-            policy: payload.policy,
-        },
-        None,
-        Some(&|| verify_legacy_source_unchanged(&source_path, &source_inventory)),
+        &source_path,
+        &state.database_path,
+        payload,
     )
-    .map_err(|error| error.to_string())?;
-    verify_legacy_source_unchanged(&source_path, &source_inventory)
-        .map_err(|error| error.to_string())?;
-    Ok(result)
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1302,6 +1282,30 @@ fn ensure_legacy_source_is_not_target(
         ));
     }
     Ok(())
+}
+
+fn inspect_legacy_database_inner(
+    source_path: &Path,
+    target_path: &Path,
+) -> Result<LegacySourceStatus, AppError> {
+    if !source_path.exists() {
+        return Ok(inspect_legacy_path(source_path));
+    }
+    ensure_legacy_source_is_not_target(source_path, target_path)?;
+    Ok(inspect_legacy_path(source_path))
+}
+
+fn preview_legacy_recovery_inner(
+    source_path: &Path,
+    target_path: &Path,
+) -> Result<LegacyRecoveryPreview, AppError> {
+    if !source_path.exists() {
+        return Err(AppError::Validation(
+            "No historical Prompt Vault database was found.".into(),
+        ));
+    }
+    ensure_legacy_source_is_not_target(source_path, target_path)?;
+    read_legacy_recovery_document(source_path)
 }
 
 fn database_count(connection: &Connection, table: &str) -> Result<i64, AppError> {
@@ -2163,6 +2167,36 @@ fn execute_backup_restore_on_connection(
     execute_backup_restore_on_connection_with_pre_commit(connection, payload, failure_point, None)
 }
 
+fn execute_legacy_restore_on_connection(
+    connection: &mut Connection,
+    source_path: &Path,
+    target_path: &Path,
+    payload: ExecuteLegacyRestorePayload,
+) -> Result<RestoreResult, AppError> {
+    let preview = preview_legacy_recovery_inner(source_path, target_path)?;
+    if preview.source_hash != payload.source_hash {
+        return Err(AppError::Validation(
+            "The legacy source changed after preview. Create a new preview.".into(),
+        ));
+    }
+    let source_inventory = inventory_legacy_source(source_path)?;
+    if source_inventory.database.sha256.as_deref() != Some(payload.source_hash.as_str()) {
+        return Err(AppError::Validation(
+            "The legacy source changed after preview. Create a new preview.".into(),
+        ));
+    }
+    execute_backup_restore_on_connection_with_pre_commit(
+        connection,
+        ExecuteRestorePayload {
+            document: preview.document,
+            plan: payload.plan,
+            policy: payload.policy,
+        },
+        None,
+        Some(&|| verify_legacy_source_unchanged(source_path, &source_inventory)),
+    )
+}
+
 fn execute_backup_restore_on_connection_with_pre_commit(
     connection: &mut Connection,
     payload: ExecuteRestorePayload,
@@ -2725,6 +2759,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tempfile::TempDir;
 
     fn category_prompt_payload(category: Option<&str>) -> CreatePromptPayload {
@@ -2956,6 +2991,18 @@ mod tests {
         .collect()
     }
 
+    fn assert_recovery_integrity(connection: &Connection) {
+        let integrity: String = connection
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .expect("read integrity");
+        assert_eq!(integrity, "ok");
+        let mut statement = connection
+            .prepare("PRAGMA foreign_key_check")
+            .expect("prepare foreign-key check");
+        let mut rows = statement.query([]).expect("run foreign-key check");
+        assert!(rows.next().expect("read foreign-key row").is_none());
+    }
+
     #[test]
     fn native_recovery_fingerprints_match_the_typescript_contract() {
         let connection = Connection::open_in_memory().expect("open database");
@@ -3056,6 +3103,7 @@ mod tests {
         let source_path = temp.path().join("legacy-source.db");
         std::fs::write(&source_path, b"synthetic legacy source").expect("write source");
         let source_inventory = inventory_legacy_source(&source_path).expect("inventory source");
+        let validator_calls = AtomicUsize::new(0);
         let mut target = Connection::open_in_memory().expect("open target");
         apply_migrations(&target).expect("migrate target");
         let document = recovery_document("source-change", false);
@@ -3070,6 +3118,7 @@ mod tests {
             },
             None,
             Some(&|| {
+                validator_calls.fetch_add(1, Ordering::SeqCst);
                 std::fs::write(&source_path, b"changed during restore")
                     .map_err(|write_error| AppError::Internal(write_error.to_string()))?;
                 verify_legacy_source_unchanged(&source_path, &source_inventory)
@@ -3077,7 +3126,106 @@ mod tests {
         )
         .expect_err("changed source must prevent commit");
         assert!(error.to_string().contains("legacy source changed"));
+        assert_eq!(validator_calls.load(Ordering::SeqCst), 1);
         assert_eq!(recovery_database_snapshot(&target), before);
+        assert_recovery_integrity(&target);
+    }
+
+    #[test]
+    fn native_recovery_pre_commit_validator_runs_once_and_commits_consistently() {
+        let validator_calls = AtomicUsize::new(0);
+        let mut target = Connection::open_in_memory().expect("open target");
+        apply_migrations(&target).expect("migrate target");
+        let document = recovery_document("validator-success", true);
+        let plan = recovery_plan(&target, &document, "new-prompt");
+        let result = execute_backup_restore_on_connection_with_pre_commit(
+            &mut target,
+            ExecuteRestorePayload {
+                document,
+                plan,
+                policy: "skip-existing".into(),
+            },
+            None,
+            Some(&|| {
+                validator_calls.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }),
+        )
+        .expect("successful pre-commit validation must return committed success");
+        assert_eq!(validator_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(result.new_prompts, 1);
+        assert_eq!(result.copied_prompts, 0);
+        assert_eq!(result.merged_versions, 0);
+        assert_eq!(result.skipped_prompts, 0);
+        assert_eq!(result.skipped_versions, 0);
+        assert_eq!(result.integrity_result, "ok");
+        assert_eq!(result.foreign_key_violation_count, 0);
+        assert_eq!(
+            database_count(&target, "prompts").unwrap(),
+            result.new_prompts as i64
+        );
+        assert_eq!(database_count(&target, "prompt_versions").unwrap(), 2);
+        assert_eq!(database_count(&target, "tags").unwrap(), 2);
+        assert_eq!(database_count(&target, "prompt_tags").unwrap(), 2);
+        assert_recovery_integrity(&target);
+    }
+
+    #[test]
+    fn legacy_command_helpers_preserve_missing_source_semantics() {
+        let temp = TempDir::new().expect("create tempdir");
+        let source_path = temp.path().join("missing-legacy.db");
+        let target_path = temp.path().join("active-target.db");
+        let mut target = Connection::open(&target_path).expect("open target");
+        apply_migrations(&target).expect("migrate target");
+        let before = recovery_database_snapshot(&target);
+
+        let status = inspect_legacy_database_inner(&source_path, &target_path)
+            .expect("missing source inspection must be structured");
+        assert_eq!(status.state, "not-found");
+        assert!(!source_path.exists());
+        assert!(!legacy_sidecar_path(&source_path, "wal").exists());
+        assert!(!legacy_sidecar_path(&source_path, "shm").exists());
+        assert!(preview_legacy_recovery_inner(&source_path, &target_path)
+            .expect_err("missing source preview must fail safely")
+            .to_string()
+            .contains("No historical Prompt Vault database was found"));
+        let document = recovery_document("missing-source", false);
+        let plan = recovery_plan(&target, &document, "new-prompt");
+        assert!(execute_legacy_restore_on_connection(
+            &mut target,
+            &source_path,
+            &target_path,
+            ExecuteLegacyRestorePayload {
+                source_hash: "not-present".into(),
+                plan,
+                policy: "skip-existing".into(),
+            },
+        )
+        .expect_err("missing source restore must fail safely")
+        .to_string()
+        .contains("No historical Prompt Vault database was found"));
+        assert!(!source_path.exists());
+        assert!(!legacy_sidecar_path(&source_path, "wal").exists());
+        assert!(!legacy_sidecar_path(&source_path, "shm").exists());
+        assert_eq!(recovery_database_snapshot(&target), before);
+        assert_recovery_integrity(&target);
+
+        assert!(inspect_legacy_database_inner(&target_path, &target_path)
+            .expect_err("same source and target must be rejected")
+            .to_string()
+            .contains("cannot be the active"));
+
+        let distinct_path = temp.path().join("distinct-legacy.db");
+        {
+            let distinct = Connection::open(&distinct_path).expect("open distinct source");
+            apply_migrations(&distinct).expect("migrate distinct source");
+        }
+        assert_eq!(
+            inspect_legacy_database_inner(&distinct_path, &target_path)
+                .expect("distinct source inspection")
+                .state,
+            "compatible"
+        );
     }
 
     #[test]
