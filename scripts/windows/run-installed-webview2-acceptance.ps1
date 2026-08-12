@@ -12,10 +12,9 @@ param(
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$result = [ordered]@{ success=$false; scenario=$Scenario; process=$null; listener=$null; cleanup="not-started"; failures=@() }
+$result = [ordered]@{ success=$false; scenario=$Scenario; attempts=@(); cleanup="not-started"; failures=@() }
 $evidence = $null
 $app = $null
-$recordedProcesses = @()
 
 function Add-Failure([string]$Message) { $result.failures += $Message }
 function Assert-AbsolutePath([string]$Path, [string]$Name) { if (-not [IO.Path]::IsPathFullyQualified($Path)) { throw "$Name must be absolute." }; [IO.Path]::GetFullPath($Path) }
@@ -51,7 +50,14 @@ function Get-FreeLoopbackPort { $listener = [Net.Sockets.TcpListener]::new([Net.
 function Get-LoopbackListeners([int]$Port) { @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue) }
 function Test-DescendantProcess([int]$ProcessId, [int]$AncestorId) { $current = $ProcessId; for ($attempt = 0; $attempt -lt 32; $attempt++) { if ($current -eq $AncestorId) { return $true }; $row = Get-CimInstance Win32_Process -Filter "ProcessId=$current" -ErrorAction SilentlyContinue; if (-not $row -or -not $row.ParentProcessId) { return $false }; $current = [int]$row.ParentProcessId }; $false }
 function Get-ProcessTree([int]$RootProcessId) {
-    @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { Test-DescendantProcess $_.ProcessId $RootProcessId } | ForEach-Object { [pscustomobject]@{ ProcessId=[int]$_.ProcessId; CreationDate=$_.CreationDate; Name=$_.Name } })
+    @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { Test-DescendantProcess $_.ProcessId $RootProcessId } | ForEach-Object { [pscustomobject]@{ ProcessId=[int]$_.ProcessId; ParentProcessId=[int]$_.ParentProcessId; CreationDate=[string]$_.CreationDate; Name=[string]$_.Name; CommandLine=[string]$_.CommandLine } })
+}
+function Test-RecordedProcessAlive($Record) {
+    $row = Get-CimInstance Win32_Process -Filter "ProcessId=$($Record.ProcessId)" -ErrorAction SilentlyContinue
+    return $row -and ([string]$row.CreationDate -eq [string]$Record.CreationDate) -and ([string]$row.Name -ieq [string]$Record.Name)
+}
+function Get-ProfileUsers([string]$ProfilePath) {
+    @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($ProfilePath, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { [pscustomobject]@{ ProcessId=[int]$_.ProcessId; ParentProcessId=[int]$_.ParentProcessId; CreationDate=[string]$_.CreationDate; Name=[string]$_.Name; CommandLine=[string]$_.CommandLine } })
 }
 function Wait-DevTools([int]$Port, [int]$AppProcessId) {
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -67,23 +73,35 @@ function Wait-DevTools([int]$Port, [int]$AppProcessId) {
 }
 function Save-Result([string]$EvidenceDirectory) { [pscustomobject]$result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $EvidenceDirectory "orchestrator-result.json") }
 function Get-FileInventory([string]$Path) { if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return [pscustomobject]@{ exists=$false; size=$null; lastWriteTimeUtc=$null; sha256=$null } }; $item=Get-Item -LiteralPath $Path; [pscustomobject]@{ exists=$true; size=$item.Length; lastWriteTimeUtc=$item.LastWriteTimeUtc.ToString("o"); sha256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash } }
-function Save-ProtectedBaselines([string]$EvidenceDirectory) {
-    $paths=@("$env:LOCALAPPDATA\com.nobodyworld.promptvault\prompt-vault.db","$env:LOCALAPPDATA\com.nobodyworld.promptvault\prompt-vault.db-wal","$env:LOCALAPPDATA\com.nobodyworld.promptvault\prompt-vault.db-shm","$env:LOCALAPPDATA\com.promptvault.desktop\prompt-vault.db","$env:LOCALAPPDATA\com.promptvault.desktop\prompt-vault.db-wal","$env:LOCALAPPDATA\com.promptvault.desktop\prompt-vault.db-shm")
-    $paths | ForEach-Object { [pscustomobject]@{ path="[private path omitted]"; inventory=(Get-FileInventory $_) } } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $EvidenceDirectory "protected-database-baseline.json")
+function Get-KeyedInventory([hashtable]$Paths) {
+    $inventory=[ordered]@{}
+    foreach($key in $Paths.Keys){$inventory[$key]=Get-FileInventory $Paths[$key]}
+    return $inventory
 }
-function Cleanup-AcceptanceProcess([int]$Port) {
-    $cleanupFailures = [System.Collections.Generic.List[string]]::new()
-    if ($app -and -not $app.HasExited) {
-        $null = $app.CloseMainWindow()
-        if (-not $app.WaitForExit(30000)) {
-            $result.cleanup = "forced-containment"
-            $cleanupFailures.Add("Launched application did not exit gracefully.")
-            foreach ($process in $recordedProcesses) { Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue }
-        } else { $result.cleanup = "graceful" }
-    }
-    foreach ($process in $recordedProcesses) { if (Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue) { $cleanupFailures.Add("Recorded acceptance process remains: $($process.ProcessId)") } }
-    if ((Get-LoopbackListeners $Port).Count -ne 0) { $cleanupFailures.Add("Loopback DevTools listener remained after cleanup.") }
-    foreach ($failure in $cleanupFailures) { Add-Failure $failure }
+function Compare-KeyedInventory([hashtable]$Before, [hashtable]$Paths, [string]$Name) {
+    foreach($key in $Paths.Keys){$after=Get-FileInventory $Paths[$key];if(($Before[$key]|ConvertTo-Json -Compress) -ne ($after|ConvertTo-Json -Compress)){throw "$Name changed: $key"}}
+}
+function Get-ProtectedPathMap { [ordered]@{ "current-db"="$env:LOCALAPPDATA\com.nobodyworld.promptvault\prompt-vault.db"; "current-wal"="$env:LOCALAPPDATA\com.nobodyworld.promptvault\prompt-vault.db-wal"; "current-shm"="$env:LOCALAPPDATA\com.nobodyworld.promptvault\prompt-vault.db-shm"; "historical-db"="$env:LOCALAPPDATA\com.promptvault.desktop\prompt-vault.db"; "historical-wal"="$env:LOCALAPPDATA\com.promptvault.desktop\prompt-vault.db-wal"; "historical-shm"="$env:LOCALAPPDATA\com.promptvault.desktop\prompt-vault.db-shm" } }
+function Save-ProtectedBaselines([string]$EvidenceDirectory, [hashtable]$Inventory) { $Inventory | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $EvidenceDirectory "protected-database-baseline.private.json"); $safe=[ordered]@{};foreach($key in $Inventory.Keys){$safe[$key]=$Inventory[$key]};$safe|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $EvidenceDirectory "protected-database-baseline.safe.json") }
+function Invoke-DisposableDatabaseVerification([string]$DatabasePath, [string]$EvidenceDirectory, [string]$Phase) {
+    if (-not (Test-Path -LiteralPath $DatabasePath -PathType Leaf)) { throw "Disposable current database was not created for phase $Phase." }
+    Push-Location $repoRoot
+    try { $json=& pnpm tsx scripts/windows/verify-installed-webview2-database.ts --database $DatabasePath; if($LASTEXITCODE -ne 0){throw "Disposable database verification failed for phase $Phase."}; $verification=$json|ConvertFrom-Json; if($verification.integrity -ne "ok" -or $verification.foreignKeyViolations -ne 0){throw "Disposable database verification rejected phase $Phase."}; $verification|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $EvidenceDirectory "database-$Phase.json") } finally { Pop-Location }
+}
+function Complete-Attempt($Attempt, [bool]$Retrying) {
+    $failures=[System.Collections.Generic.List[string]]::new()
+    $late=Get-ProcessTree $Attempt.ProcessId
+    $Attempt.Processes=@($Attempt.Processes+$late|Sort-Object ProcessId -Unique)
+    $rootRecord=@($Attempt.Processes|Where-Object {$_.ProcessId -eq $Attempt.ProcessId}|Select-Object -First 1)
+    if($rootRecord.Count -ne 1){$failures.Add("Attempt $($Attempt.Number) has no exact root identity record.")}elseif(Test-RecordedProcessAlive $rootRecord[0]){$root=Get-Process -Id $Attempt.ProcessId -ErrorAction SilentlyContinue;if(-not $root){$failures.Add("Attempt $($Attempt.Number) root identity disappeared before graceful close.")}else{$null=$root.CloseMainWindow();if(-not $root.WaitForExit(30000)){$Attempt.ShutdownMethod="forced-containment";$failures.Add("Attempt $($Attempt.Number) root did not exit gracefully.");foreach($record in $Attempt.Processes){if(Test-RecordedProcessAlive $record){Stop-Process -Id $record.ProcessId -Force -ErrorAction SilentlyContinue}}}else{$Attempt.ShutdownMethod="graceful"}}}else{$Attempt.ShutdownMethod="already-exited"}
+    Start-Sleep -Milliseconds 250
+    $lateAfter=Get-ProcessTree $Attempt.ProcessId
+    foreach($record in @($Attempt.Processes+$lateAfter|Sort-Object ProcessId -Unique)){if(Test-RecordedProcessAlive $record){$failures.Add("Attempt $($Attempt.Number) process remains: $($record.ProcessId)")}}
+    if((Get-LoopbackListeners $Attempt.Port).Count -ne 0){$failures.Add("Attempt $($Attempt.Number) loopback listener remains.")}
+    foreach($profileUser in Get-ProfileUsers $Attempt.WebViewProfile){$failures.Add("Attempt $($Attempt.Number) process still references disposable WebView2 profile: $($profileUser.ProcessId)")}
+    $Attempt.ShutdownFailures=@($failures)
+    if($failures.Count -ne 0){foreach($failure in $failures){Add-Failure $failure};if($Retrying){throw "Attempt cleanup failed; retry is prohibited."}}
+    return $failures.Count -eq 0
 }
 
 try {
@@ -97,31 +115,56 @@ try {
     $alreadyRunning = @(Get-Process -Name "prompt-vault-app" -ErrorAction SilentlyContinue)
     if ($alreadyRunning.Count -ne 0) { throw "Prompt Vault is already running; close it normally before the installed acceptance harness starts." }
     New-Item -ItemType Directory -Path $evidence -ErrorAction Stop | Out-Null
-    $webViewData = Join-Path $evidence "webview2-user-data"
-    if (Test-Path -LiteralPath $webViewData) { throw "Fresh WebView2 profile path already exists." }
-    New-Item -ItemType Directory -Path $webViewData -ErrorAction Stop | Out-Null
-    if ($Scenario -eq "recovery") { Save-ProtectedBaselines $evidence }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $currentDb) -ErrorAction Stop | Out-Null
+    Push-Location $repoRoot
+    try { $fixtureResult=& pnpm tsx scripts/windows/installed-webview2-fixtures.ts --evidence $evidence --legacy $legacyDb; if($LASTEXITCODE -ne 0){throw "Synthetic recovery fixture generation failed."}; $fixtureResult|Set-Content -LiteralPath (Join-Path $evidence "fixture-summary.private.json"); $fixture=$fixtureResult|ConvertFrom-Json; $safeBackups=[ordered]@{};foreach($property in $fixture.backups.PSObject.Properties){$safeBackups[$property.Name]=[ordered]@{sha256=$property.Value.sha256}};$safeFixture=[ordered]@{legacy=[ordered]@{promptCount=$fixture.legacy.promptCount;versionCount=$fixture.legacy.versionCount;tagCount=$fixture.legacy.tagCount;relationshipCount=$fixture.legacy.relationshipCount};backups=$safeBackups};$safeFixture|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $evidence "fixture-summary.json") } finally { Pop-Location }
+    if(-not (Test-Path -LiteralPath $legacyDb -PathType Leaf)){throw "Synthetic legacy fixture was not created at the asserted LegacyDatabasePath."}
+    $protectedPaths=Get-ProtectedPathMap
+    $protectedBaseline=Get-KeyedInventory $protectedPaths
+    Save-ProtectedBaselines $evidence $protectedBaseline
+    $legacyPaths=[ordered]@{ "legacy-db"=$legacyDb; "legacy-wal"="$legacyDb-wal"; "legacy-shm"="$legacyDb-shm" }
+    $legacyBaseline=Get-KeyedInventory $legacyPaths
+    $phaseNames=if($Scenario -eq "recovery"){@("self-test","storage-status","missing-legacy-source","compatible-legacy-inspection","explicit-legacy-restore","backup-2-export-and-verify","backup-1-preview-and-cancel","skip-existing","add-missing-versions","import-as-copy","cancellation","stale-plan-rejection","version-history-preview","version-history-revert","restart-verification","final-database-verification")}else{@("self-test")}
+    $phaseIndex=0
+    foreach($phase in $phaseNames){
+      $phaseIndex++
+      $listener=$null;$app=$null;$attemptRecord=$null
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $port = Get-FreeLoopbackPort
+        $webViewData=Join-Path $evidence "webview2-user-data-attempt-$phaseIndex-retry-$attempt"
+        if(Test-Path -LiteralPath $webViewData){throw "Fresh WebView2 profile path already exists."}
+        New-Item -ItemType Directory -Path $webViewData -ErrorAction Stop | Out-Null
+        $activeLegacyDb=if($phase -eq "missing-legacy-source"){Join-Path $evidence "missing-legacy\prompt-vault.db"}else{$legacyDb}
         $startInfo = [Diagnostics.ProcessStartInfo]::new($candidate.Path); $startInfo.UseShellExecute = $false
-        $startInfo.Environment["PROMPT_VAULT_DB_PATH"] = $currentDb; $startInfo.Environment["PROMPT_VAULT_LEGACY_DB_PATH"] = $legacyDb
+        $startInfo.Environment["PROMPT_VAULT_DB_PATH"] = $currentDb; $startInfo.Environment["PROMPT_VAULT_LEGACY_DB_PATH"] = $activeLegacyDb
         $startInfo.Environment["PROMPT_VAULT_TELEMETRY_OPTOUT"] = "1"; $startInfo.Environment["NW_TELEMETRY_OPTOUT"] = "1"
         $startInfo.Environment["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$port"
         $startInfo.Environment["WEBVIEW2_USER_DATA_FOLDER"] = $webViewData
         $app = [Diagnostics.Process]::Start($startInfo); if (-not $app) { throw "Installed Prompt Vault process did not start." }
-        $result.process = [pscustomobject]@{ ProcessId=$app.Id; CreationTimeUtc=$app.StartTime.ToUniversalTime().ToString("o") }
-        try { $listener = Wait-DevTools $port $app.Id; break } catch { if ($attempt -eq 3) { throw }; $null = $app.CloseMainWindow(); $null = $app.WaitForExit(30000) }
+        $attemptRecord=[pscustomobject]@{ Number=$phaseIndex; Phase=$phase; Retry=$attempt; ProcessId=$app.Id; CreationTimeUtc=$app.StartTime.ToUniversalTime().ToString("o"); Port=$port; Listener=$null; Processes=@(); WebViewProfile=$webViewData; ShutdownMethod="not-started"; ShutdownFailures=@() }
+        $attemptRecord.Processes=Get-ProcessTree $app.Id
+        $result.attempts += $attemptRecord
+        try { $listener = Wait-DevTools $port $app.Id; $attemptRecord.Listener=[pscustomobject]@{ProcessId=$listener.OwningProcess;Port=$port;CreationDate=(Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)" -ErrorAction SilentlyContinue).CreationDate}; $attemptRecord.Processes=Get-ProcessTree $app.Id; break } catch { $launchFailure=$_.Exception.Message; $complete=Complete-Attempt $attemptRecord ($attempt -lt 3); if(-not $complete){throw}; if ($attempt -eq 3) { throw $launchFailure } }
     }
-    $result.listener = [pscustomobject]@{ Port=$port; ProcessId=$listener.OwningProcess }
-    $recordedProcesses = Get-ProcessTree $app.Id
     $measureScript = Join-Path $repoRoot "scripts\windows\measure-window-client.ps1"
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $measureScript -ProcessId $app.Id -ResizeToExpectedMinimum -RequireExactMinimum -AsJson | Set-Content -LiteralPath (Join-Path $evidence "window-minimum.json")
     if ($LASTEXITCODE -ne 0) { throw "Exact 400x600 window measurement failed." }
     Push-Location $repoRoot
-    try { & pnpm tsx scripts/windows/installed-webview2-cdp.ts --port $port --evidence $evidence --scenario $Scenario; if ($LASTEXITCODE -ne 0) { throw "CDP $Scenario scenario failed with exit code $LASTEXITCODE." } } finally { Pop-Location }
+    try { & pnpm tsx scripts/windows/installed-webview2-cdp.ts --port $port --evidence $evidence --scenario $Scenario --phase $phase; if ($LASTEXITCODE -ne 0) { throw "CDP $Scenario/$phase phase failed with exit code $LASTEXITCODE." } } finally { Pop-Location }
+    Compare-KeyedInventory $protectedBaseline $protectedPaths "Protected database"
+    Compare-KeyedInventory $legacyBaseline $legacyPaths "Disposable legacy source"
+    if(-not (Complete-Attempt $attemptRecord $false)){throw "Acceptance attempt cleanup failed."}
+    Invoke-DisposableDatabaseVerification $currentDb $evidence $phase
+    $app=$null
+    }
+    Compare-KeyedInventory $protectedBaseline $protectedPaths "Protected database final"
+    Compare-KeyedInventory $legacyBaseline $legacyPaths "Disposable legacy source final"
     $result.success = $true
 } catch { Add-Failure $_.Exception.Message; $result.success = $false } finally {
-    if ($app) { Cleanup-AcceptanceProcess $port }
+    if ($app -and $attemptRecord) { $null=Complete-Attempt $attemptRecord $false }
+    if ($protectedBaseline -and $protectedPaths) { try { Compare-KeyedInventory $protectedBaseline $protectedPaths "Protected database final" } catch { Add-Failure $_.Exception.Message } }
+    if ($legacyBaseline -and $legacyPaths) { try { Compare-KeyedInventory $legacyBaseline $legacyPaths "Disposable legacy source final" } catch { Add-Failure $_.Exception.Message } }
+    if ($currentDb -and $evidence -and (Test-Path -LiteralPath $currentDb -PathType Leaf)) { try { Invoke-DisposableDatabaseVerification $currentDb $evidence "final" } catch { Add-Failure $_.Exception.Message } }
     if ($result.failures.Count -ne 0) { $result.success = $false }
     if ($evidence -and (Test-Path -LiteralPath $evidence)) { Save-Result $evidence }
 }
