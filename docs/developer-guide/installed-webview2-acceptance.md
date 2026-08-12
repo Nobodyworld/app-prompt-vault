@@ -7,8 +7,14 @@ Vite, or a browser-development-mode surface.
 
 ## Safety contract
 
-- Provide absolute evidence, current-database, and legacy-database paths under
-  `C:\tmp` only. Do not use an application-data directory.
+- Provide a previously unused absolute evidence path plus current-database and
+  legacy-database paths beneath it, all under `C:\tmp`. The harness rejects
+  existing roots, path traversal/reparse points, protected application data,
+  and equal current/legacy paths.
+- Supply the SHA-256 of the exact candidate executable with
+  `-ExpectedExecutableSha256`. The installed `prompt-vault-app.exe` is hashed
+  before the harness creates evidence, profiles, databases, listeners, or a
+  process. A mismatch is an issue #60 installation blocker, not acceptance.
 - The harness gives only its child process `PROMPT_VAULT_DB_PATH`,
   `PROMPT_VAULT_LEGACY_DB_PATH`, telemetry opt-outs, a fresh
   `WEBVIEW2_USER_DATA_FOLDER`, and loopback DevTools arguments.
@@ -28,7 +34,9 @@ After verifying that the installed executable is the accepted candidate, run:
 pnpm desktop:accept-installed-webview2 `
   -EvidencePath C:\tmp\prompt-vault-webview2-evidence `
   -CurrentDatabasePath C:\tmp\prompt-vault-webview2-evidence\current\prompt-vault.db `
-  -LegacyDatabasePath C:\tmp\prompt-vault-webview2-evidence\legacy\prompt-vault.db
+  -LegacyDatabasePath C:\tmp\prompt-vault-webview2-evidence\legacy\prompt-vault.db `
+  -ExpectedExecutableSha256 <exact-candidate-sha256> `
+  -Scenario self-test
 ```
 
 The self-test launches the installed executable, waits for a verified child
@@ -39,3 +47,19 @@ application and checks listener cleanup.
 
 The harness intentionally does not replace the local MSI refresh workflow.
 Administrator-required installation work remains in issue #60.
+
+## Recovery scenario
+
+`-Scenario recovery` uses the versioned, repository-owned constrained scenario
+contract in `scripts/windows/installed-webview2-recovery-scenario.ts`. It has
+only named semantic operations (role/name clicks and focus, labelled input or
+selection, checked state, a small keyboard allowlist, overflow, accessibility,
+contained downloads, and screenshots). It cannot contain JavaScript, CSS
+selectors, plan IDs, or fingerprints. The caller supplies fresh synthetic
+fixtures produced by Prompt Vault’s production recovery builders and must keep
+all derived evidence under the one new evidence root.
+
+The orchestrator records process-tree identity and requires graceful shutdown;
+after a timeout it performs best-effort containment only against the recorded
+acceptance process tree, then fails if any recorded process or loopback
+listener remains.

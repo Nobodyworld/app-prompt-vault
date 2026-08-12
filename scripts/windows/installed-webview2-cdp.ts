@@ -1,8 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { runInstalledRecoveryScenario } from "./installed-webview2-recovery-scenario.js";
 
 export type JsonRecord = Record<string, unknown>;
+export const PROMPT_VAULT_DOCUMENT_TITLE = "Prompt Vault Desktop";
+const COMMAND_TIMEOUT_MS = 10_000;
+const READY_TIMEOUT_MS = 30_000;
 
 export interface CdpMessage {
   readonly id?: number;
@@ -31,7 +35,7 @@ export class CdpClient {
   private readonly listeners = new Map<string, Set<(params: JsonRecord) => void>>();
   private closed = false;
 
-  public constructor(private readonly transport: CdpTransport, private readonly defaultTimeoutMs = 10_000) {
+  public constructor(private readonly transport: CdpTransport, private readonly defaultTimeoutMs = COMMAND_TIMEOUT_MS) {
     transport.setHandlers({ onMessage: (message) => this.handleMessage(message), onClose: (reason) => this.handleClose(reason) });
   }
 
@@ -96,15 +100,20 @@ class BrowserWebSocketTransport implements CdpTransport {
     socket.addEventListener("error", () => this.handlers?.onClose("WebSocket error."));
   }
 
-  public static async connect(url: string, timeoutMs = 10_000): Promise<BrowserWebSocketTransport> {
+  public static async connect(url: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<BrowserWebSocketTransport> {
     assertLoopbackWebSocket(url);
     const socket = new WebSocket(url);
-    await new Promise<void>((resolveOpen, rejectOpen) => {
-      const timer = setTimeout(() => rejectOpen(new Error("Timed out opening CDP WebSocket.")), timeoutMs);
-      socket.addEventListener("open", () => { clearTimeout(timer); resolveOpen(); }, { once: true });
-      socket.addEventListener("error", () => { clearTimeout(timer); rejectOpen(new Error("CDP WebSocket failed to open.")); }, { once: true });
-    });
-    return new BrowserWebSocketTransport(socket);
+    try {
+      await new Promise<void>((resolveOpen, rejectOpen) => {
+        const timer = setTimeout(() => rejectOpen(new Error("Timed out opening CDP WebSocket.")), timeoutMs);
+        socket.addEventListener("open", () => { clearTimeout(timer); resolveOpen(); }, { once: true });
+        socket.addEventListener("error", () => { clearTimeout(timer); rejectOpen(new Error("CDP WebSocket failed to open.")); }, { once: true });
+      });
+      return new BrowserWebSocketTransport(socket);
+    } catch (error) {
+      socket.close();
+      throw error;
+    }
   }
 
   public send(message: string): void { this.socket.send(message); }
@@ -122,7 +131,7 @@ export interface DevToolsTarget {
 
 export function assertLoopbackAddress(address: string): void {
   const url = new URL(address);
-  if (url.hostname !== "127.0.0.1") throw new Error(`DevTools endpoint must use 127.0.0.1, received ${url.hostname}.`);
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1") throw new Error("DevTools HTTP endpoint must use http://127.0.0.1 only.");
 }
 
 export function assertLoopbackWebSocket(address: string): void {
@@ -133,13 +142,12 @@ export function assertLoopbackWebSocket(address: string): void {
 function isInstalledTauriUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === "tauri:" ||
-      ((url.protocol === "https:" || url.protocol === "http:") && url.hostname === "tauri.localhost");
+    return url.protocol === "tauri:" || ((url.protocol === "https:" || url.protocol === "http:") && url.hostname === "tauri.localhost");
   } catch { return false; }
 }
 
 export function selectPromptVaultTarget(targets: readonly DevToolsTarget[]): DevToolsTarget {
-  const matches = targets.filter((target) => target.type === "page" && target.title === "Prompt Vault" && isInstalledTauriUrl(target.url) && Boolean(target.webSocketDebuggerUrl));
+  const matches = targets.filter((target) => target.type === "page" && target.title === PROMPT_VAULT_DOCUMENT_TITLE && isInstalledTauriUrl(target.url) && Boolean(target.webSocketDebuggerUrl));
   if (matches.length !== 1) throw new Error(`Expected exactly one installed Prompt Vault page target; found ${matches.length}.`);
   return matches[0]!;
 }
@@ -175,6 +183,74 @@ export interface SemanticElement {
   readonly checked: boolean | null;
   readonly selected: boolean | null;
   readonly focusable: boolean;
+  readonly visible: boolean;
+}
+
+type SemanticAction = "describe" | "click" | "focus" | "assert-focus" | "set-value" | "set-checked" | "select";
+
+/** A fixed, serializable semantic selector—not an arbitrary page evaluator. */
+export function buildSemanticExpression(criteria: { readonly role?: string; readonly name?: string; readonly label?: string; readonly value?: string; readonly checked?: boolean }, action: SemanticAction = "describe"): string {
+  return `(() => {
+    const criteria = ${JSON.stringify(criteria)};
+    const action = ${JSON.stringify(action)};
+    const controls = Array.from(document.querySelectorAll('[role],button,a,input,select,textarea'));
+    const text = (node) => (node && node.textContent ? node.textContent.trim().replace(/\\s+/g, ' ') : '');
+    const labelled = (element) => {
+      const ids = (element.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
+      const fromIds = ids.map((id) => text(document.getElementById(id))).filter(Boolean).join(' ');
+      if (fromIds) return fromIds;
+      if (element.getAttribute('aria-label')) return element.getAttribute('aria-label');
+      if (element.labels && element.labels.length) return Array.from(element.labels).map(text).filter(Boolean).join(' ');
+      const parentLabel = element.closest('label');
+      if (parentLabel) return text(parentLabel);
+      return text(element);
+    };
+    const roleOf = (element) => {
+      if (element.getAttribute('role')) return element.getAttribute('role');
+      if (element.tagName === 'BUTTON') return 'button';
+      if (element.tagName === 'A' && element.hasAttribute('href')) return 'link';
+      if (element.tagName === 'SELECT') return 'combobox';
+      if (element.tagName === 'TEXTAREA') return 'textbox';
+      if (element.tagName === 'INPUT') {
+        const type = (element.getAttribute('type') || 'text').toLowerCase();
+        if (type === 'checkbox' || type === 'radio') return type;
+        if (type === 'button' || type === 'submit' || type === 'reset') return 'button';
+        return 'textbox';
+      }
+      return '';
+    };
+    const visible = (element) => { const style = window.getComputedStyle(element); return style.display !== 'none' && style.visibility !== 'hidden' && element.getClientRects().length > 0; };
+    const matched = controls.filter((element) => {
+      const labelMatches = !criteria.label || labelled(element) === criteria.label;
+      const roleMatches = !criteria.role || roleOf(element) === criteria.role;
+      const nameMatches = !criteria.name || labelled(element) === criteria.name;
+      return labelMatches && roleMatches && nameMatches;
+    });
+    if (matched.length !== 1) return { ok: false, count: matched.length };
+    const element = matched[0];
+    if (action === 'click') element.click();
+    if (action === 'focus') element.focus();
+    if (action === 'assert-focus' && document.activeElement !== element) return { ok: false, count: 1 };
+    if (action === 'set-value') {
+      const prototype = element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : element.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(prototype, 'value');
+      if (!setter || !setter.set) return { ok: false, count: 1 };
+      setter.set.call(element, criteria.value || '');
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (action === 'set-checked') {
+      if (!(element.tagName === 'INPUT' && ((element.getAttribute('type') || '').toLowerCase() === 'checkbox' || (element.getAttribute('type') || '').toLowerCase() === 'radio'))) return { ok: false, count: 1 };
+      if (element.checked !== Boolean(criteria.checked)) element.click();
+    }
+    if (action === 'select') {
+      if (element.tagName !== 'SELECT') return { ok: false, count: 1 };
+      element.value = criteria.value || '';
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    return { ok: true, count: 1, element: { tag: element.tagName.toLowerCase(), role: element.getAttribute('role'), name: labelled(element), disabled: Boolean(element.disabled), checked: element.tagName === 'INPUT' && ((element.getAttribute('type') || '').toLowerCase() === 'checkbox' || (element.getAttribute('type') || '').toLowerCase() === 'radio') ? Boolean(element.checked) : null, selected: element.getAttribute('aria-selected') === 'true' ? true : element.getAttribute('aria-selected') === 'false' ? false : null, focusable: element.tabIndex >= 0, visible: visible(element) } };
+  })()`;
 }
 
 export class PromptVaultWebView {
@@ -185,9 +261,18 @@ export class PromptVaultWebView {
   }
 
   public async evaluateValue<T>(expression: string): Promise<T> {
-    const result = await this.cdp.command("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-    const remote = result.result as JsonRecord | undefined;
-    return remote?.value as T;
+    const response = await this.cdp.command("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+    if (response.exceptionDetails) throw new Error("Installed WebView rejected a fixed semantic operation.");
+    const remote = response.result as JsonRecord | undefined;
+    if (!remote || remote.subtype === "error" || remote.type === "error") throw new Error("Installed WebView returned an exception for a fixed semantic operation.");
+    if (typeof remote.unserializableValue === "string" || !("value" in remote)) throw new Error("Installed WebView did not return a serializable value for a fixed semantic operation.");
+    return remote.value as T;
+  }
+
+  private async semantic(criteria: Parameters<typeof buildSemanticExpression>[0], action: SemanticAction = "describe"): Promise<SemanticElement> {
+    const result = await this.evaluateValue<{ readonly ok: boolean; readonly count: number; readonly element?: SemanticElement }>(buildSemanticExpression(criteria, action));
+    if (!result.ok || !result.element) throw new Error(`Expected exactly one semantic control; found ${result.count}.`);
+    return result.element;
   }
 
   public async assertApplicationRoot(): Promise<void> {
@@ -196,136 +281,67 @@ export class PromptVaultWebView {
   }
 
   public async findByRole(role: string, name: string): Promise<SemanticElement[]> {
-    const encodedRole = JSON.stringify(role);
-    const encodedName = JSON.stringify(name);
-    return this.evaluateValue<SemanticElement[]>(`(() => [...document.querySelectorAll('[role],button,a,input,select,textarea')].filter((element) => { const role = element.getAttribute('role') || (element instanceof HTMLButtonElement ? 'button' : element instanceof HTMLAnchorElement ? 'link' : element instanceof HTMLInputElement ? (element.type === 'checkbox' ? 'checkbox' : 'textbox') : element instanceof HTMLSelectElement ? 'combobox' : element instanceof HTMLTextAreaElement ? 'textbox' : ''); const name = element.getAttribute('aria-label') || element.textContent?.trim() || ''; return role === ${encodedRole} && name === ${encodedName}; }).map((element) => ({ tag: element.tagName.toLowerCase(), role: element.getAttribute('role'), name: element.getAttribute('aria-label') || element.textContent?.trim() || '', disabled: 'disabled' in element && Boolean((element as HTMLButtonElement).disabled), checked: element instanceof HTMLInputElement && element.type === 'checkbox' ? element.checked : null, selected: element.getAttribute('aria-selected') === 'true' ? true : element.getAttribute('aria-selected') === 'false' ? false : null, focusable: element.tabIndex >= 0 }))`) ?? [];
+    try { return [await this.semantic({ role, name })]; } catch (error) { if (error instanceof Error && /found 0/.test(error.message)) return []; throw error; }
   }
-
-  public async clickByRole(role: string, name: string): Promise<void> {
-    const match = assertSingleSemanticMatch(await this.findByRole(role, name), `${role} named ${name}`);
-    const clicked = await this.evaluateValue<boolean>(`(() => { const targets = [...document.querySelectorAll('[role],button,a,input,select,textarea')].filter((element) => { const role = element.getAttribute('role') || (element instanceof HTMLButtonElement ? 'button' : element instanceof HTMLAnchorElement ? 'link' : ''); const name = element.getAttribute('aria-label') || element.textContent?.trim() || ''; return role === ${JSON.stringify(role)} && name === ${JSON.stringify(name)}; }); if (targets.length !== 1) return false; (targets[0] as HTMLElement).click(); return true; })()`);
-    if (!clicked || !match) throw new Error(`Unable to activate ${role} named ${name}.`);
-  }
-
-  public async findByLabel(label: string): Promise<SemanticElement[]> {
-    const encodedLabel = JSON.stringify(label);
-    return this.evaluateValue<SemanticElement[]>(`(() => {
-      const labels = [...document.querySelectorAll('label')].filter((candidate) => candidate.textContent?.trim() === ${encodedLabel});
-      const controls = labels.map((candidate) => candidate.htmlFor ? document.getElementById(candidate.htmlFor) : candidate.querySelector('input,select,textarea')).filter(Boolean);
-      return controls.map((element) => ({ tag: element.tagName.toLowerCase(), role: element.getAttribute('role'), name: element.getAttribute('aria-label') || '', disabled: 'disabled' in element && Boolean((element as HTMLInputElement).disabled), checked: element instanceof HTMLInputElement && element.type === 'checkbox' ? element.checked : null, selected: element.getAttribute('aria-selected') === 'true' ? true : element.getAttribute('aria-selected') === 'false' ? false : null, focusable: element.tabIndex >= 0 }));
-    })()`) ?? [];
-  }
-
-  public async setInputValueByLabel(label: string, value: string): Promise<void> {
-    const controls = await this.findByLabel(label);
-    assertSingleSemanticMatch(controls, `control labelled ${label}`);
-    const updated = await this.evaluateValue<boolean>(`(() => {
-      const labels = [...document.querySelectorAll('label')].filter((candidate) => candidate.textContent?.trim() === ${JSON.stringify(label)});
-      const controls = labels.map((candidate) => candidate.htmlFor ? document.getElementById(candidate.htmlFor) : candidate.querySelector('input,select,textarea')).filter(Boolean);
-      if (controls.length !== 1) return false;
-      const control = controls[0] as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-      const prototype = control instanceof HTMLInputElement ? HTMLInputElement.prototype : control instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLSelectElement.prototype;
-      const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
-      descriptor?.set?.call(control, ${JSON.stringify(value)});
-      control.dispatchEvent(new Event('input', { bubbles: true }));
-      control.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    })()`);
-    if (!updated) throw new Error(`Unable to set control labelled ${label}.`);
-  }
-
-  public async headingText(): Promise<string> {
-    return this.evaluateValue<string>("document.querySelector('h1,h2,h3')?.textContent?.trim() || ''");
-  }
-
-  public async accessibilityTree(): Promise<JsonRecord[]> {
-    const response = await this.cdp.command("Accessibility.getFullAXTree");
-    return (response.nodes as JsonRecord[] | undefined) ?? [];
-  }
-
-  public async captureScreenshot(path: string, evidencePath: string): Promise<{ readonly path: string; readonly redactedPath: string }> {
-    assertDownloadPath(path, evidencePath);
-    const response = await this.cdp.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
-    const data = response.data;
-    if (typeof data !== "string") throw new Error("CDP did not return screenshot data.");
-    await writeFile(path, Buffer.from(data, "base64"));
-    return { path, redactedPath: redactEvidencePath(path) };
-  }
-
-  public async pressTab(): Promise<void> {
-    await this.cdp.command("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
-    await this.cdp.command("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
-  }
-
-  public async assertFocus(role: string, name: string): Promise<void> {
-    const focused = await this.evaluateValue<boolean>(`(() => {
-      const element = document.activeElement;
-      if (!element) return false;
-      const actualRole = element.getAttribute('role') || (element instanceof HTMLButtonElement ? 'button' : element instanceof HTMLAnchorElement ? 'link' : '');
-      const actualName = element.getAttribute('aria-label') || element.textContent?.trim() || '';
-      return actualRole === ${JSON.stringify(role)} && actualName === ${JSON.stringify(name)};
-    })()`);
-    if (!focused) throw new Error(`Expected focus on ${role} named ${name}.`);
-  }
-
-  public async assertNoHorizontalOverflow(): Promise<void> {
-    const overflow = await this.evaluateValue<boolean>("document.documentElement.scrollWidth > document.documentElement.clientWidth");
-    if (overflow) throw new Error("Installed WebView has horizontal overflow.");
-  }
-
-  public async configureDownloadPath(downloadPath: string, evidencePath: string): Promise<void> {
-    const safePath = assertDownloadPath(downloadPath, evidencePath);
-    await this.cdp.command("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: safePath, eventsEnabled: true });
-  }
+  public async clickByRole(role: string, name: string): Promise<void> { await this.semantic({ role, name }, "click"); }
+  public async focusByRole(role: string, name: string): Promise<void> { await this.semantic({ role, name }, "focus"); }
+  public async setInputValueByLabel(label: string, value: string): Promise<void> { await this.semantic({ label, value }, "set-value"); }
+  public async setCheckedByRole(role: "checkbox" | "radio", name: string, checked: boolean): Promise<void> { await this.semantic({ role, name, checked }, "set-checked"); }
+  public async selectOptionByLabel(label: string, value: string): Promise<void> { await this.semantic({ label, value }, "select"); }
+  public async waitForByRole(role: string, name: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<SemanticElement> { const deadline = Date.now() + timeoutMs; let lastError: unknown; while (Date.now() < deadline) { try { return await this.semantic({ role, name }); } catch (error) { lastError = error; await new Promise((resolveWait) => setTimeout(resolveWait, 100)); } } throw new Error(`Timed out waiting for ${role} named ${name}: ${lastError instanceof Error ? lastError.message : "not found"}`); }
+  public async assertText(value: string, contained = true): Promise<void> { const found = await this.evaluateValue<boolean>(`(() => { const text = document.body ? document.body.innerText : ''; return ${contained ? "text.includes" : "text ==="}(${JSON.stringify(value)}); })()`); if (!found) throw new Error(`Expected installed WebView text ${contained ? "containing" : "equal to"} the requested safe assertion.`); }
+  public async assertLiveRegion(value: string): Promise<void> { const found = await this.evaluateValue<boolean>(`Array.from(document.querySelectorAll('[aria-live],[role=alert]')).some((element) => (element.innerText || '').includes(${JSON.stringify(value)}))`); if (!found) throw new Error("Expected live status was not announced."); }
+  public async assertRoute(pathname: string): Promise<void> { const actual = await this.evaluateValue<string>("window.location.pathname"); if (actual !== pathname) throw new Error(`Expected route ${pathname}, received ${actual}.`); }
+  public async headingText(): Promise<string> { return this.evaluateValue<string>("document.querySelector('h1,h2,h3') ? document.querySelector('h1,h2,h3').textContent.trim() : ''"); }
+  public async accessibilityTree(): Promise<JsonRecord[]> { const response = await this.cdp.command("Accessibility.getFullAXTree"); return (response.nodes as JsonRecord[] | undefined) ?? []; }
+  public async captureScreenshot(path: string, evidencePath: string): Promise<{ readonly path: string; readonly redactedPath: string }> { assertDownloadPath(path, evidencePath); const response = await this.cdp.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }); if (typeof response.data !== "string") throw new Error("CDP did not return screenshot data."); await writeFile(path, Buffer.from(response.data, "base64")); return { path, redactedPath: redactEvidencePath(path) }; }
+  public async dispatchKey(key: string): Promise<void> { const map: Record<string, number> = { Enter: 13, Space: 32, Escape: 27, Tab: 9, ArrowDown: 40, ArrowUp: 38 }; const code = map[key]; if (!code) throw new Error(`Unsupported constrained key: ${key}`); await this.cdp.command("Input.dispatchKeyEvent", { type: "keyDown", key, code: key === "Space" ? "Space" : key, windowsVirtualKeyCode: code }); await this.cdp.command("Input.dispatchKeyEvent", { type: "keyUp", key, code: key === "Space" ? "Space" : key, windowsVirtualKeyCode: code }); }
+  public async assertFocus(role: string, name: string): Promise<void> { await this.semantic({ role, name }, "assert-focus"); }
+  public async assertNoHorizontalOverflow(): Promise<void> { if (await this.evaluateValue<boolean>("document.documentElement.scrollWidth > document.documentElement.clientWidth")) throw new Error("Installed WebView has horizontal overflow."); }
+  public async configureDownloadPath(downloadPath: string, evidencePath: string): Promise<void> { await this.cdp.command("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: assertDownloadPath(downloadPath, evidencePath), eventsEnabled: true }); }
+  public async uploadFileByLabel(label: string, path: string): Promise<void> { await this.semantic({ label }, "describe"); const root = await this.cdp.command("DOM.getDocument", { depth: 1 }); const documentNodeId = (root.root as JsonRecord).nodeId; if (typeof documentNodeId !== "number") throw new Error("CDP did not return a document node."); const nodes = (await this.cdp.command("DOM.querySelectorAll", { nodeId: documentNodeId, selector: "input[type=file]" })).nodeIds; if (!Array.isArray(nodes) || nodes.length !== 1 || typeof nodes[0] !== "number") throw new Error("Expected exactly one approved file input."); await this.cdp.command("DOM.setFileInputFiles", { nodeId: nodes[0], files: [path] }); }
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
+async function fetchJson<T>(url: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<T> {
   assertLoopbackAddress(url);
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`DevTools endpoint failed: ${response.status}`);
-  return response.json() as Promise<T>;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { const response = await fetch(url, { signal: controller.signal }); if (!response.ok) throw new Error(`DevTools endpoint failed: ${response.status}`); return response.json() as Promise<T>; } finally { clearTimeout(timer); }
 }
 
-export async function runInstalledSelfTest(options: { readonly port: number; readonly evidencePath: string }): Promise<JsonRecord> {
+export async function waitForPromptVaultTarget(port: number, timeoutMs = READY_TIMEOUT_MS): Promise<DevToolsTarget> {
+  const base = `http://127.0.0.1:${port}`;
+  const deadline = Date.now() + timeoutMs;
+  await fetchJson<JsonRecord>(`${base}/json/version`);
+  let lastError = "target not yet available";
+  while (Date.now() < deadline) {
+    try { return selectPromptVaultTarget(await fetchJson<DevToolsTarget[]>(`${base}/json/list`)); } catch (error) { lastError = error instanceof Error ? error.message : String(error); await new Promise((resolveWait) => setTimeout(resolveWait, 200)); }
+  }
+  throw new Error(`Installed Prompt Vault target did not become ready: ${lastError}`);
+}
+
+export async function runInstalledSelfTest(options: { readonly port: number; readonly evidencePath: string; readonly scenario?: "self-test" | "recovery" }): Promise<JsonRecord> {
   if (!Number.isInteger(options.port) || options.port < 1024 || options.port > 65535) throw new Error("CDP port must be a non-privileged TCP port.");
   const evidencePath = assertEvidencePath(options.evidencePath);
   await mkdir(evidencePath, { recursive: true });
-  const base = `http://127.0.0.1:${options.port}`;
-  await fetchJson<JsonRecord>(`${base}/json/version`);
-  const targets = await fetchJson<DevToolsTarget[]>(`${base}/json/list`);
-  const target = selectPromptVaultTarget(targets);
-  const transport = await BrowserWebSocketTransport.connect(target.webSocketDebuggerUrl!);
-  const cdp = new CdpClient(transport);
+  const target = await waitForPromptVaultTarget(options.port);
+  const cdp = new CdpClient(await BrowserWebSocketTransport.connect(target.webSocketDebuggerUrl!));
   try {
-    const view = new PromptVaultWebView(cdp);
-    await view.enable();
-    await view.assertApplicationRoot();
+    const view = new PromptVaultWebView(cdp); await view.enable(); await view.assertApplicationRoot();
+    if (options.scenario === "recovery") {
+      const evidence = await runInstalledRecoveryScenario({ view, evidencePath });
+      return { scenario: "recovery", target: { id: target.id, title: target.title, url: target.url }, evidence };
+    }
     const library = assertSingleSemanticMatch(await view.findByRole("link", "Library"), "Library link");
     await view.clickByRole("link", "Settings");
-    const heading = await view.headingText();
-    if (heading !== "Settings") throw new Error(`Expected Settings heading, received ${heading || "none"}.`);
-    const ax = await view.accessibilityTree();
-    await view.assertNoHorizontalOverflow();
+    const heading = await view.headingText(); if (heading !== "Settings") throw new Error(`Expected Settings heading, received ${heading || "none"}.`);
+    const ax = await view.accessibilityTree(); await view.assertNoHorizontalOverflow();
     const screenshot = await view.captureScreenshot(resolve(evidencePath, "installed-webview-settings.png"), evidencePath);
     const safe = { target: { id: target.id, type: target.type, title: target.title, url: target.url }, heading, libraryFocusable: library.focusable, accessibilityNodeCount: ax.length, screenshot: screenshot.redactedPath };
-    await writeFile(resolve(evidencePath, "installed-webview-self-test-summary.json"), JSON.stringify(safe, null, 2));
-    return safe;
+    await writeFile(resolve(evidencePath, "installed-webview-self-test-summary.json"), JSON.stringify(safe, null, 2)); return safe;
   } finally { cdp.close(); }
 }
 
-function readOption(name: string): string | undefined {
-  const index = process.argv.indexOf(name);
-  return index >= 0 ? process.argv[index + 1] : undefined;
-}
-
-async function main(): Promise<void> {
-  const portText = readOption("--port");
-  const evidencePath = readOption("--evidence");
-  if (!portText || !evidencePath) throw new Error("Usage: installed-webview2-cdp.ts --port <port> --evidence <absolute-path>");
-  const summary = await runInstalledSelfTest({ port: Number(portText), evidencePath });
-  process.stdout.write(`${JSON.stringify(summary)}\n`);
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; });
-}
+function readOption(name: string): string | undefined { const index = process.argv.indexOf(name); return index >= 0 ? process.argv[index + 1] : undefined; }
+async function main(): Promise<void> { const portText = readOption("--port"); const evidencePath = readOption("--evidence"); const scenario = readOption("--scenario") ?? "self-test"; if (!portText || !evidencePath || (scenario !== "self-test" && scenario !== "recovery")) throw new Error("Usage: installed-webview2-cdp.ts --port <port> --evidence <absolute-path> [--scenario self-test|recovery]"); const summary = await runInstalledSelfTest({ port: Number(portText), evidencePath, scenario }); process.stdout.write(`${JSON.stringify(summary)}\n`); }
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; });

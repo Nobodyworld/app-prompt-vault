@@ -1,13 +1,18 @@
+// @vitest-environment jsdom
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CdpClient,
   CdpProtocolError,
+  PROMPT_VAULT_DOCUMENT_TITLE,
   PromptVaultWebView,
   assertDownloadPath,
   assertEvidencePath,
   assertLoopbackAddress,
   assertLoopbackWebSocket,
   assertSingleSemanticMatch,
+  buildSemanticExpression,
   redactEvidencePath,
   selectPromptVaultTarget,
   type CdpTransport,
@@ -26,7 +31,7 @@ class FakeTransport implements CdpTransport {
 }
 
 const target = (overrides: Partial<DevToolsTarget> = {}): DevToolsTarget => ({
-  id: "page-1", type: "page", title: "Prompt Vault", url: "tauri://localhost/", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/page-1", ...overrides,
+  id: "page-1", type: "page", title: PROMPT_VAULT_DOCUMENT_TITLE, url: "tauri://localhost/", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/page-1", ...overrides,
 });
 
 describe("installed WebView2 CDP harness", () => {
@@ -56,6 +61,17 @@ describe("installed WebView2 CDP harness", () => {
     await expect(pending).rejects.toBeInstanceOf(CdpProtocolError);
   });
 
+  it("turns Runtime.evaluate exceptions and missing values into actionable failures", async () => {
+    const transport = new FakeTransport();
+    const view = new PromptVaultWebView(new CdpClient(transport));
+    const exception = view.evaluateValue("fixed semantic expression");
+    transport.respond({ id: 1, result: { exceptionDetails: { text: "SyntaxError" }, result: { type: "object", subtype: "error" } } });
+    await expect(exception).rejects.toThrow("rejected a fixed semantic operation");
+    const missing = view.evaluateValue("fixed semantic expression");
+    transport.respond({ id: 2, result: { result: { type: "undefined" } } });
+    await expect(missing).rejects.toThrow("serializable value");
+  });
+
   it("times out pending commands", async () => {
     vi.useFakeTimers();
     const client = new CdpClient(new FakeTransport(), 10);
@@ -75,6 +91,12 @@ describe("installed WebView2 CDP harness", () => {
 
   it("selects one installed Tauri page target", () => {
     expect(selectPromptVaultTarget([target(), target({ type: "service_worker", id: "worker" })])).toMatchObject({ id: "page-1" });
+  });
+
+  it("ties target identity to the production document title", async () => {
+    const index = await readFile(resolve("desktop/index.html"), "utf8");
+    expect(index).toContain(`<title>${PROMPT_VAULT_DOCUMENT_TITLE}</title>`);
+    expect(() => selectPromptVaultTarget([target({ title: "Prompt Vault" })])).toThrow("exactly one");
   });
 
   it("rejects titleless, non-Tauri, and multiple targets", () => {
@@ -119,5 +141,21 @@ describe("installed WebView2 CDP harness", () => {
     expect(redacted).not.toContain("Nobod");
     expect(redacted).not.toContain("prompt-vault.db");
     expect(redacted).toContain("<user-profile>");
+  });
+
+  it("executes every generated semantic expression as plain JavaScript", () => {
+    document.body.innerHTML = '<label for="title">Title</label><input id="title" value="old"><label><input type="checkbox"> Confirm</label><label for="policy">Conflict policy</label><select id="policy"><option value="skip-existing">Skip existing</option><option value="import-as-copy">Copy</option></select><button>Save</button><a href="/settings">Settings</a><textarea aria-label="Prompt"></textarea>';
+    const expressions = [
+      buildSemanticExpression({ role: "button", name: "Save" }),
+      buildSemanticExpression({ role: "link", name: "Settings" }, "click"),
+      buildSemanticExpression({ label: "Title", value: "new" }, "set-value"),
+      buildSemanticExpression({ role: "checkbox", name: "Confirm", checked: true }, "set-checked"),
+      buildSemanticExpression({ label: "Conflict policy", value: "import-as-copy" }, "select"),
+    ];
+    for (const expression of expressions) expect(new Function(`return ${expression}`)()).toMatchObject({ ok: true, count: 1 });
+    expect((document.querySelector("#title") as HTMLInputElement).value).toBe("new");
+    expect((document.querySelector("input[type=checkbox]") as HTMLInputElement).checked).toBe(true);
+    expect((document.querySelector("#policy") as HTMLSelectElement).value).toBe("import-as-copy");
+    expect(expressions.join("\n")).not.toMatch(/\sas\sHTML|as HTMLElement|as HTMLInputElement/);
   });
 });
