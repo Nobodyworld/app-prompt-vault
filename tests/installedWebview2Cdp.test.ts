@@ -9,6 +9,8 @@ import {
   PromptVaultWebView,
   assertDownloadPath,
   assertEvidencePath,
+  assertWindowsPathInside,
+  canonicalWindowsPath,
   assertLoopbackAddress,
   assertLoopbackWebSocket,
   assertSingleSemanticMatch,
@@ -113,21 +115,31 @@ describe("installed WebView2 CDP harness", () => {
     expect(() => assertLoopbackWebSocket("ws://192.168.1.10:9222/devtools/page/a")).toThrow("127.0.0.1");
   });
 
-  it("requires external evidence and contained downloads", () => {
-    expect(assertEvidencePath("C:\\tmp\\prompt-vault-evidence")).toMatch(/prompt-vault-evidence$/);
-    expect(() => assertEvidencePath("C:\\Users\\Nobod\\Desktop")).toThrow("C:\\tmp");
-    expect(assertDownloadPath("C:\\tmp\\prompt-vault-evidence\\backup.json", "C:\\tmp\\prompt-vault-evidence")).toMatch(/backup\.json$/);
-    expect(() => assertDownloadPath("C:\\tmp\\outside.json", "C:\\tmp\\prompt-vault-evidence")).toThrow("inside evidence");
+  it("models Windows evidence containment independently of the host platform", () => {
+    expect(assertEvidencePath("C:\\tmp\\prompt-vault-evidence")).toBe("C:\\tmp\\prompt-vault-evidence");
+    expect(assertEvidencePath("c:/TMP/mixed-case")).toBe("C:\\TMP\\mixed-case");
+    expect(canonicalWindowsPath("C:\\tmp\\root\\..\\evidence")).toBe("C:\\tmp\\evidence");
+    expect(assertWindowsPathInside("C:\\tmp\\evidence\\child.json", "C:\\tmp\\evidence")).toBe("C:\\tmp\\evidence\\child.json");
+    expect(() => assertWindowsPathInside("C:\\tmp\\evidence", "C:\\tmp\\evidence")).toThrow("inside");
+    expect(() => assertEvidencePath("relative\\evidence")).toThrow("absolute Windows");
+    expect(() => assertEvidencePath("C:\\Users\\Nobod\\Desktop")).toThrow("inside");
+    expect(() => assertWindowsPathInside("C:\\tmp\\sibling\\a.json", "C:\\tmp\\evidence")).toThrow("inside");
+    expect(() => assertWindowsPathInside("C:\\tmp\\evidence\\..\\outside.json", "C:\\tmp\\evidence")).toThrow("inside");
+    expect(() => canonicalWindowsPath("D:\\tmp\\evidence")).toThrow("C: drive");
+    expect(() => canonicalWindowsPath("\\\\server\\share\\evidence")).toThrow("UNC");
+    expect(() => canonicalWindowsPath("\\\\?\\C:\\tmp\\evidence")).toThrow("UNC or device");
   });
 
   it("configures CDP downloads only inside local evidence", async () => {
     const transport = new FakeTransport();
     const view = new PromptVaultWebView(new CdpClient(transport));
     const configured = view.configureDownloadPath("C:\\tmp\\prompt-vault-evidence\\exports", "C:\\tmp\\prompt-vault-evidence");
-    expect(JSON.parse(transport.sent[0]!)).toMatchObject({ method: "Browser.setDownloadBehavior", params: { behavior: "allow", downloadPath: "c:\\tmp\\prompt-vault-evidence\\exports" } });
+    expect(JSON.parse(transport.sent[0]!)).toMatchObject({ method: "Browser.setDownloadBehavior", params: { behavior: "allow", downloadPath: "C:\\tmp\\prompt-vault-evidence\\exports" } });
     transport.respond({ id: 1, result: {} });
     await expect(configured).resolves.toBeUndefined();
-    await expect(view.configureDownloadPath("C:\\tmp\\outside", "C:\\tmp\\prompt-vault-evidence")).rejects.toThrow("inside evidence");
+    await expect(view.configureDownloadPath("C:\\tmp\\outside", "C:\\tmp\\prompt-vault-evidence")).rejects.toThrow("inside the evidence");
+    await expect(view.captureScreenshot("C:\\tmp\\outside.png", "C:\\tmp\\prompt-vault-evidence")).rejects.toThrow("inside the evidence");
+    await expect(view.uploadFileByLabel("Choose backup JSON", "C:\\tmp\\outside.json", "C:\\tmp\\prompt-vault-evidence")).rejects.toThrow("inside the evidence");
   });
 
   it("rejects ambiguous semantic matches", () => {

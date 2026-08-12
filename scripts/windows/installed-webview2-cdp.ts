@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { win32 } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runInstalledRecoveryScenario } from "./installed-webview2-recovery-scenario.js";
 
@@ -156,18 +156,39 @@ export function redactEvidencePath(value: string): string {
   return value.replace(/[A-Za-z]:\\Users\\[^\\]+/gi, "<user-profile>").replace(/\\(?:prompt-vault\.db(?:-(?:wal|shm))?|WebView2(?:\\[^\\]*)*)/gi, "<private-path>");
 }
 
+function isWindowsDeviceOrUncPath(value: string): boolean {
+  return /^(?:\\\\[?.]\\|\\\\)/.test(value.replaceAll("/", "\\"));
+}
+
+/**
+ * Acceptance paths are Windows paths even when their unit tests run on Linux.
+ * Never use host `path.resolve()` here: it changes C:\\ paths into checkout paths.
+ */
+export function canonicalWindowsPath(value: string, description = "path"): string {
+  if (isWindowsDeviceOrUncPath(value)) throw new Error(`${description} must not use UNC or device path syntax.`);
+  if (!win32.isAbsolute(value)) throw new Error(`${description} must be an absolute Windows path.`);
+  const normalized = win32.resolve(value);
+  if (!/^[cC]:\\/.test(normalized)) throw new Error(`${description} must use the C: drive.`);
+  return `C:${normalized.slice(2)}`;
+}
+
+export function assertWindowsPathInside(candidatePath: string, rootPath: string, description = "path"): string {
+  const root = canonicalWindowsPath(rootPath, "evidence root");
+  const candidate = canonicalWindowsPath(candidatePath, description);
+  const relative = win32.relative(root, candidate);
+  if (!relative || relative === "." || relative.startsWith("..") || win32.isAbsolute(relative)) {
+    throw new Error(`${description} must remain inside the evidence directory.`);
+  }
+  return candidate;
+}
+
 export function assertEvidencePath(evidencePath: string): string {
-  if (!isAbsolute(evidencePath)) throw new Error("Evidence path must be absolute.");
-  const resolved = resolve(evidencePath);
-  if (!/^C:\\tmp\\/i.test(resolved)) throw new Error("Evidence path must be under C:\\tmp.");
-  return resolved;
+  const canonical = canonicalWindowsPath(evidencePath, "Evidence path");
+  return assertWindowsPathInside(canonical, "C:\\tmp", "Evidence path");
 }
 
 export function assertDownloadPath(downloadPath: string, evidencePath: string): string {
-  const root = `${resolve(evidencePath).toLowerCase()}\\`;
-  const candidate = resolve(downloadPath).toLowerCase();
-  if (!candidate.startsWith(root)) throw new Error("Download path must remain inside evidence directory.");
-  return candidate;
+  return assertWindowsPathInside(downloadPath, evidencePath, "Download path");
 }
 
 export function assertSingleSemanticMatch<T>(matches: readonly T[], description: string): T {
@@ -290,16 +311,40 @@ export class PromptVaultWebView {
   public async selectOptionByLabel(label: string, value: string): Promise<void> { await this.semantic({ label, value }, "select"); }
   public async waitForByRole(role: string, name: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<SemanticElement> { const deadline = Date.now() + timeoutMs; let lastError: unknown; while (Date.now() < deadline) { try { return await this.semantic({ role, name }); } catch (error) { lastError = error; await new Promise((resolveWait) => setTimeout(resolveWait, 100)); } } throw new Error(`Timed out waiting for ${role} named ${name}: ${lastError instanceof Error ? lastError.message : "not found"}`); }
   public async assertText(value: string, contained = true): Promise<void> { const found = await this.evaluateValue<boolean>(`(() => { const text = document.body ? document.body.innerText : ''; return ${contained ? "text.includes" : "text ==="}(${JSON.stringify(value)}); })()`); if (!found) throw new Error(`Expected installed WebView text ${contained ? "containing" : "equal to"} the requested safe assertion.`); }
+  public async waitForText(value: string, contained = true, timeoutMs = COMMAND_TIMEOUT_MS): Promise<void> { const deadline = Date.now() + timeoutMs; let lastError: unknown; while (Date.now() < deadline) { try { await this.assertText(value, contained); return; } catch (error) { lastError = error; await new Promise((resolveWait) => setTimeout(resolveWait, 100)); } } throw lastError instanceof Error ? lastError : new Error("Timed out waiting for installed WebView text."); }
   public async assertLiveRegion(value: string): Promise<void> { const found = await this.evaluateValue<boolean>(`Array.from(document.querySelectorAll('[aria-live],[role=alert]')).some((element) => (element.innerText || '').includes(${JSON.stringify(value)}))`); if (!found) throw new Error("Expected live status was not announced."); }
   public async assertRoute(pathname: string): Promise<void> { const actual = await this.evaluateValue<string>("window.location.pathname"); if (actual !== pathname) throw new Error(`Expected route ${pathname}, received ${actual}.`); }
   public async headingText(): Promise<string> { return this.evaluateValue<string>("document.querySelector('h1,h2,h3') ? document.querySelector('h1,h2,h3').textContent.trim() : ''"); }
   public async accessibilityTree(): Promise<JsonRecord[]> { const response = await this.cdp.command("Accessibility.getFullAXTree"); return (response.nodes as JsonRecord[] | undefined) ?? []; }
-  public async captureScreenshot(path: string, evidencePath: string): Promise<{ readonly path: string; readonly redactedPath: string }> { assertDownloadPath(path, evidencePath); const response = await this.cdp.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }); if (typeof response.data !== "string") throw new Error("CDP did not return screenshot data."); await writeFile(path, Buffer.from(response.data, "base64")); return { path, redactedPath: redactEvidencePath(path) }; }
+  public async captureScreenshot(path: string, evidencePath: string): Promise<{ readonly path: string; readonly redactedPath: string }> { const safePath = assertDownloadPath(path, evidencePath); const response = await this.cdp.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }); if (typeof response.data !== "string") throw new Error("CDP did not return screenshot data."); await writeFile(safePath, Buffer.from(response.data, "base64")); return { path: safePath, redactedPath: redactEvidencePath(safePath) }; }
   public async dispatchKey(key: string): Promise<void> { const map: Record<string, number> = { Enter: 13, Space: 32, Escape: 27, Tab: 9, ArrowDown: 40, ArrowUp: 38 }; const code = map[key]; if (!code) throw new Error(`Unsupported constrained key: ${key}`); await this.cdp.command("Input.dispatchKeyEvent", { type: "keyDown", key, code: key === "Space" ? "Space" : key, windowsVirtualKeyCode: code }); await this.cdp.command("Input.dispatchKeyEvent", { type: "keyUp", key, code: key === "Space" ? "Space" : key, windowsVirtualKeyCode: code }); }
   public async assertFocus(role: string, name: string): Promise<void> { await this.semantic({ role, name }, "assert-focus"); }
   public async assertNoHorizontalOverflow(): Promise<void> { if (await this.evaluateValue<boolean>("document.documentElement.scrollWidth > document.documentElement.clientWidth")) throw new Error("Installed WebView has horizontal overflow."); }
-  public async configureDownloadPath(downloadPath: string, evidencePath: string): Promise<void> { await this.cdp.command("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: assertDownloadPath(downloadPath, evidencePath), eventsEnabled: true }); }
-  public async uploadFileByLabel(label: string, path: string): Promise<void> { await this.semantic({ label }, "describe"); const root = await this.cdp.command("DOM.getDocument", { depth: 1 }); const documentNodeId = (root.root as JsonRecord).nodeId; if (typeof documentNodeId !== "number") throw new Error("CDP did not return a document node."); const nodes = (await this.cdp.command("DOM.querySelectorAll", { nodeId: documentNodeId, selector: "input[type=file]" })).nodeIds; if (!Array.isArray(nodes) || nodes.length !== 1 || typeof nodes[0] !== "number") throw new Error("Expected exactly one approved file input."); await this.cdp.command("DOM.setFileInputFiles", { nodeId: nodes[0], files: [path] }); }
+  public async configureDownloadPath(downloadPath: string, evidencePath: string): Promise<void> { const canonical = assertDownloadPath(downloadPath, evidencePath); await this.cdp.command("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: canonical, eventsEnabled: true }); }
+  /** CDP events are supplementary evidence; directory verification stays authoritative. */
+  public observeDownloadNames(): { readonly names: () => readonly string[]; readonly dispose: () => void } {
+    const observed: string[] = [];
+    const dispose = this.cdp.on("Browser.downloadWillBegin", (params) => {
+      const suggested = params.suggestedFilename;
+      if (typeof suggested === "string" && /^[A-Za-z0-9._-]+\.json$/.test(suggested)) observed.push(suggested);
+    });
+    return { names: () => [...observed], dispose };
+  }
+  public async uploadFileByLabel(label: string, path: string, evidencePath: string): Promise<void> { const canonical = assertDownloadPath(path, evidencePath); await this.semantic({ label }, "describe"); const root = await this.cdp.command("DOM.getDocument", { depth: 1 }); const documentNodeId = (root.root as JsonRecord).nodeId; if (typeof documentNodeId !== "number") throw new Error("CDP did not return a document node."); const nodes = (await this.cdp.command("DOM.querySelectorAll", { nodeId: documentNodeId, selector: "input[type=file]" })).nodeIds; if (!Array.isArray(nodes) || nodes.length !== 1 || typeof nodes[0] !== "number") throw new Error("Expected exactly one approved file input."); await this.cdp.command("DOM.setFileInputFiles", { nodeId: nodes[0], files: [canonical] }); }
+  public async versionAction(semanticVersion: string, action: "preview" | "compare" | "close-preview" | "revert"): Promise<void> {
+    if (!/^\d+\.\d+\.\d+$/.test(semanticVersion)) throw new Error("Version action requires a semantic version.");
+    const result = await this.evaluateValue<{ readonly ok: boolean; readonly count: number }>(`(() => {
+      const version = ${JSON.stringify(semanticVersion)}; const action = ${JSON.stringify(action)};
+      const rows = Array.from(document.querySelectorAll('.version-history__item')).filter((row) => (row.textContent || '').includes('v' + version));
+      if (rows.length !== 1) return { ok: false, count: rows.length };
+      const row = rows[0];
+      const target = action === 'compare' ? document.querySelector('.version-history__preview summary') : action === 'close-preview' ? document.querySelector('.version-history__preview button') : Array.from(row.querySelectorAll('button')).find((button) => (button.textContent || '').trim() === (action === 'preview' ? 'Preview' : 'Revert'));
+      if (!target || (target instanceof HTMLButtonElement && target.disabled)) return { ok: false, count: 0 };
+      target.click(); return { ok: true, count: 1 };
+    })()`);
+    if (!result.ok) throw new Error(`Expected exactly one version-history ${action} operation; found ${result.count}.`);
+    if (action === "revert") await this.cdp.command("Page.handleJavaScriptDialog", { accept: true });
+  }
 }
 
 async function fetchJson<T>(url: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<T> {
@@ -320,7 +365,7 @@ export async function waitForPromptVaultTarget(port: number, timeoutMs = READY_T
   throw new Error(`Installed Prompt Vault target did not become ready: ${lastError}`);
 }
 
-export async function runInstalledSelfTest(options: { readonly port: number; readonly evidencePath: string; readonly scenario?: "self-test" | "recovery" }): Promise<JsonRecord> {
+export async function runInstalledSelfTest(options: { readonly port: number; readonly evidencePath: string; readonly scenario?: "self-test" | "recovery"; readonly phase?: import("./installed-webview2-recovery-scenario.js").InstalledRecoveryPhase }): Promise<JsonRecord> {
   if (!Number.isInteger(options.port) || options.port < 1024 || options.port > 65535) throw new Error("CDP port must be a non-privileged TCP port.");
   const evidencePath = assertEvidencePath(options.evidencePath);
   await mkdir(evidencePath, { recursive: true });
@@ -329,19 +374,19 @@ export async function runInstalledSelfTest(options: { readonly port: number; rea
   try {
     const view = new PromptVaultWebView(cdp); await view.enable(); await view.assertApplicationRoot();
     if (options.scenario === "recovery") {
-      const evidence = await runInstalledRecoveryScenario({ view, evidencePath });
-      return { scenario: "recovery", target: { id: target.id, title: target.title, url: target.url }, evidence };
+      const evidence = await runInstalledRecoveryScenario({ view, evidencePath, phase: options.phase });
+      return { scenario: "recovery", phase: options.phase ?? "all", target: { id: target.id, title: target.title, url: target.url }, evidence };
     }
     const library = assertSingleSemanticMatch(await view.findByRole("link", "Library"), "Library link");
     await view.clickByRole("link", "Settings");
     const heading = await view.headingText(); if (heading !== "Settings") throw new Error(`Expected Settings heading, received ${heading || "none"}.`);
     const ax = await view.accessibilityTree(); await view.assertNoHorizontalOverflow();
-    const screenshot = await view.captureScreenshot(resolve(evidencePath, "installed-webview-settings.png"), evidencePath);
+    const screenshot = await view.captureScreenshot(win32.join(evidencePath, "installed-webview-settings.png"), evidencePath);
     const safe = { target: { id: target.id, type: target.type, title: target.title, url: target.url }, heading, libraryFocusable: library.focusable, accessibilityNodeCount: ax.length, screenshot: screenshot.redactedPath };
-    await writeFile(resolve(evidencePath, "installed-webview-self-test-summary.json"), JSON.stringify(safe, null, 2)); return safe;
+    await writeFile(win32.join(evidencePath, "installed-webview-self-test-summary.json"), JSON.stringify(safe, null, 2)); return safe;
   } finally { cdp.close(); }
 }
 
 function readOption(name: string): string | undefined { const index = process.argv.indexOf(name); return index >= 0 ? process.argv[index + 1] : undefined; }
-async function main(): Promise<void> { const portText = readOption("--port"); const evidencePath = readOption("--evidence"); const scenario = readOption("--scenario") ?? "self-test"; if (!portText || !evidencePath || (scenario !== "self-test" && scenario !== "recovery")) throw new Error("Usage: installed-webview2-cdp.ts --port <port> --evidence <absolute-path> [--scenario self-test|recovery]"); const summary = await runInstalledSelfTest({ port: Number(portText), evidencePath, scenario }); process.stdout.write(`${JSON.stringify(summary)}\n`); }
+async function main(): Promise<void> { const portText = readOption("--port"); const evidencePath = readOption("--evidence"); const scenario = readOption("--scenario") ?? "self-test"; const phase = readOption("--phase"); if (!portText || !evidencePath || (scenario !== "self-test" && scenario !== "recovery")) throw new Error("Usage: installed-webview2-cdp.ts --port <port> --evidence <absolute-path> [--scenario self-test|recovery] [--phase phase]"); const summary = await runInstalledSelfTest({ port: Number(portText), evidencePath, scenario, phase: phase as import("./installed-webview2-recovery-scenario.js").InstalledRecoveryPhase | undefined }); process.stdout.write(`${JSON.stringify(summary)}\n`); }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; });
