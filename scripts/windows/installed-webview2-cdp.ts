@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { win32 } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -313,6 +314,17 @@ export class PromptVaultWebView {
   public async assertText(value: string, contained = true): Promise<void> { const found = await this.evaluateValue<boolean>(`(() => { const text = document.body ? document.body.innerText : ''; return ${contained ? "text.includes" : "text ==="}(${JSON.stringify(value)}); })()`); if (!found) throw new Error(`Expected installed WebView text ${contained ? "containing" : "equal to"} the requested safe assertion.`); }
   public async waitForText(value: string, contained = true, timeoutMs = COMMAND_TIMEOUT_MS): Promise<void> { const deadline = Date.now() + timeoutMs; let lastError: unknown; while (Date.now() < deadline) { try { await this.assertText(value, contained); return; } catch (error) { lastError = error; await new Promise((resolveWait) => setTimeout(resolveWait, 100)); } } throw lastError instanceof Error ? lastError : new Error("Timed out waiting for installed WebView text."); }
   public async assertLiveRegion(value: string): Promise<void> { const found = await this.evaluateValue<boolean>(`Array.from(document.querySelectorAll('[aria-live],[role=alert]')).some((element) => (element.innerText || '').includes(${JSON.stringify(value)}))`); if (!found) throw new Error("Expected live status was not announced."); }
+  public async waitForLiveRegion(value: string, timeoutMs = COMMAND_TIMEOUT_MS, intervalMs = 100): Promise<void> {
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 25 || timeoutMs > COMMAND_TIMEOUT_MS || !Number.isInteger(intervalMs) || intervalMs < 10 || intervalMs > 250) throw new Error("Live-region wait requires a bounded timeout and a 10–250 ms polling interval.");
+    const deadline = Date.now() + timeoutMs; let last = "no live status";
+    while (Date.now() < deadline) {
+      const live = await this.evaluateValue<string>("Array.from(document.querySelectorAll('[aria-live],[role=alert]')).map((element) => (element.innerText || '').replace(/\\s+/g, ' ').trim()).join(' | ').slice(0, 240)");
+      last = live ? `non-empty live status (length=${live.length}, sha256=${createHash("sha256").update(live).digest("hex").slice(0, 16)})` : "empty live status";
+      if (live.includes(value)) return;
+      await new Promise((resolveWait) => setTimeout(resolveWait, intervalMs));
+    }
+    throw new Error(`Timed out waiting for live status ${JSON.stringify(value)}; last observed: ${JSON.stringify(last)}.`);
+  }
   public async assertRoute(pathname: string): Promise<void> { const actual = await this.evaluateValue<string>("window.location.pathname"); if (actual !== pathname) throw new Error(`Expected route ${pathname}, received ${actual}.`); }
   public async headingText(): Promise<string> { return this.evaluateValue<string>("document.querySelector('h1,h2,h3') ? document.querySelector('h1,h2,h3').textContent.trim() : ''"); }
   public async accessibilityTree(): Promise<JsonRecord[]> { const response = await this.cdp.command("Accessibility.getFullAXTree"); return (response.nodes as JsonRecord[] | undefined) ?? []; }
@@ -331,19 +343,53 @@ export class PromptVaultWebView {
     return { names: () => [...observed], dispose };
   }
   public async uploadFileByLabel(label: string, path: string, evidencePath: string): Promise<void> { const canonical = assertDownloadPath(path, evidencePath); await this.semantic({ label }, "describe"); const root = await this.cdp.command("DOM.getDocument", { depth: 1 }); const documentNodeId = (root.root as JsonRecord).nodeId; if (typeof documentNodeId !== "number") throw new Error("CDP did not return a document node."); const nodes = (await this.cdp.command("DOM.querySelectorAll", { nodeId: documentNodeId, selector: "input[type=file]" })).nodeIds; if (!Array.isArray(nodes) || nodes.length !== 1 || typeof nodes[0] !== "number") throw new Error("Expected exactly one approved file input."); await this.cdp.command("DOM.setFileInputFiles", { nodeId: nodes[0], files: [canonical] }); }
+  public async assertLastBackupMetadata(promptCount: number, versionCount: number): Promise<void> {
+    const result = await this.evaluateValue<{ readonly valid: boolean; readonly keyCount: number }>(`(() => {
+      const raw = localStorage.getItem('prompt-vault:last-backup:v1'); if (!raw) return { valid: false, keyCount: 0 };
+      try {
+        const value = JSON.parse(raw); const keys = Object.keys(value).sort(); const expected = ['backupFormat','promptCount','timestamp','verificationResult','versionCount'];
+        const privateKey = Object.keys(value).some((key) => /body|path|machine|telemetry|token|api.?key/i.test(key));
+        return { valid: !privateKey && JSON.stringify(keys) === JSON.stringify(expected) && value.backupFormat === '2.0' && value.verificationResult === 'verified' && value.promptCount === ${promptCount} && value.versionCount === ${versionCount} && typeof value.timestamp === 'string', keyCount: keys.length };
+      } catch { return { valid: false, keyCount: 0 }; }
+    })()`);
+    if (!result.valid) throw new Error("Last verified backup metadata was not persisted as the expected safe 2.0 verification record.");
+  }
+  public async assertVersionHistory(semanticVersions: readonly string[]): Promise<void> {
+    const actual = await this.evaluateValue<readonly string[]>(`(() => Array.from(document.querySelectorAll('.version-history__item')).map((row) => { const match = (row.textContent || '').match(/v(\\d+\\.\\d+\\.\\d+)/); return match ? match[1] : ''; }).filter(Boolean))()`);
+    if (JSON.stringify(actual) !== JSON.stringify(semanticVersions)) throw new Error(`Version history did not preserve the expected deterministic chain: ${semanticVersions.join(", ")}.`);
+  }
   public async versionAction(semanticVersion: string, action: "preview" | "compare" | "close-preview" | "revert"): Promise<void> {
     if (!/^\d+\.\d+\.\d+$/.test(semanticVersion)) throw new Error("Version action requires a semantic version.");
+    if (action === "revert") return this.confirmRevert(semanticVersion);
     const result = await this.evaluateValue<{ readonly ok: boolean; readonly count: number }>(`(() => {
       const version = ${JSON.stringify(semanticVersion)}; const action = ${JSON.stringify(action)};
       const rows = Array.from(document.querySelectorAll('.version-history__item')).filter((row) => (row.textContent || '').includes('v' + version));
       if (rows.length !== 1) return { ok: false, count: rows.length };
       const row = rows[0];
-      const target = action === 'compare' ? document.querySelector('.version-history__preview summary') : action === 'close-preview' ? document.querySelector('.version-history__preview button') : Array.from(row.querySelectorAll('button')).find((button) => (button.textContent || '').trim() === (action === 'preview' ? 'Preview' : 'Revert'));
+      const target = action === 'compare' ? document.querySelector('.version-history__preview summary') : action === 'close-preview' ? document.querySelector('.version-history__preview button') : Array.from(row.querySelectorAll('button')).find((button) => (button.textContent || '').trim() === 'Preview');
       if (!target || (target instanceof HTMLButtonElement && target.disabled)) return { ok: false, count: 0 };
       target.click(); return { ok: true, count: 1 };
     })()`);
     if (!result.ok) throw new Error(`Expected exactly one version-history ${action} operation; found ${result.count}.`);
-    if (action === "revert") await this.cdp.command("Page.handleJavaScriptDialog", { accept: true });
+  }
+  private async confirmRevert(semanticVersion: string): Promise<void> {
+    const expected = `Revert to v${semanticVersion}? This will create a new version.`;
+    let dialogs = 0; let resolveDialog: (() => void) | undefined; let rejectDialog: ((error: Error) => void) | undefined; let rejectFailure: ((error: Error) => void) | undefined;
+    const dialog = new Promise<void>((resolve, reject) => { resolveDialog = resolve; rejectDialog = reject; });
+    const failure = new Promise<never>((_, reject) => { rejectFailure = reject; });
+    const dispose = this.cdp.on("Page.javascriptDialogOpening", (params) => {
+      dialogs += 1;
+      const message = typeof params.message === "string" ? params.message : "";
+      if (dialogs !== 1 || params.type !== "confirm" || message !== expected) { const error = new Error("Unexpected or duplicate revert confirmation dialog."); rejectDialog?.(error); rejectFailure?.(error); return; }
+      void this.cdp.command("Page.handleJavaScriptDialog", { accept: true }).then(() => resolveDialog?.(), (error: Error) => rejectDialog?.(error));
+    });
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      const click = this.evaluateValue<{ readonly ok: boolean; readonly count: number }>(`(() => { const rows = Array.from(document.querySelectorAll('.version-history__item')).filter((row) => (row.textContent || '').includes('v' + ${JSON.stringify(semanticVersion)})); if (rows.length !== 1) return { ok: false, count: rows.length }; const button = Array.from(rows[0].querySelectorAll('button')).find((candidate) => (candidate.textContent || '').trim() === 'Revert'); if (!button || button.disabled) return { ok: false, count: 0 }; button.click(); return { ok: true, count: 1 }; })()`).then((result) => { if (!result.ok) throw new Error(`Expected one revert action; found ${result.count}.`); return result; });
+      const timedOut = new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error("Timed out waiting for revert confirmation dialog.")), COMMAND_TIMEOUT_MS); });
+      await Promise.race([Promise.all([click, dialog]), failure, timedOut]);
+      if (dialogs !== 1) throw new Error(`Expected exactly one revert confirmation dialog; found ${dialogs}.`);
+    } finally { if (timeout) clearTimeout(timeout); dispose(); }
   }
 }
 
@@ -365,7 +411,7 @@ export async function waitForPromptVaultTarget(port: number, timeoutMs = READY_T
   throw new Error(`Installed Prompt Vault target did not become ready: ${lastError}`);
 }
 
-export async function runInstalledSelfTest(options: { readonly port: number; readonly evidencePath: string; readonly scenario?: "self-test" | "recovery"; readonly phase?: import("./installed-webview2-recovery-scenario.js").InstalledRecoveryPhase }): Promise<JsonRecord> {
+export async function runInstalledSelfTest(options: { readonly port: number; readonly evidencePath: string; readonly fixturePath?: string; readonly targetDatabase?: string; readonly scenario?: "self-test" | "recovery"; readonly phase?: import("./installed-webview2-recovery-scenario.js").InstalledRecoveryPhase }): Promise<JsonRecord> {
   if (!Number.isInteger(options.port) || options.port < 1024 || options.port > 65535) throw new Error("CDP port must be a non-privileged TCP port.");
   const evidencePath = assertEvidencePath(options.evidencePath);
   await mkdir(evidencePath, { recursive: true });
@@ -374,7 +420,17 @@ export async function runInstalledSelfTest(options: { readonly port: number; rea
   try {
     const view = new PromptVaultWebView(cdp); await view.enable(); await view.assertApplicationRoot();
     if (options.scenario === "recovery") {
-      const evidence = await runInstalledRecoveryScenario({ view, evidencePath, phase: options.phase });
+      const database = options.targetDatabase;
+      const helpers = database ? await import("./installed-webview2-evidence.js") : undefined;
+      const evidence = await runInstalledRecoveryScenario({
+        view, evidencePath, fixturePath: options.fixturePath, phase: options.phase,
+        snapshotTarget: database ? async (name) => {
+          const snapshot = helpers!.snapshotDisposableDatabase(database);
+          return JSON.stringify({ name, digest: snapshot.digest, counts: snapshot.counts });
+        } : undefined,
+        mutateTarget: database ? async () => { await helpers!.mutateDisposableTargetWithProductionService(database); } : undefined,
+        verifyBackup: database ? (content) => helpers!.verifyBackupAgainstSnapshot(content, helpers!.snapshotDisposableDatabase(database)) : undefined,
+      });
       return { scenario: "recovery", phase: options.phase ?? "all", target: { id: target.id, title: target.title, url: target.url }, evidence };
     }
     const library = assertSingleSemanticMatch(await view.findByRole("link", "Library"), "Library link");
@@ -388,5 +444,5 @@ export async function runInstalledSelfTest(options: { readonly port: number; rea
 }
 
 function readOption(name: string): string | undefined { const index = process.argv.indexOf(name); return index >= 0 ? process.argv[index + 1] : undefined; }
-async function main(): Promise<void> { const portText = readOption("--port"); const evidencePath = readOption("--evidence"); const scenario = readOption("--scenario") ?? "self-test"; const phase = readOption("--phase"); if (!portText || !evidencePath || (scenario !== "self-test" && scenario !== "recovery")) throw new Error("Usage: installed-webview2-cdp.ts --port <port> --evidence <absolute-path> [--scenario self-test|recovery] [--phase phase]"); const summary = await runInstalledSelfTest({ port: Number(portText), evidencePath, scenario, phase: phase as import("./installed-webview2-recovery-scenario.js").InstalledRecoveryPhase | undefined }); process.stdout.write(`${JSON.stringify(summary)}\n`); }
+async function main(): Promise<void> { const portText = readOption("--port"); const evidencePath = readOption("--evidence"); const fixturePath = readOption("--fixtures"); const targetDatabase = readOption("--target-database"); const scenario = readOption("--scenario") ?? "self-test"; const phase = readOption("--phase"); if (!portText || !evidencePath || (scenario !== "self-test" && scenario !== "recovery")) throw new Error("Usage: installed-webview2-cdp.ts --port <port> --evidence <absolute-path> [--fixtures root] [--target-database database] [--scenario self-test|recovery] [--phase phase]"); const summary = await runInstalledSelfTest({ port: Number(portText), evidencePath, fixturePath, targetDatabase, scenario, phase: phase as import("./installed-webview2-recovery-scenario.js").InstalledRecoveryPhase | undefined }); process.stdout.write(`${JSON.stringify(summary)}\n`); }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; });

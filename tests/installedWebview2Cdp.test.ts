@@ -142,6 +142,86 @@ describe("installed WebView2 CDP harness", () => {
     await expect(view.uploadFileByLabel("Choose backup JSON", "C:\\tmp\\outside.json", "C:\\tmp\\prompt-vault-evidence")).rejects.toThrow("inside the evidence");
   });
 
+  it("waits for delayed live status with a bounded sanitized timeout", async () => {
+    const transport = new FakeTransport(); const view = new PromptVaultWebView(new CdpClient(transport, 1_000));
+    const pending = view.waitForLiveRegion("compatible", 250, 10);
+    transport.respond({ id: 1, result: { result: { type: "string", value: "checking" } } });
+    await new Promise((resolveWait) => setTimeout(resolveWait, 12));
+    transport.respond({ id: 2, result: { result: { type: "string", value: "Status: compatible" } } });
+    await expect(pending).resolves.toBeUndefined();
+    await expect(view.waitForLiveRegion("expected", 24, 10)).rejects.toThrow("bounded timeout");
+    await expect(view.waitForLiveRegion("expected", 25, 9)).rejects.toThrow("10–250 ms");
+  });
+
+  it("handles an expected revert confirmation concurrently with the click", async () => {
+    const transport = new FakeTransport(); const view = new PromptVaultWebView(new CdpClient(transport));
+    const pending = view.versionAction("1.0.0", "revert");
+    expect(JSON.parse(transport.sent[0]!).method).toBe("Runtime.evaluate");
+    transport.respond({ method: "Page.javascriptDialogOpening", params: { type: "confirm", message: "Revert to v1.0.0? This will create a new version." } });
+    expect(JSON.parse(transport.sent[1]!).method).toBe("Page.handleJavaScriptDialog");
+    transport.respond({ id: 2, result: {} });
+    transport.respond({ id: 1, result: { result: { type: "object", value: { ok: true, count: 1 } } } });
+    await expect(pending).resolves.toBeUndefined();
+  });
+
+  it("rejects an unexpected revert confirmation dialog without accepting it", async () => {
+    const transport = new FakeTransport(); const view = new PromptVaultWebView(new CdpClient(transport));
+    const pending = view.versionAction("1.0.0", "revert");
+    transport.respond({ method: "Page.javascriptDialogOpening", params: { type: "alert", message: "unexpected" } });
+    transport.respond({ id: 1, result: { result: { type: "object", value: { ok: true, count: 1 } } } });
+    await expect(pending).rejects.toThrow("Unexpected or duplicate");
+    expect(transport.sent.map((message) => JSON.parse(message).method)).not.toContain("Page.handleJavaScriptDialog");
+  });
+
+  it("rejects duplicate revert confirmation dialogs after accepting the first", async () => {
+    const transport = new FakeTransport(); const view = new PromptVaultWebView(new CdpClient(transport));
+    const pending = view.versionAction("1.0.0", "revert");
+    transport.respond({ method: "Page.javascriptDialogOpening", params: { type: "confirm", message: "Revert to v1.0.0? This will create a new version." } });
+    transport.respond({ id: 2, result: {} });
+    transport.respond({ method: "Page.javascriptDialogOpening", params: { type: "confirm", message: "Revert to v1.0.0? This will create a new version." } });
+    transport.respond({ id: 1, result: { result: { type: "object", value: { ok: true, count: 1 } } } });
+    await expect(pending).rejects.toThrow("Unexpected or duplicate");
+  });
+
+  it("rejects revert when the approved dialog handler fails", async () => {
+    const transport = new FakeTransport(); const view = new PromptVaultWebView(new CdpClient(transport));
+    const pending = view.versionAction("1.0.0", "revert");
+    transport.respond({ method: "Page.javascriptDialogOpening", params: { type: "confirm", message: "Revert to v1.0.0? This will create a new version." } });
+    transport.respond({ id: 2, error: { code: -32000, message: "dialog already closed" } });
+    transport.respond({ id: 1, result: { result: { type: "object", value: { ok: true, count: 1 } } } });
+    await expect(pending).rejects.toThrow("dialog already closed");
+  });
+
+  it("rejects revert when its semantic click cannot be completed", async () => {
+    const transport = new FakeTransport(); const view = new PromptVaultWebView(new CdpClient(transport));
+    const pending = view.versionAction("1.0.0", "revert");
+    transport.respond({ id: 1, result: { result: { type: "object", value: { ok: false, count: 0 } } } });
+    await expect(pending).rejects.toThrow("Expected one revert action");
+  });
+
+  it("times out a missing revert dialog after a successful click", async () => {
+    vi.useFakeTimers();
+    const transport = new FakeTransport(); const view = new PromptVaultWebView(new CdpClient(transport));
+    const pending = view.versionAction("1.0.0", "revert");
+    transport.respond({ id: 1, result: { result: { type: "object", value: { ok: true, count: 1 } } } });
+    const assertion = expect(pending).rejects.toThrow("Timed out waiting for revert confirmation dialog");
+    await vi.advanceTimersByTimeAsync(10_001);
+    await assertion;
+  });
+
+  it("verifies deterministic version history and safe last-backup metadata through fixed CDP operations", async () => {
+    const transport = new FakeTransport(); const view = new PromptVaultWebView(new CdpClient(transport));
+    const history = view.assertVersionHistory(["1.2.1", "1.2.0", "1.1.0", "1.0.0"]);
+    transport.respond({ id: 1, result: { result: { type: "object", value: ["1.2.1", "1.2.0", "1.1.0", "1.0.0"] } } });
+    await expect(history).resolves.toBeUndefined();
+    const backup = view.assertLastBackupMetadata(1, 2);
+    transport.respond({ id: 2, result: { result: { type: "object", value: { valid: true, keyCount: 5 } } } });
+    await expect(backup).resolves.toBeUndefined();
+    const invalidBackup = view.assertLastBackupMetadata(1, 2);
+    transport.respond({ id: 3, result: { result: { type: "object", value: { valid: false, keyCount: 6 } } } });
+    await expect(invalidBackup).rejects.toThrow("safe 2.0 verification record");
+  });
+
   it("rejects ambiguous semantic matches", () => {
     expect(assertSingleSemanticMatch(["Settings"], "Settings button")).toBe("Settings");
     expect(() => assertSingleSemanticMatch([], "Settings button")).toThrow("exactly one");
