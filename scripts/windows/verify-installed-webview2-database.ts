@@ -1,4 +1,7 @@
 import Database from "better-sqlite3";
+import { readFileSync } from "node:fs";
+import { parseBackupText } from "../../src/domain/recovery.js";
+export { mutateDisposableTargetWithProductionService, requireSnapshotTransition, snapshotDisposableDatabase } from "./installed-webview2-evidence.js";
 
 export interface InstalledDatabaseVerification {
   readonly integrity: "ok";
@@ -29,8 +32,22 @@ export function verifyInstalledDisposableDatabase(path: string): InstalledDataba
 }
 
 if (process.argv[1]?.endsWith("verify-installed-webview2-database.ts")) {
+  const transition = process.argv.indexOf("--transition");
+  if (transition >= 0) {
+    const before = process.argv[process.argv.indexOf("--before") + 1]; const after = process.argv[process.argv.indexOf("--after") + 1]; const policy = process.argv[transition + 1] as import("./installed-webview2-evidence.js").SnapshotTransitionPolicy;
+    const fixtureIndex = process.argv.indexOf("--fixture"); const fixturePath = fixtureIndex >= 0 ? process.argv[fixtureIndex + 1] : undefined;
+    if (!before || !after || !policy) throw new Error("--transition requires --before, --after, and a policy.");
+    const fixture = fixturePath ? parseBackupText(readFileSync(fixturePath, "utf8")).document : undefined;
+    if (fixturePath && !fixture) throw new Error("--fixture must be a production-valid backup document.");
+    const { requireSnapshotTransition } = await import("./installed-webview2-evidence.js");
+    const result = requireSnapshotTransition(JSON.parse(readFileSync(before, "utf8")), JSON.parse(readFileSync(after, "utf8")), policy, fixture);
+    process.stdout.write(`${JSON.stringify({ verified: true, ...result })}\n`);
+    process.exit(0);
+  }
   const databaseIndex = process.argv.indexOf("--database");
   const path = databaseIndex >= 0 ? process.argv[databaseIndex + 1] : undefined;
-  if (!path) throw new Error("--database is required.");
-  process.stdout.write(`${JSON.stringify(verifyInstalledDisposableDatabase(path))}\n`);
+  if (!path) throw new Error("--database is required unless --transition is used.");
+  const snapshot = process.argv.includes("--snapshot");
+  const { snapshotDisposableDatabase } = await import("./installed-webview2-evidence.js");
+  process.stdout.write(`${JSON.stringify(snapshot ? snapshotDisposableDatabase(path) : verifyInstalledDisposableDatabase(path))}\n`);
 }
