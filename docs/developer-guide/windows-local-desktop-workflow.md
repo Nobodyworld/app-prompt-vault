@@ -60,34 +60,109 @@ Use it to inspect optimized release behavior without replacing the installed app
 
 ### Refresh the Windows-installed copy
 
+Start with the read-only current-machine preflight:
+
+```powershell
+pnpm desktop:preflight-installed
+```
+
+The JSON result reports every matching HKCU, HKLM, and HKLM WOW6432Node
+registration, the resolved per-user or per-machine scope, current-process
+elevation, an active Windows Installer transaction, the installed executable
+SHA-256, available candidate MSI and executable hashes, and whether the
+installed executable matches the candidate. It does not build, create evidence,
+close Prompt Vault, start UAC or MSI, launch the app, or modify installation or
+database state. Duplicate registrations, multiple candidate MSIs, and ambiguous
+installed executable paths fail closed. A candidate is available for refresh
+only when the MSI and release executable still match the local receipt from one
+MSI-only build; a later multi-bundle build invalidates that pairing.
+
+For a per-user registration, an explicitly invoked refresh can run in the
+current process:
+
 ```powershell
 pnpm desktop:refresh-installed
 ```
 
-This Windows-only command:
-
-1. identifies the operation as a local development refresh before changing Windows installation state;
-2. builds fresh MSI and NSIS packages from the current branch;
-3. reports package manufacturer metadata, Authenticode signature status, signer identity, and SHA-256;
-4. closes a running `prompt-vault-app` process;
-5. detects and removes the currently installed Prompt Vault MSI package;
-6. installs the newly built MSI;
-7. launches the Start-menu shortcut when found;
-8. reports any tracked Tauri schema files regenerated during packaging.
-
-The workflow does not delete application data. The expected current database remains:
-
-```text
-%LOCALAPPDATA%\com.nobodyworld.promptvault\prompt-vault.db
-```
-
-To reuse an already built MSI without rebuilding:
+For a per-machine registration, that same command stops before building,
+creating evidence, closing the app, or starting MSI. Its error includes an exact
+`-PrepareElevation` command with a fresh evidence path beneath `C:\tmp`. Run that
+command separately to build or select the candidate and create the reviewed
+continuation:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass `
   -File scripts/windows/install-local-build.ps1 `
-  -SkipBuild
+  -PrepareElevation `
+  -EvidencePath C:\tmp\prompt-vault-msi-refresh-<fresh-id>
 ```
+
+Preparation does not request UAC or start MSI. It writes a private version 1
+manifest and preflight record plus a redacted preparation summary. The manifest
+binds the exact repository, installer script, guard module, MSI, built release
+executable, currently installed executable, MSI product code, installation
+scope, evidence root, bounded MSI and close timeouts, creation/expiry times, and
+single-use nonce. Source and artifact hashes are rechecked in both the owner
+process and elevated child. The manifest itself is addressed by SHA-256, must be
+the expected file inside its non-reparse evidence root, and is rejected after
+expiry, tampering, or one consumption.
+
+Preparation prints the exact `-RequestElevation` command. Review the manifest
+and safe summary before running that command. Only that explicit command may
+show one UAC prompt and start the elevated continuation; there is no automatic
+or hidden elevation.
+
+The guarded refresh then:
+
+1. refuses first-install use and revalidates the single registration, product
+   code, scope, source files, candidates, and installed executable;
+2. fails if Windows Installer is active, without killing or retrying it;
+3. inventories the current and historical DB/WAL/SHM files by metadata and
+   SHA-256 only, without opening SQLite;
+4. identifies a running Prompt Vault process by PID, start time, and the exact
+   registered executable path, requests a graceful window close, and waits for
+   the bounded close timeout;
+5. fails if the app remains open or if another same-name executable makes the
+   target ambiguous; it never force-kills Prompt Vault;
+6. writes separate private verbose uninstall and install logs under the fresh
+   external evidence directory;
+7. performs the uninstall and only starts install after a successful or
+   already-absent uninstall result;
+8. waits for each MSI process only for the reviewed timeout and leaves a timed
+   out `msiexec` running for owner inspection instead of killing it;
+9. rehashes the MSI and release executable before install, resolves the new
+   registration, and requires the installed `prompt-vault-app.exe` hash to equal
+   the built executable hash;
+10. inventories all protected files again and fails if existence, size,
+    timestamp, or SHA-256 changed; and
+11. writes detailed path-bearing private evidence and a path-redacted safe
+    summary.
+
+Exit codes `0` and `3010` are successful (`3010` records that a later reboot is
+required and never restarts automatically). Uninstall `1605` means the prior
+product was already absent and install may continue; install `1605`, `1618`,
+generic `1603`, `1603` with MSI error `1730`, and unknown codes are distinct
+failures recorded in the safe result, with detailed diagnosis retained in the
+private log.
+
+The workflow defaults to no application launch. A direct per-user refresh can
+opt in with `-LaunchAfterInstall`; the generated per-machine owner command does
+not request a launch. The current and historical database locations protected
+by the inventory are:
+
+```text
+%LOCALAPPDATA%\com.nobodyworld.promptvault\prompt-vault.db
+%LOCALAPPDATA%\com.promptvault.desktop\prompt-vault.db
+```
+
+To reuse exactly one already built MSI and release executable, add `-SkipBuild`
+to the preparation or direct per-user command. Their names, sizes, and hashes
+are still recomputed and must match the MSI-only pairing receipt. The command
+fails closed when that receipt is missing or stale; rerun without `-SkipBuild`
+to create a new matched pair.
+
+This is a local-development refresh only. Do not publish its private evidence or
+unsigned packages.
 
 ## Package identity versus Windows trust
 

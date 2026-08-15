@@ -47,8 +47,10 @@ application marker, navigates semantically from Library to Settings, captures
 the WebView accessibility tree and a synthetic-data screenshot, then closes the
 application and checks listener cleanup.
 
-The harness intentionally does not replace the local MSI refresh workflow.
-Administrator-required installation work remains in issue #60.
+The harness intentionally does not replace the
+[reviewed local MSI refresh workflow](windows-local-desktop-workflow.md#refresh-the-windows-installed-copy).
+Issue #60 installation work must complete through that separate, explicitly
+authorized handoff before installed-WebView2 acceptance begins.
 
 ## Recovery scenario
 

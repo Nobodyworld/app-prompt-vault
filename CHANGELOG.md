@@ -35,6 +35,11 @@ All notable changes to Prompt Vault will be documented in this file.
 - Directory-level README files across source, desktop, Tauri, script, test, and documentation folders to guide navigation after the restructure.
 - Additional configuration regression test covering fallback behaviour when defaults supply allowed origins.
 - Refactored `src/lib/promptService.ts` to be a thin wrapper around `PromptVaultService`, eliminating redundant logic and connection management.
+- A non-mutating Windows installed-build preflight that reports registration
+  scope, elevation requirements, installer activity, and candidate/installed
+  executable identity without starting installation work.
+- A versioned, hash-bound, single-use elevation continuation with private MSI
+  evidence and a redacted safe summary for reviewed per-machine refreshes.
 
 ### Changed
 
@@ -64,6 +69,9 @@ All notable changes to Prompt Vault will be documented in this file.
 - Default HTTP bootstrap enables request metrics, exposes `/observability/*` routes, and loads the operational telemetry plugin to keep metrics and logs in sync across entry points.
 - HTTP API now boots with the validated configuration, logging explicit warnings for ambiguous inputs and refusing to start when required values are malformed.
 - Metrics snapshot tooling now guards against uncaught exceptions and guarantees SQLite handles are closed even when sampling fails.
+- Windows installed-build refresh now uses exact process identity, graceful
+  bounded close, active-installer rejection, bounded no-kill MSI waits, and no
+  automatic application launch.
 
 ### Fixed
 
@@ -75,6 +83,10 @@ All notable changes to Prompt Vault will be documented in this file.
 - Tag upserts now reuse the persisted identifier returned from SQLite, preventing foreign key errors when reapplying shared labels.
 - Search, tag assignment, and tag removal operations benefit from SQLite indexes, reducing query latency on vaults with larger datasets.
 - Server configuration loader now de-duplicates repeated `PROMPT_VAULT_ALLOWED_ORIGINS` entries while still surfacing warnings so CORS policies stay deterministic.
+- Windows MSI refresh now rejects ambiguous registrations and candidates,
+  requires an MSI-only package/executable pairing receipt, classifies MSI exit
+  codes explicitly, verifies candidate and installed binary hashes, and fails
+  if current or historical DB/WAL/SHM inventories change.
 
 ## [0.2.0] - 2025-10-26
 
