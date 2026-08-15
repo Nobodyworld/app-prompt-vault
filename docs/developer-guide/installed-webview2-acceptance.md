@@ -18,7 +18,8 @@ Vite, or a browser-development-mode surface.
   process. A mismatch is an issue #60 installation blocker, not acceptance.
 - The harness gives only its child process `PROMPT_VAULT_DB_PATH`,
   `PROMPT_VAULT_LEGACY_DB_PATH`, telemetry opt-outs, a fresh
-  `WEBVIEW2_USER_DATA_FOLDER`, and loopback DevTools arguments.
+  `WEBVIEW2_USER_DATA_FOLDER` for independent phases (or the documented
+  isolated persistence-group profile), and loopback DevTools arguments.
 - DevTools is fixed to `127.0.0.1`; wildcard, IPv6, LAN, and public endpoints
   are rejected. The listener must belong to the launched Prompt Vault process
   tree and must be gone after cleanup.
@@ -53,10 +54,11 @@ Administrator-required installation work remains in issue #60.
 
 `-Scenario recovery` uses the versioned, repository-owned constrained scenario
 contract in `scripts/windows/installed-webview2-recovery-scenario.ts`. It runs
-sixteen phases: self-test, storage status, missing and compatible legacy
+seventeen phases: self-test, storage status, missing and compatible legacy
 inspection, explicit legacy restore, backup 2.0 export, backup 1.0
 cancellation, all three conflict policies, cancellation, stale-plan rejection,
-version preview and revert, restart verification, and final DB verification.
+version preview and revert, post-revert restart verification, backup restart
+verification, and final DB verification.
 
 It has only named semantic operations (role/name clicks and focus, labelled
 input or selection, checked state, a small keyboard allowlist, bounded text
@@ -67,12 +69,37 @@ backup fixtures underneath the new evidence root. Backup downloads must be a
 single completed JSON file in a fresh contained directory and are parsed by
 the production verifier; CDP event observation is supplementary evidence.
 
-Every phase is a separate launch with a new loopback port and WebView2 profile.
-The orchestrator records PID, creation time, name, parent, listener identity,
-and profile use for each attempt. It requires graceful shutdown; after a
-timeout it contains only exact recorded identities, then fails closed if a
-root, descendant, listener, or profile user remains. A failed cleanup is never
-retried. Protected current/historical DB/WAL/SHM inventories and the synthetic
-legacy DB/WAL/SHM inventory are compared after every launch. Each disposable
-current database receives integrity and foreign-key checks, with only table
-counts recorded.
+Every phase is a separate launch with a new loopback port. Independent phases
+receive a fresh, isolated WebView2 profile. The documented persistence groups
+reuse only their last successfully completed profile: compatible legacy
+inspection/explicit restore, backup 2.0 export/backup restart verification,
+backup 1.0 preview/cancellation, and version preview/revert/post-revert restart
+verification. A retry always receives a unique fresh profile; if it succeeds,
+the persistence group advances to that retry profile before its next paired
+phase. The orchestrator records PID, creation time, name, parent, listener
+identity, and profile use for each attempt. It requires graceful shutdown;
+after a timeout it contains only exact recorded identities, then fails closed
+if a root, descendant, listener, or profile user remains. A failed cleanup is
+never retried. Protected current/historical DB/WAL/SHM inventories and the
+synthetic legacy DB/WAL/SHM inventory are compared after every launch. Each
+disposable current database receives integrity and foreign-key checks, with
+only table counts recorded.
+
+Each attempt writes a unique `phases/<number>-<phase>/attempt-<number>` evidence
+directory with exact-size output, CDP stdout/stderr, target identity, operation
+results, cleanup, inventories, and body-safe logical database snapshot digests.
+The public orchestrator summary omits absolute WebView2 profile paths and
+process command lines; a private raw process record remains only beneath the
+external evidence root. Missing historical-source DB/WAL/SHM files are
+independently inventoried and required to remain absent.
+
+Policy success is not inferred from the generic UI message. The harness compares
+before/after logical snapshots containing prompt metadata, version IDs and body
+hashes, tags, links, and counts. It requires expected skip/merge/copy
+transitions, cancellation equality, integrity, and foreign-key cleanliness.
+Stale-plan acceptance captures the preview, performs a constrained ordinary
+product mutation, executes the old confirmation, and requires new-preview
+guidance without stale restore rows. Revert confirmation subscribes to the
+specific CDP dialog before clicking, accepts only the expected message, verifies
+the newly appended version, and then closes and relaunches the same isolated
+profile group to prove the complete post-revert chain persists.

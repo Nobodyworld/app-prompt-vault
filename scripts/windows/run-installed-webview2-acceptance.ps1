@@ -71,7 +71,54 @@ function Wait-DevTools([int]$Port, [int]$AppProcessId) {
     }
     throw "Loopback DevTools endpoint did not become ready with one verified child listener."
 }
-function Save-Result([string]$EvidenceDirectory) { [pscustomobject]$result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $EvidenceDirectory "orchestrator-result.json") }
+function ConvertTo-SafeEvidenceText([object]$Value) {
+    $text = [string]$Value
+    foreach ($path in @($evidence, $currentDb, $legacyDb, $missingLegacyDb)) {
+        if ($path) {
+            $text = $text.Replace([string]$path, "<redacted-path>", [StringComparison]::OrdinalIgnoreCase)
+        }
+    }
+    return $text
+}
+function Save-Result([string]$EvidenceDirectory) {
+    # The complete process inventory is useful for local triage but includes
+    # command lines and the disposable WebView2 profile path. Keep it only in
+    # the external private record; the public summary is deliberately path-safe.
+    [pscustomobject]$result | ConvertTo-Json -Depth 8 |
+        Set-Content -LiteralPath (Join-Path $EvidenceDirectory "orchestrator-result.private.json")
+    $safeAttempts = @($result.attempts | ForEach-Object {
+        [pscustomobject]@{
+            Number = $_.Number
+            Phase = $_.Phase
+            Retry = $_.Retry
+            ProcessId = $_.ProcessId
+            CreationTimeUtc = $_.CreationTimeUtc
+            Port = $_.Port
+            Listener = $_.Listener
+            Processes = @($_.Processes | ForEach-Object {
+                [pscustomobject]@{
+                    ProcessId = $_.ProcessId
+                    ParentProcessId = $_.ParentProcessId
+                    CreationDate = $_.CreationDate
+                    Name = $_.Name
+                }
+            })
+            ProfileGroup = $_.ProfileGroup
+            EvidenceRelativePath = $_.EvidenceRelativePath
+            ShutdownMethod = $_.ShutdownMethod
+            ShutdownFailures = @($_.ShutdownFailures | ForEach-Object { ConvertTo-SafeEvidenceText $_ })
+        }
+    })
+    [pscustomobject]@{
+        success = $result.success
+        scenario = $result.scenario
+        attempts = $safeAttempts
+        cleanup = $result.cleanup
+        failures = @($result.failures | ForEach-Object { ConvertTo-SafeEvidenceText $_ })
+        identity = $result.identity
+    } | ConvertTo-Json -Depth 8 |
+        Set-Content -LiteralPath (Join-Path $EvidenceDirectory "orchestrator-result.json")
+}
 function Get-FileInventory([string]$Path) { if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return [pscustomobject]@{ exists=$false; size=$null; lastWriteTimeUtc=$null; sha256=$null } }; $item=Get-Item -LiteralPath $Path; [pscustomobject]@{ exists=$true; size=$item.Length; lastWriteTimeUtc=$item.LastWriteTimeUtc.ToString("o"); sha256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash } }
 function Get-KeyedInventory([hashtable]$Paths) {
     $inventory=[ordered]@{}
@@ -88,6 +135,12 @@ function Invoke-DisposableDatabaseVerification([string]$DatabasePath, [string]$E
     Push-Location $repoRoot
     try { $json=& pnpm tsx scripts/windows/verify-installed-webview2-database.ts --database $DatabasePath; if($LASTEXITCODE -ne 0){throw "Disposable database verification failed for phase $Phase."}; $verification=$json|ConvertFrom-Json; if($verification.integrity -ne "ok" -or $verification.foreignKeyViolations -ne 0){throw "Disposable database verification rejected phase $Phase."}; $verification|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $EvidenceDirectory "database-$Phase.json") } finally { Pop-Location }
 }
+function Save-DisposableSnapshot([string]$DatabasePath, [string]$EvidenceDirectory, [string]$Name) {
+    if (-not (Test-Path -LiteralPath $DatabasePath -PathType Leaf)) { return $null }
+    Push-Location $repoRoot
+    try { $json=& pnpm tsx scripts/windows/verify-installed-webview2-database.ts --database $DatabasePath --snapshot; if($LASTEXITCODE -ne 0){throw "Logical database snapshot failed for $Name."}; $json|Set-Content -LiteralPath (Join-Path $EvidenceDirectory "$Name.json"); return ($json|ConvertFrom-Json) } finally { Pop-Location }
+}
+function Get-ProfileGroup([string]$Phase) { $groups=@{ "self-test"="isolated-self-test"; "storage-status"="isolated-storage-status"; "missing-legacy-source"="isolated-missing-source"; "compatible-legacy-inspection"="legacy-recovery"; "explicit-legacy-restore"="legacy-recovery"; "backup-2-export-and-verify"="backup-and-restart"; "restart-verification"="backup-and-restart"; "backup-1-preview-and-cancel"="cancellation"; "cancellation"="cancellation"; "skip-existing"="skip-policy"; "add-missing-versions"="merge-policy"; "import-as-copy"="copy-policy"; "stale-plan-rejection"="stale-plan"; "version-history-preview"="version-revert-and-restart"; "version-history-revert"="version-revert-and-restart"; "version-history-restart-verification"="version-revert-and-restart"; "final-database-verification"="final-verification" }; return $groups[$Phase] }
 function Complete-Attempt($Attempt, [bool]$Retrying) {
     $failures=[System.Collections.Generic.List[string]]::new()
     $late=Get-ProcessTree $Attempt.ProcessId
@@ -124,46 +177,91 @@ try {
     Save-ProtectedBaselines $evidence $protectedBaseline
     $legacyPaths=[ordered]@{ "legacy-db"=$legacyDb; "legacy-wal"="$legacyDb-wal"; "legacy-shm"="$legacyDb-shm" }
     $legacyBaseline=Get-KeyedInventory $legacyPaths
-    $phaseNames=if($Scenario -eq "recovery"){@("self-test","storage-status","missing-legacy-source","compatible-legacy-inspection","explicit-legacy-restore","backup-2-export-and-verify","backup-1-preview-and-cancel","skip-existing","add-missing-versions","import-as-copy","cancellation","stale-plan-rejection","version-history-preview","version-history-revert","restart-verification","final-database-verification")}else{@("self-test")}
+    $missingLegacyDb=Join-Path $evidence "missing-legacy\prompt-vault.db"
+    $missingLegacyPaths=[ordered]@{ "missing-db"=$missingLegacyDb; "missing-wal"="$missingLegacyDb-wal"; "missing-shm"="$missingLegacyDb-shm" }
+    $missingLegacyBaseline=Get-KeyedInventory $missingLegacyPaths
+    foreach($key in $missingLegacyBaseline.Keys){if($missingLegacyBaseline[$key].exists){throw "Missing legacy source was unexpectedly present before inspection: $key"}}
+    $phaseNames=if($Scenario -eq "recovery"){@("self-test","storage-status","missing-legacy-source","compatible-legacy-inspection","explicit-legacy-restore","backup-2-export-and-verify","backup-1-preview-and-cancel","skip-existing","add-missing-versions","import-as-copy","cancellation","stale-plan-rejection","version-history-preview","version-history-revert","version-history-restart-verification","restart-verification","final-database-verification")}else{@("self-test")}
+    # A persistence group remembers the profile that completed the previous
+    # phase successfully. If that phase needed a retry, its successor therefore
+    # receives the successful retry profile, not the abandoned first-attempt
+    # directory. Retries themselves are always fresh and unique.
+    $profileDirectories = @{}
     $phaseIndex=0
     foreach($phase in $phaseNames){
       $phaseIndex++
       $listener=$null;$app=$null;$attemptRecord=$null
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $port = Get-FreeLoopbackPort
-        $webViewData=Join-Path $evidence "webview2-user-data-attempt-$phaseIndex-retry-$attempt"
-        if(Test-Path -LiteralPath $webViewData){throw "Fresh WebView2 profile path already exists."}
-        New-Item -ItemType Directory -Path $webViewData -ErrorAction Stop | Out-Null
-        $activeLegacyDb=if($phase -eq "missing-legacy-source"){Join-Path $evidence "missing-legacy\prompt-vault.db"}else{$legacyDb}
+        $profileGroup=Get-ProfileGroup $phase
+        if(-not $profileGroup){throw "No WebView2 profile group is declared for phase $phase."}
+        # A first attempt can continue a documented persistence group. A retry
+        # cannot overwrite or inherit uncertain WebView2 state, so it receives
+        # its own unique profile directory.
+        $profileDirectory=if($attempt -eq 1){if($profileDirectories.ContainsKey($profileGroup)){$profileDirectories[$profileGroup]}else{$profileGroup}}else{"$profileGroup-retry-$phaseIndex-$attempt"}
+        $webViewData=Join-Path $evidence "webview2-profiles\$profileDirectory"
+        if(-not (Test-Path -LiteralPath $webViewData)){New-Item -ItemType Directory -Path $webViewData -ErrorAction Stop | Out-Null}
+        $phaseEvidence=Join-Path $evidence ("phases\{0:D2}-{1}\attempt-{2}" -f $phaseIndex,$phase,$attempt)
+        if(Test-Path -LiteralPath $phaseEvidence){throw "Phase evidence collision: $phaseEvidence"};New-Item -ItemType Directory -Path $phaseEvidence -ErrorAction Stop|Out-Null
+        $activeLegacyDb=if($phase -eq "missing-legacy-source"){$missingLegacyDb}else{$legacyDb}
         $startInfo = [Diagnostics.ProcessStartInfo]::new($candidate.Path); $startInfo.UseShellExecute = $false
         $startInfo.Environment["PROMPT_VAULT_DB_PATH"] = $currentDb; $startInfo.Environment["PROMPT_VAULT_LEGACY_DB_PATH"] = $activeLegacyDb
         $startInfo.Environment["PROMPT_VAULT_TELEMETRY_OPTOUT"] = "1"; $startInfo.Environment["NW_TELEMETRY_OPTOUT"] = "1"
         $startInfo.Environment["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$port"
         $startInfo.Environment["WEBVIEW2_USER_DATA_FOLDER"] = $webViewData
         $app = [Diagnostics.Process]::Start($startInfo); if (-not $app) { throw "Installed Prompt Vault process did not start." }
-        $attemptRecord=[pscustomobject]@{ Number=$phaseIndex; Phase=$phase; Retry=$attempt; ProcessId=$app.Id; CreationTimeUtc=$app.StartTime.ToUniversalTime().ToString("o"); Port=$port; Listener=$null; Processes=@(); WebViewProfile=$webViewData; ShutdownMethod="not-started"; ShutdownFailures=@() }
+        $attemptRecord=[pscustomobject]@{ Number=$phaseIndex; Phase=$phase; Retry=$attempt; ProcessId=$app.Id; CreationTimeUtc=$app.StartTime.ToUniversalTime().ToString("o"); Port=$port; Listener=$null; Processes=@(); WebViewProfile=$webViewData; ProfileGroup=$profileGroup; EvidenceRelativePath=("phases/{0:D2}-{1}/attempt-{2}" -f $phaseIndex,$phase,$attempt); ShutdownMethod="not-started"; ShutdownFailures=@() }
         $attemptRecord.Processes=Get-ProcessTree $app.Id
         $result.attempts += $attemptRecord
         try { $listener = Wait-DevTools $port $app.Id; $attemptRecord.Listener=[pscustomobject]@{ProcessId=$listener.OwningProcess;Port=$port;CreationDate=(Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)" -ErrorAction SilentlyContinue).CreationDate}; $attemptRecord.Processes=Get-ProcessTree $app.Id; break } catch { $launchFailure=$_.Exception.Message; $complete=Complete-Attempt $attemptRecord ($attempt -lt 3); if(-not $complete){throw}; if ($attempt -eq 3) { throw $launchFailure } }
     }
     $measureScript = Join-Path $repoRoot "scripts\windows\measure-window-client.ps1"
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $measureScript -ProcessId $app.Id -ResizeToExpectedMinimum -RequireExactMinimum -AsJson | Set-Content -LiteralPath (Join-Path $evidence "window-minimum.json")
+    $beforeSnapshot=Save-DisposableSnapshot $currentDb $phaseEvidence "before-snapshot"
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $measureScript -ProcessId $app.Id -ResizeToExpectedMinimum -RequireExactMinimum -AsJson | Set-Content -LiteralPath (Join-Path $phaseEvidence "window-minimum.json")
     if ($LASTEXITCODE -ne 0) { throw "Exact 400x600 window measurement failed." }
     Push-Location $repoRoot
-    try { & pnpm tsx scripts/windows/installed-webview2-cdp.ts --port $port --evidence $evidence --scenario $Scenario --phase $phase; if ($LASTEXITCODE -ne 0) { throw "CDP $Scenario/$phase phase failed with exit code $LASTEXITCODE." } } finally { Pop-Location }
+    try { $cdp=& pnpm tsx scripts/windows/installed-webview2-cdp.ts --port $port --evidence $phaseEvidence --fixtures $evidence --target-database $currentDb --scenario $Scenario --phase $phase 2> (Join-Path $phaseEvidence "cdp.stderr.log"); $cdp|Set-Content -LiteralPath (Join-Path $phaseEvidence "cdp.stdout.json"); if ($LASTEXITCODE -ne 0) { throw "CDP $Scenario/$phase phase failed with exit code $LASTEXITCODE." }; $cdpResult=$cdp|ConvertFrom-Json } finally { Pop-Location }
     Compare-KeyedInventory $protectedBaseline $protectedPaths "Protected database"
     Compare-KeyedInventory $legacyBaseline $legacyPaths "Disposable legacy source"
+    Compare-KeyedInventory $missingLegacyBaseline $missingLegacyPaths "Missing legacy source"
     if(-not (Complete-Attempt $attemptRecord $false)){throw "Acceptance attempt cleanup failed."}
     Invoke-DisposableDatabaseVerification $currentDb $evidence $phase
+    $afterSnapshot=Save-DisposableSnapshot $currentDb $phaseEvidence "after-snapshot"
+    $policy=if($phase -eq "skip-existing"){"skip-existing"}elseif($phase -eq "add-missing-versions"){"add-missing-versions"}elseif($phase -eq "import-as-copy"){"import-as-copy"}elseif($phase -eq "backup-1-preview-and-cancel" -or $phase -eq "cancellation"){"cancel"}elseif($phase -eq "stale-plan-rejection"){"stale-plan"}elseif($phase -eq "version-history-revert"){"version-revert"}elseif($phase -eq "version-history-restart-verification"){"version-revert-restart"}else{$null}
+    $transitionResult="not-applicable"
+    if($policy -and $beforeSnapshot -and $afterSnapshot){
+        Push-Location $repoRoot
+        try{
+            $fixtureName=switch($policy){
+                "skip-existing" { "skipExisting" }
+                "add-missing-versions" { "addMissingVersions" }
+                "import-as-copy" { "importAsCopy" }
+                "stale-plan" { "stalePlan" }
+                "version-revert" { "backup2" }
+                "version-revert-restart" { "backup2" }
+                default { "cancellation" }
+            }
+            $fixturePath=$fixture.backups.$fixtureName.path
+            if(-not $fixturePath){throw "No production-valid fixture was available for policy $policy."}
+            $transitionJson=& pnpm tsx scripts/windows/verify-installed-webview2-database.ts --transition $policy --before (Join-Path $phaseEvidence "before-snapshot.json") --after (Join-Path $phaseEvidence "after-snapshot.json") --fixture $fixturePath
+            if($LASTEXITCODE -ne 0){throw "Policy-specific committed-state verification failed for $phase."}
+            $transitionResult=$transitionJson|ConvertFrom-Json
+            $transitionResult|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $phaseEvidence "transition-verification.json")
+        }finally{Pop-Location}
+    }
+    [pscustomobject]@{phase=$phase;attempt=$attempt;candidateSha256=$candidate.Sha256;profileGroup=$profileGroup;profileDirectory=$profileDirectory;target=$cdpResult.target;operationResults=$cdpResult.evidence;beforeDigest=$beforeSnapshot.digest;afterDigest=$afterSnapshot.digest;transition=$transitionResult;cleanup=$attemptRecord.ShutdownMethod;protectedData="unchanged";sourceImmutability="unchanged"}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $phaseEvidence "phase-summary.json")
+    $profileDirectories[$profileGroup]=$profileDirectory
     $app=$null
     }
     Compare-KeyedInventory $protectedBaseline $protectedPaths "Protected database final"
     Compare-KeyedInventory $legacyBaseline $legacyPaths "Disposable legacy source final"
+    Compare-KeyedInventory $missingLegacyBaseline $missingLegacyPaths "Missing legacy source final"
     $result.success = $true
 } catch { Add-Failure $_.Exception.Message; $result.success = $false } finally {
     if ($app -and $attemptRecord) { $null=Complete-Attempt $attemptRecord $false }
     if ($protectedBaseline -and $protectedPaths) { try { Compare-KeyedInventory $protectedBaseline $protectedPaths "Protected database final" } catch { Add-Failure $_.Exception.Message } }
     if ($legacyBaseline -and $legacyPaths) { try { Compare-KeyedInventory $legacyBaseline $legacyPaths "Disposable legacy source final" } catch { Add-Failure $_.Exception.Message } }
+    if ($missingLegacyBaseline -and $missingLegacyPaths) { try { Compare-KeyedInventory $missingLegacyBaseline $missingLegacyPaths "Missing legacy source final" } catch { Add-Failure $_.Exception.Message } }
     if ($currentDb -and $evidence -and (Test-Path -LiteralPath $currentDb -PathType Leaf)) { try { Invoke-DisposableDatabaseVerification $currentDb $evidence "final" } catch { Add-Failure $_.Exception.Message } }
     if ($result.failures.Count -ne 0) { $result.success = $false }
     if ($evidence -and (Test-Path -LiteralPath $evidence)) { Save-Result $evidence }

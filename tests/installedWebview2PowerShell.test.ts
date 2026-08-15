@@ -41,4 +41,16 @@ describe("installed WebView2 PowerShell orchestration", () => {
     expect(script).not.toContain("install-local-build.ps1");
     expect(script).not.toContain("msiexec.exe");
   });
+
+  it("keeps phase evidence path-safe while preserving declared persistence and source-absence checks", () => {
+    const script = readFileSync(scriptPath, "utf8");
+    expect(script).toContain("orchestrator-result.private.json");
+    expect(script).toContain("orchestrator-result.json");
+    expect(script).toContain("missing-wal");
+    expect(script).toContain("missing-shm");
+    expect(script).toContain("version-history-restart-verification");
+    expect(script).toContain("$profileDirectories");
+    expect(script).toContain("--fixture $fixturePath");
+    expect(script).toContain("transition-verification.json");
+  });
 });
