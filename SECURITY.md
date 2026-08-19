@@ -8,7 +8,7 @@ Do **not** open a public issue, pull request, discussion, or comment containing 
 
 This repository is public. Public visibility does not change the reporting boundary: use GitHub Private Vulnerability Reporting through the repository **Security** tab and select **Report a vulnerability**.
 
-If **Report a vulnerability** is unavailable, do not disclose details publicly. Send a minimal contact request to `security@nobodyworld.com` so a private reporting channel can be established. Do not include secrets, real prompt contents, or unrelated personal data.
+If **Report a vulnerability** is unavailable, do not disclose details publicly. Preserve only the minimum evidence needed to report the issue and wait for the repository owner to publish a verified private reporting channel.
 
 Include only the information needed to assess the report:
 
