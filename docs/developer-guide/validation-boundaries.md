@@ -3,7 +3,7 @@
 ## Status
 
 - **Decision date:** 2026-08-18
-- **Tracking:** [Issue #64](../../issues/64)
+- **Tracking:** Issue #64
 - **Migration state:** Planned and gated; repository-local validation remains authoritative until parity is accepted
 
 ## Principle
