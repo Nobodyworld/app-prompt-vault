@@ -26,6 +26,7 @@ This section contains everything developers need to know about contributing to, 
 
 - [Development Workflow](workflows.md) - Complete development process
 - [Testing](testing.md) - Testing strategies and guidelines
+- [Validation Ownership](validation-boundaries.md) - Boundary between repository-owned product tests and external native execution
 - [CI/CD](ci-cd.md) - Continuous integration and deployment
 - [Release Process](release-process.md) - How releases are created and published
 
