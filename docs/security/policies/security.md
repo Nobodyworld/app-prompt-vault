@@ -11,17 +11,17 @@ Prompt Vault is a **PRE-ALPHA SOURCE PREVIEW**. Security fixes are applied to th
 
 ## Reporting a vulnerability
 
-Do **not** open a public issue or discussion containing vulnerability details.
+Do **not** open a public issue, pull request, discussion, or comment containing vulnerability details.
 
-Use GitHub Private Vulnerability Reporting through the repository **Security** tab and select **Report a vulnerability**. Before public visibility is enabled, the owner must confirm that this feature is enabled and visible.
+This repository is public. Public visibility does not change the reporting boundary: use GitHub Private Vulnerability Reporting through the repository **Security** tab and select **Report a vulnerability**.
 
-If private vulnerability reporting is unavailable, do not disclose details publicly. Wait for the repository owner to publish a verified private reporting channel.
+If private vulnerability reporting is unavailable, do not disclose details publicly. Preserve only the minimum evidence needed to report the issue and wait for the repository owner to publish a verified private reporting channel.
 
 Include:
 
 - a concise description and expected impact;
 - affected version, commit, branch, surface, or configuration;
-- reproduction steps or a proof of concept;
+- bounded reproduction steps or a proof of concept;
 - any known mitigation;
 - whether public disclosure has already occurred.
 
