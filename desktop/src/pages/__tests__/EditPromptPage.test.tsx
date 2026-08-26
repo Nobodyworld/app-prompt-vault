@@ -159,4 +159,45 @@ describe("EditPromptPage", () => {
     expect(api.updatePrompt).not.toHaveBeenCalled();
     expect(api.addPromptVersion).not.toHaveBeenCalled();
   });
+
+  it("previews changelog and a bounded comparison before confirmed revert", async () => {
+    api.listPromptVersions.mockResolvedValue([
+      prompt.latestVersion,
+      {
+        id: "version-old",
+        semanticVersion: "1.0.0",
+        body: "Historical prompt body",
+        changelog: "Original draft",
+        createdAt: "2026-07-20T00:00:00.000Z",
+        updatedAt: "2026-07-20T00:00:00.000Z",
+      },
+    ]);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderDirectEditRoute();
+    await waitForLoadedPrompt();
+    fireEvent.click(screen.getByText("Version and organization"));
+
+    const previewButtons = await screen.findAllByRole("button", { name: "Preview" });
+    fireEvent.click(previewButtons[1]);
+    expect(screen.getByText("Preview v1.0.0")).toBeVisible();
+    expect(screen.getByText(/Original draft/)).toBeVisible();
+    expect(screen.getByText("Historical prompt body")).toBeVisible();
+    fireEvent.click(screen.getByText("Compare with current version"));
+    expect(screen.getByRole("table", { name: /line comparison/ })).toBeVisible();
+
+    const revertButtons = screen.getAllByRole("button", { name: "Revert" });
+    fireEvent.click(revertButtons[1]);
+    await waitFor(() =>
+      expect(api.addPromptVersion).toHaveBeenCalledWith({
+        promptId: "prompt-1",
+        body: "Historical prompt body",
+        semanticVersion: "1.2.4",
+        changelog: "Revert to v1.0.0",
+      }),
+    );
+    expect(confirm).toHaveBeenCalledWith(
+      "Revert to v1.0.0? This will create a new version.",
+    );
+    confirm.mockRestore();
+  });
 });

@@ -5,6 +5,26 @@ import type {
   PromptVersionSummary,
   UpdatePromptInput,
 } from "../types/prompt";
+import {
+  buildBackupDocumentV2,
+  buildRestorePlan,
+  fingerprintRecoveryDocument,
+  parseBackupText,
+  planMatches,
+  serializeBackupDocument,
+  sha256,
+  verifyBackupExport,
+  versionIdentity,
+  type BackupValidationResult,
+  type LegacyRecoveryPreview,
+  type LegacySourceStatus,
+  type RecoveryDocument,
+  type RecoveryLibraryPrompt,
+  type RestorePlan,
+  type RestorePolicy,
+  type RestoreResult,
+  type StorageStatus,
+} from "../../../src/domain/recovery";
 import { isTauriAvailable } from "../lib/tauri";
 import { httpFetch } from "../../../src/lib/platform-connectors";
 import type {
@@ -157,9 +177,15 @@ async function browserApiCall<T>(
     if (isJson) {
       const json = (await response.json().catch(() => undefined)) as unknown;
       if (isErrorEnvelope(json)) {
+        const detailIssues = isRecord(json.error.details) &&
+          Array.isArray(json.error.details.issues)
+          ? json.error.details.issues.filter(
+              (issue): issue is string => typeof issue === "string",
+            )
+          : [];
         throw new PromptVaultApiError({
           code: json.error.code,
-          message: json.error.message,
+          message: detailIssues[0] ?? json.error.message,
           details: json.error.details,
           status: response.status,
         });
@@ -444,6 +470,8 @@ function createPromptInMemory(input: CreatePromptInput): Summary {
   const version: Version = {
     id: versionId,
     semanticVersion: input.semanticVersion,
+    changelog: input.changelog ?? null,
+    createdAt,
     updatedAt: createdAt,
     body: input.body,
   };
@@ -490,10 +518,13 @@ function addPromptVersionInMemory(input: AddPromptVersionInput): Version {
   const previousVersions = [...prompt.versions];
   const previousLatestVersion = prompt.latestVersion;
   const previousUpdatedAt = prompt.updatedAt;
+  const createdAt = nowIso();
   const v: Version = {
     id: makeId("v"),
     semanticVersion: input.semanticVersion,
-    updatedAt: nowIso(),
+    changelog: input.changelog ?? null,
+    createdAt,
+    updatedAt: createdAt,
     body: input.body,
   };
   prompt.versions.push(v);
@@ -869,4 +900,299 @@ export async function deletePrompt(promptId: string): Promise<void> {
     console.warn("deletePrompt: HTTP API failed, deleting in-memory", err);
     deletePromptFromMemory(promptId);
   }
+}
+
+function memoryRecoveryLibrary(): RecoveryLibraryPrompt[] {
+  loadStore();
+  return inMemoryStore.prompts.map((prompt) => ({
+    id: prompt.id,
+    sourceId: prompt.id,
+    slug: prompt.slug.trim().toLowerCase(),
+    title: prompt.title,
+    description: prompt.description ?? null,
+    category: prompt.category ?? null,
+    isFavorite: prompt.isFavorite,
+    rating: prompt.rating ?? null,
+    tags: [...prompt.tags],
+    createdAt: prompt.createdAt,
+    updatedAt: prompt.updatedAt,
+    versions: prompt.versions.map((version) => ({
+      sourceId: version.id,
+      semanticVersion: version.semanticVersion,
+      body: version.body,
+      bodyHash: sha256(version.body),
+      changelog: version.changelog ?? null,
+      createdAt: version.createdAt ?? version.updatedAt,
+      updatedAt: version.updatedAt,
+    })),
+  }));
+}
+
+export async function getRecoveryLibrary(): Promise<RecoveryLibraryPrompt[]> {
+  if (!isTauriAvailable() && fallbackActive) return memoryRecoveryLibrary();
+  const prompts = await listPrompts();
+  return Promise.all(
+    prompts.map(async (prompt): Promise<RecoveryLibraryPrompt> => {
+      const versions = await listPromptVersions(prompt.id);
+      return {
+        id: prompt.id,
+        sourceId: prompt.id,
+        slug: prompt.slug.trim().toLowerCase(),
+        title: prompt.title,
+        description: prompt.description ?? null,
+        category: prompt.category ?? null,
+        isFavorite: prompt.isFavorite,
+        rating: prompt.rating ?? null,
+        tags: [...prompt.tags],
+        createdAt: prompt.createdAt,
+        updatedAt: prompt.updatedAt,
+        versions: versions.map((version) => ({
+          sourceId: version.id,
+          semanticVersion: version.semanticVersion,
+          body: version.body,
+          bodyHash: sha256(version.body),
+          changelog: version.changelog ?? null,
+          createdAt: version.createdAt ?? version.updatedAt,
+          updatedAt: version.updatedAt,
+        })),
+      };
+    }),
+  );
+}
+
+export async function exportVerifiedBackup(exportedAt = new Date().toISOString()): Promise<{
+  content: string;
+  verification: ReturnType<typeof verifyBackupExport>;
+}> {
+  const document = buildBackupDocumentV2(await getRecoveryLibrary(), exportedAt);
+  const verification = verifyBackupExport(document);
+  if (!verification.verified) {
+    throw new Error(`Backup verification failed: ${verification.errors.join(" ")}`);
+  }
+  return { content: serializeBackupDocument(document), verification };
+}
+
+export async function previewBackupRestore(content: string): Promise<{
+  validation: BackupValidationResult;
+  plan?: RestorePlan;
+}> {
+  const validation = parseBackupText(content);
+  if (!validation.valid || !validation.document) return { validation };
+  const current = await getRecoveryLibrary();
+  return {
+    validation,
+    plan: buildRestorePlan(validation.document, current),
+  };
+}
+
+function addDocumentPromptToMemory(
+  prompt: RecoveryDocument["prompts"][number],
+  slug: string,
+  title: string,
+): void {
+  const id = makeId("p");
+  const versions: Version[] = prompt.versions.map((version) => ({
+    id: makeId("v"),
+    semanticVersion: version.semanticVersion,
+    body: version.body,
+    changelog: version.changelog,
+    createdAt: version.createdAt,
+    updatedAt: version.updatedAt,
+  }));
+  inMemoryStore.prompts.push({
+    id,
+    slug,
+    title,
+    description: prompt.description ?? undefined,
+    category: prompt.category ?? undefined,
+    isFavorite: prompt.isFavorite,
+    rating: prompt.rating,
+    tags: [...prompt.tags],
+    createdAt: prompt.createdAt,
+    updatedAt: prompt.updatedAt,
+    latestVersion: versions.at(-1),
+    versions,
+  });
+}
+
+function executeMemoryRestore(
+  document: RecoveryDocument,
+  plan: RestorePlan,
+  policy: RestorePolicy,
+): RestoreResult {
+  const current = memoryRecoveryLibrary();
+  if (
+    fingerprintRecoveryDocument(document) !== plan.documentFingerprint ||
+    !planMatches(plan, document, current)
+  ) {
+    throw new Error("The source or current library changed after preview. Create a new preview.");
+  }
+  const snapshot = JSON.stringify(inMemoryStore);
+  const sourceBySlug = new Map(document.prompts.map((prompt) => [prompt.slug, prompt]));
+  let newPrompts = 0;
+  let copiedPrompts = 0;
+  let mergedVersions = 0;
+  let skippedPrompts = 0;
+  let skippedVersions = 0;
+  try {
+    for (const entry of plan.entries) {
+      const source = sourceBySlug.get(entry.sourceSlug);
+      if (!source) throw new Error("Restore plan source is missing.");
+      if (entry.kind === "new-prompt") {
+        addDocumentPromptToMemory(source, source.slug, source.title);
+        newPrompts += 1;
+        continue;
+      }
+      if (policy === "skip-existing") {
+        skippedPrompts += 1;
+        skippedVersions += source.versions.length;
+        continue;
+      }
+      if (policy === "import-as-copy") {
+        if (!entry.copySlug || !entry.copyTitle) throw new Error("Restore copy target is missing.");
+        addDocumentPromptToMemory(source, entry.copySlug, entry.copyTitle);
+        copiedPrompts += 1;
+        continue;
+      }
+      const target = inMemoryStore.prompts.find((prompt) => prompt.id === entry.currentPromptId);
+      if (!target) throw new Error("Restore merge target is missing.");
+      const missing = new Set(entry.missingVersionIdentities);
+      for (const version of source.versions) {
+        if (!missing.has(versionIdentity(version))) {
+          skippedVersions += 1;
+          continue;
+        }
+        target.versions.push({
+          id: makeId("v"),
+          semanticVersion: version.semanticVersion,
+          body: version.body,
+          changelog: version.changelog,
+          createdAt: version.createdAt,
+          updatedAt: version.updatedAt,
+        });
+        mergedVersions += 1;
+      }
+      target.versions.sort((left, right) =>
+        (left.createdAt ?? left.updatedAt).localeCompare(right.createdAt ?? right.updatedAt),
+      );
+      target.latestVersion = target.versions.at(-1);
+      target.updatedAt = target.versions.reduce(
+        (latest, version) => (version.updatedAt > latest ? version.updatedAt : latest),
+        target.updatedAt,
+      );
+      if (entry.missingVersionIdentities.length === 0) skippedPrompts += 1;
+    }
+    if (!saveStore()) throw new Error(STORAGE_PERSISTENCE_ERROR);
+  } catch (error) {
+    const parsed = JSON.parse(snapshot) as { prompts: InMemoryPrompt[] };
+    inMemoryStore.prompts = parsed.prompts;
+    throw error;
+  }
+  notifyFallback(true);
+  return {
+    sourceFormat: document.sourceVersion,
+    policy,
+    newPrompts,
+    copiedPrompts,
+    mergedVersions,
+    skippedPrompts,
+    skippedVersions,
+    invalidRecords: 0,
+    warnings: plan.warnings,
+    integrityResult: "unavailable",
+    foreignKeyViolationCount: 0,
+  };
+}
+
+export async function executeBackupRestore(input: {
+  content: string;
+  plan: RestorePlan;
+  policy: RestorePolicy;
+}): Promise<RestoreResult> {
+  const validation = parseBackupText(input.content);
+  if (!validation.valid || !validation.document) {
+    throw new Error(validation.errors.join(" ") || "Backup validation failed.");
+  }
+  if (isTauriAvailable()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<RestoreResult>("execute_backup_restore", {
+      payload: {
+        document: validation.document,
+        plan: input.plan,
+        policy: input.policy,
+      },
+    });
+  }
+  try {
+    return await browserApiCall<RestoreResult>("/recovery/execute", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  } catch (error) {
+    if (error instanceof PromptVaultApiError) throw error;
+    return executeMemoryRestore(validation.document, input.plan, input.policy);
+  }
+}
+
+export async function getStorageStatus(integrityRequested = false): Promise<StorageStatus> {
+  if (isTauriAvailable()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<StorageStatus>("get_storage_status", { integrityRequested });
+  }
+  try {
+    return await browserApiCall<StorageStatus>(
+      `/storage/status?integrity=${String(integrityRequested)}`,
+    );
+  } catch {
+    return {
+      runtime: "browser-fallback",
+      storage: "localStorage",
+      databasePath: null,
+      databaseExists: null,
+      databaseSize: null,
+      sqliteUserVersion: null,
+      promptCount: inMemoryStore.prompts.length,
+      versionCount: inMemoryStore.prompts.reduce(
+        (count, prompt) => count + prompt.versions.length,
+        0,
+      ),
+      tagCount: null,
+      relationshipCount: null,
+      walExists: null,
+      walSize: null,
+      shmExists: null,
+      shmSize: null,
+      integrityStatus: "unavailable",
+      nativeSqliteAvailable: false,
+      legacyRecoveryAvailable: false,
+      plaintextWarning: "Browser fallback stores plaintext prompt data in localStorage.",
+    };
+  }
+}
+
+export async function inspectLegacySource(): Promise<LegacySourceStatus> {
+  if (!isTauriAvailable()) throw new Error("Legacy database recovery is available only in the native Windows app.");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<LegacySourceStatus>("inspect_legacy_database");
+}
+
+export async function previewLegacyRestore(): Promise<{
+  preview: LegacyRecoveryPreview;
+  plan: RestorePlan;
+}> {
+  if (!isTauriAvailable()) throw new Error("Legacy database recovery is available only in the native Windows app.");
+  const { invoke } = await import("@tauri-apps/api/core");
+  const preview = await invoke<LegacyRecoveryPreview>("preview_legacy_recovery");
+  const plan = buildRestorePlan(preview.document, await getRecoveryLibrary());
+  return { preview, plan };
+}
+
+export async function executeLegacyRestore(input: {
+  sourceHash: string;
+  plan: RestorePlan;
+  policy: RestorePolicy;
+}): Promise<RestoreResult> {
+  if (!isTauriAvailable()) throw new Error("Legacy database recovery is available only in the native Windows app.");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<RestoreResult>("execute_legacy_restore", { payload: input });
 }
