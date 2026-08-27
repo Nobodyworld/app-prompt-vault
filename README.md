@@ -39,7 +39,7 @@ The Library is the product. Raw interoperability payloads, bundle text, cross-ap
 - New prompt
 - Edit and version history
 - Optional tag and category filters
-- Backup import/export
+- Verified full-history backup export and previewed recovery
 - Theme and window placement
 
 ### Advanced surfaces
@@ -68,7 +68,18 @@ An older installation identifier may have data at:
 %LOCALAPPDATA%\com.promptvault.desktop\prompt-vault.db
 ```
 
-The current app uses a separate directory and did not overwrite the older database. Legacy detection or migration remains an open product decision.
+The current app uses a separate directory and does not overwrite the older
+database. Settings can inspect that historical Windows database read-only and,
+only after an explicit preview and confirmation, recover compatible records
+into the current database. Detection never imports automatically and recovery
+does not modify the historical source.
+
+Backup format `2.0` preserves every observable prompt version. Restore validates
+the complete source, builds the exact deterministic plan shown in Settings, and
+then executes that plan transactionally with explicit skip, missing-version
+merge, or import-as-copy policies. Existing `1.0` backups remain accepted, but
+their preview is marked `latest-version-only` because that format did not carry
+complete history. See [Data safety and recovery](docs/developer-guide/data-safety-recovery.md).
 
 Prompt content and local databases are plaintext. Use operating-system permissions and full-disk encryption, and do not store secrets in prompts.
 
@@ -82,17 +93,15 @@ Without `JWT_SECRET`, the local server can still start and configured API keys c
 
 ## Accepted default-branch validation
 
-The accepted source-preview baseline is:
+The completed v0.3 daily Library workspace is merged on `main` at:
 
 ```text
-Main:           df39c5f3ee148a6c6469b9cb3e2eb806afd77699
-Workflow:       30308626325
-Event / branch: push / main
-Result:         all four jobs passed
+Main: 34e710c08b5a28b381f3080e4b022bb317a00117
 ```
 
-The workflow passed Public-release invariants, Rust validation, Windows Tauri
-bundle, and Standalone Node validation. Its recorded results include:
+The earlier accepted standalone validation record passed Public-release
+invariants, Rust validation, Windows Tauri bundle, and Standalone Node
+validation. Its recorded results include:
 
 ```text
 Vitest:     277 / 277 across 41 files
@@ -167,15 +176,10 @@ See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-
 
 ## Next product work
 
-- complete focused native acceptance of the daily Library workspace at the
-  supported 400×600 logical minimum using only disposable test data;
-- continue improving local-data protection and clearly communicate that prompt
-  text and databases remain plaintext;
-- decide how the historical `com.promptvault.desktop` data location should be
-  detected or migrated, including relationship-row evidence that has not yet
-  been observed;
 - produce truthful screenshots or a short demo only from an accepted product
   state;
+- continue improving local-data protection while clearly communicating that
+  prompt text, backup files, and databases remain plaintext;
 - keep signing, installer distribution, and any release decision in separately
   reviewed work. The current repository remains a source preview.
 
@@ -184,6 +188,7 @@ See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-
 - [Product experience](docs/product-experience.md)
 - [Documentation index](docs/README.md)
 - [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md)
+- [Data safety and recovery](docs/developer-guide/data-safety-recovery.md)
 - [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
 - [legacy sidecar migration procedure](docs/developer-guide/legacy-tag-migration.md)
 - [Architecture overview](docs/developer-guide/architecture/overview.md)

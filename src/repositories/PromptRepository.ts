@@ -1294,6 +1294,16 @@ export class PromptRepository {
     }));
   }
 
+  /**
+   * Return tags stored in the primary SQLite relationship tables.
+   *
+   * The service combines these with its shared-tag sidecar so recovery writes
+   * remain visible without changing the ownership of either tag store.
+   */
+  public getStoredTagsForPrompt(promptId: PromptId): readonly Tag[] {
+    return this.getTagsForPrompt(promptId);
+  }
+
   public getAllTags(): Tag[] {
     const labelColumn = this.getTagLabelColumn();
     const hasDescription = this.hasColumn("tags", "description");

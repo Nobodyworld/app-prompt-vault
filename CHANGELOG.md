@@ -6,6 +6,15 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ### Added
 
+- Backup `2.0` with deterministic full prompt-version history, production-parser
+  export verification, and explicit `1.0` latest-version-only compatibility.
+- A Settings recovery center with storage status, validation and preview,
+  deterministic conflict policies, transactional execution, redacted evidence,
+  and bounded historical-version preview and comparison.
+- Read-only native Windows detection and explicit recovery for compatible
+  `%LOCALAPPDATA%\com.promptvault.desktop\prompt-vault.db` sources.
+- Transactional recovery adapters for native SQLite, Node/HTTP, and browser
+  fallback, including injected rollback coverage for every write stage.
 - Dependency-free `repository:audit` validation for public-release metadata, action pinning, versions, public links, and standalone-boundary regressions.
 - A full-SHA-pinned GitHub Actions workflow that runs the repository audit and uploads its report.
 - A standalone Node validation job that generates a candidate lockfile and is configured to run lint, typecheck, build, and tests once GitHub runner startup is restored.
