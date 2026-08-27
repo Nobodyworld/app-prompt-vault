@@ -41,7 +41,10 @@ pnpm test
 pnpm desktop:build
 ```
 
-These commands describe the intended checkout, not a completed release proof. Issue #26 remains the governing gate.
+These commands validate a source checkout; they do not prove or authorize a
+published release. Closed issue #26 is historical planning context. A future
+tag, GitHub Release, signed distribution, supported installer, or update channel
+requires a separately authorized exact-head decision.
 
 ## Key references
 

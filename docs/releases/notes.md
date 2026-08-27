@@ -1,6 +1,19 @@
 # Prompt Vault Release Notes
 
-## Unreleased v0.4 data safety and recovery
+## 0.4.0 source-preview milestone — 2026-08-27
+
+**Status:** application version 0.4.0, public source preview only.
+
+- No Git tag exists for this milestone.
+- No GitHub Release exists for this milestone.
+- No supported installer download is available.
+- Unsigned build and workflow artifacts remain validation evidence only.
+- No public update channel exists.
+- No production-readiness claim is made.
+
+The accepted v0.4 product baseline is
+`6b03686df629494d9814ee4c12064556c249622b`. Default-branch workflow
+`33031847574` concluded successfully.
 
 This source-preview milestone adds deterministic full-history backup `2.0`,
 complete validation before mutation, an exact preview/execution restore plan,
@@ -23,7 +36,7 @@ signing, installer distribution, or production readiness.
 See [Data safety and recovery](../developer-guide/data-safety-recovery.md) for
 the format, transaction, conflict, and legacy-source contracts.
 
-## Completed v0.3 daily Library workspace
+## 0.3.0 source-preview milestone — 2026-08-01
 
 The v0.3 workspace is merged on `main` at
 `34e710c08b5a28b381f3080e4b022bb317a00117`.
@@ -91,10 +104,11 @@ with the following measured coverage:
 All four configured `app` targets pass. These percentages are measured results,
 not new required floors; 78.15% is not a required statements threshold.
 
-The accepted default-branch record is commit
+The historical standalone-boundary record is commit
 `df39c5f3ee148a6c6469b9cb3e2eb806afd77699`, workflow run `30308626325`,
 event/branch `push` / `main`. All four jobs passed, with 277/277 Vitest tests
-across 41 files, 9/9 Playwright tests, and 6/6 Rust tests.
+across 41 files, 9/9 Playwright tests, and 6/6 Rust tests. That record predates
+the v0.3 and v0.4 product milestones and is retained as historical evidence.
 
 ### Intended upgrade steps
 
@@ -143,17 +157,21 @@ See `docs/developer-guide/legacy-tag-migration.md` for the full procedure.
 - External Hub, orchestrator, widget, event, and platform integrations now require optional adapters built against Prompt Vault's app-owned contracts.
 - Existing legacy tag/project data requires the explicit migration procedure; it is not silently upgraded in place.
 
-### Current validation boundary
+### Historical v0.3 validation boundary
 
-The accepted default branch has hosted Node, Playwright, Rust, and Windows
-packaging evidence. That evidence does not create a supported downloadable
-release or GitHub Release; unsigned installers remain validation artifacts only.
+The completed v0.3 product baseline is
+`34e710c08b5a28b381f3080e4b022bb317a00117`. Its evidence did not create a
+supported downloadable release or GitHub Release; unsigned installers remained
+validation artifacts only.
 The issue #28 historical exercise remains narrower than full relationship
 acceptance because bounded discovery found no qualifying source with a tagging
 row. Prompt/database content also remains plaintext, and the optional network
 surface remains loopback-only.
 
-## Earlier unreleased observability work
+## Historical observability source work
+
+This completed source work is part of the preceding application history carried
+into the 0.3.0 milestone; it is not future unreleased implementation.
 
 ### Highlights
 

@@ -4,6 +4,14 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ## [Unreleased]
 
+No future changes are currently recorded.
+
+## [0.4.0] - 2026-08-27
+
+> **Source-preview application milestone:** 0.4.0 identifies the accepted
+> source state. It is not a Git tag, GitHub Release, signed distribution,
+> supported installer, update channel, or production release.
+
 ### Added
 
 - Backup `2.0` with deterministic full prompt-version history, production-parser
@@ -15,6 +23,30 @@ All notable changes to Prompt Vault will be documented in this file.
   `%LOCALAPPDATA%\com.promptvault.desktop\prompt-vault.db` sources.
 - Transactional recovery adapters for native SQLite, Node/HTTP, and browser
   fallback, including injected rollback coverage for every write stage.
+
+### Changed
+
+- Accepted the v0.4 data-safety and recovery product baseline at
+  `6b03686df629494d9814ee4c12064556c249622b` without changing the application
+  identifier, data paths, schema, backup compatibility, or public release
+  boundary.
+
+## [0.3.0] - 2026-08-01
+
+> **Source-preview application milestone:** 0.3.0 records the completed daily
+> Library workspace and preceding standalone product boundary. It was not a
+> published GitHub Release or supported installer distribution.
+
+### Added
+
+- A daily Library workspace with deterministic favorites/recent, recent,
+  title, and rating sort orders plus a versioned local preference.
+- Combined text, Favorites, tag, and category filtering with accessible result
+  counts and one reset action.
+- In-place favorite persistence with pending-write containment and rollback on
+  failure across Tauri, HTTP, and browser-fallback adapters.
+- Active-row keyboard actions for navigation, copy, edit, and favorite while
+  preserving native control and editable-field behavior.
 - Dependency-free `repository:audit` validation for public-release metadata, action pinning, versions, public links, and standalone-boundary regressions.
 - A full-SHA-pinned GitHub Actions workflow that runs the repository audit and uploads its report.
 - A standalone Node validation job that generates a candidate lockfile and is configured to run lint, typecheck, build, and tests once GitHub runner startup is restored.

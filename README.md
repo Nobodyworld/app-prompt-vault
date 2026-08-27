@@ -15,6 +15,10 @@ build evidence only and are not supported distribution artifacts. Historical
 public-showcase planning was tracked in closed [issue #26](../../issues/26);
 that closed milestone is not a current governing release gate.
 
+**Current application version:** 0.4.0. This identifies an accepted source
+milestone; it does not imply a published release. See the
+[application version policy](docs/developer-guide/version-policy.md).
+
 ## What Prompt Vault is
 
 Prompt Vault is an independent app for keeping reusable prompts close at hand. It can participate in a larger Nobodyworld ecosystem, but its core workflow does not depend on a parent repository, shared UI shell, private package, or another application.
@@ -93,15 +97,25 @@ Without `JWT_SECRET`, the local server can still start and configured API keys c
 
 ## Accepted default-branch validation
 
-The completed v0.3 daily Library workspace is merged on `main` at:
+The accepted v0.4 data-safety and recovery product baseline is merged on
+`main` at:
 
 ```text
-Main: 34e710c08b5a28b381f3080e4b022bb317a00117
+Main:     6b03686df629494d9814ee4c12064556c249622b
+Workflow: 33031847574
+Result:   success
 ```
 
-The earlier accepted standalone validation record passed Public-release
+That workflow evidence remains source-preview validation only. It does not
+authorize a Git tag, GitHub Release, supported installer, signing, public
+update channel, or production deployment.
+
+### Historical standalone validation measurements
+
+The earlier standalone-boundary validation record passed Public-release
 invariants, Rust validation, Windows Tauri bundle, and Standalone Node
-validation. Its recorded results include:
+validation before the completed v0.3 and v0.4 product milestones. Its recorded
+results are retained as historical evidence:
 
 ```text
 Vitest:     277 / 277 across 41 files
@@ -121,7 +135,7 @@ Accepted Istanbul coverage:
 These are measured results, not new required floors. In particular, 78.15% is
 not a configured statements threshold.
 
-The Windows job's unsigned MSI and NSIS installers are validation evidence
+That historical Windows job's unsigned MSI and NSIS installers are validation evidence
 only. No supported downloadable release or GitHub Release exists, and those
 artifacts must not be presented or distributed as an approved release.
 
@@ -193,6 +207,7 @@ See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-
 - [legacy sidecar migration procedure](docs/developer-guide/legacy-tag-migration.md)
 - [Architecture overview](docs/developer-guide/architecture/overview.md)
 - [Developer workflows](docs/developer-guide/workflows.md)
+- [Application version policy](docs/developer-guide/version-policy.md)
 - [Security policy](docs/security/policies/security.md)
 - [Release notes](docs/releases/notes.md)
 - [Changelog](CHANGELOG.md)

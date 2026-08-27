@@ -17,6 +17,15 @@ function requireCondition(condition, message) {
   if (!condition) fail(message);
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function markdownSection(markdown, heading) {
+  const escaped = escapeRegExp(heading);
+  return markdown.match(new RegExp(`^## ${escaped}\\s*$([\\s\\S]*?)(?=^## |$)`, "m"))?.[1] ?? "";
+}
+
 function collectSourceFiles(directory) {
   const absolute = resolve(repositoryRoot, directory);
   if (!existsSync(absolute)) return [];
@@ -83,7 +92,18 @@ function checkPublicMarkdownLinks(path) {
 const packageJson = JSON.parse(read("package.json"));
 const tauriConfig = JSON.parse(read("src-tauri/tauri.conf.json"));
 const cargoToml = read("src-tauri/Cargo.toml");
+const cargoLock = read("src-tauri/Cargo.lock");
+const cli = read("src/cli/index.ts");
+const runtimeVersionModule = read("src/version.ts");
 const readme = read("README.md");
+const changelog = read("CHANGELOG.md");
+const releaseNotes = read("docs/releases/notes.md");
+const projectStage = read("project-stage-snapshot.md");
+const versionPolicy = read("docs/developer-guide/version-policy.md");
+const docsIndex = read("docs/README.md");
+const developerWorkflows = read("docs/developer-guide/workflows.md");
+const releasePrepare = read("scripts/release-prepare.ts");
+const versionSurfaces = read("scripts/version-surfaces.ts");
 const securityPolicy = read("docs/security/policies/security.md");
 const license = read("LICENSE");
 const envExample = read(".env.example");
@@ -105,12 +125,131 @@ const legacyMigrationGuide = read(
 const cargoVersion = cargoToml.match(
   /\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m,
 )?.[1];
+const cargoLockPackageBlocks = cargoLock.split(/(?=^\[\[package\]\]\s*$)/m);
+const cargoLockApplicationBlocks = cargoLockPackageBlocks.filter((block) =>
+  /^name\s*=\s*"prompt-vault-app"\s*$/m.test(block),
+);
+const cargoLockVersion = cargoLockApplicationBlocks[0]?.match(
+  /^version\s*=\s*"([^"]+)"\s*$/m,
+)?.[1];
+const runtimeVersion = runtimeVersionModule.match(
+  /^export const APPLICATION_VERSION\s*=\s*"([^"]+)";\s*$/m,
+)?.[1];
+const projectStageVersion = projectStage.match(
+  /^\*\*Current application version:\*\*\s*([^\s]+)\s*$/m,
+)?.[1];
+const strictVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 requireCondition(Boolean(cargoVersion), "could not read the Cargo package version");
 requireCondition(
+  strictVersion.test(packageJson.version),
+  `package.json version must be strict MAJOR.MINOR.PATCH; found ${packageJson.version}`,
+);
+requireCondition(
+  cargoLockApplicationBlocks.length === 1 && Boolean(cargoLockVersion),
+  `Cargo.lock must contain exactly one versioned prompt-vault-app package block; found ${cargoLockApplicationBlocks.length}`,
+);
+requireCondition(Boolean(runtimeVersion), "could not read the CLI/runtime application version");
+requireCondition(Boolean(projectStageVersion), "could not read the project-stage application version");
+requireCondition(
   packageJson.version === tauriConfig.version &&
-    packageJson.version === cargoVersion,
-  `version mismatch: package=${packageJson.version}, tauri=${tauriConfig.version}, cargo=${cargoVersion}`,
+    packageJson.version === cargoVersion &&
+    packageJson.version === cargoLockVersion &&
+    packageJson.version === runtimeVersion &&
+    packageJson.version === projectStageVersion,
+  `version mismatch: package=${packageJson.version}, tauri=${tauriConfig.version}, cargo=${cargoVersion}, cargoLock=${cargoLockVersion}, runtime=${runtimeVersion}, projectStage=${projectStageVersion}`,
+);
+requireCondition(
+  cli.includes('import { APPLICATION_VERSION } from "../version.js"') &&
+    cli.includes(".version(APPLICATION_VERSION)") &&
+    !/\.version\("\d+\.\d+\.\d+"\)/.test(cli),
+  "CLI must consume the synchronized runtime version instead of a hard-coded literal",
+);
+requireCondition(
+  tauriConfig.identifier === "com.nobodyworld.promptvault",
+  "application identifier must remain com.nobodyworld.promptvault",
+);
+
+const escapedApplicationVersion = escapeRegExp(packageJson.version);
+requireCondition(
+  new RegExp(`^## \\[${escapedApplicationVersion}\\] - \\d{4}-\\d{2}-\\d{2}$`, "m").test(changelog),
+  `CHANGELOG.md must contain application version ${packageJson.version}`,
+);
+requireCondition(
+  new RegExp(`^## ${escapedApplicationVersion} source-preview milestone — \\d{4}-\\d{2}-\\d{2}$`, "m").test(releaseNotes),
+  `release notes must contain application version ${packageJson.version}`,
+);
+requireCondition(
+  projectStageVersion === packageJson.version,
+  `project-stage snapshot must report application version ${packageJson.version}`,
+);
+const currentBlockers = markdownSection(projectStage, "Current blockers and limitations");
+requireCondition(
+  !/#2[2-6]\b/.test(currentBlockers),
+  "project-stage snapshot still presents completed issues #22 through #26 as current blockers",
+);
+
+for (const [path, content] of [
+  ["README.md", readme],
+  ["docs/releases/notes.md", releaseNotes],
+  ["project-stage-snapshot.md", projectStage],
+  ["docs/developer-guide/version-policy.md", versionPolicy],
+]) {
+  requireCondition(
+    /source preview|source-preview/i.test(content),
+    `${path} must retain the source-preview boundary`,
+  );
+}
+requireCondition(
+  readme.includes("There is no supported") &&
+    releaseNotes.includes("No GitHub Release exists") &&
+    releaseNotes.includes("No supported installer download") &&
+    releaseNotes.includes("No public update channel exists") &&
+    projectStage.includes("Signed and supported distribution remains disabled") &&
+    versionPolicy.includes("Unsigned workflow or local build artifacts are validation evidence only"),
+  "source-preview/no-supported-release boundaries are incomplete",
+);
+
+const unsupportedAffirmativeClaims = [
+  /^(?!.*\b(?:no|not|without|disabled|unsupported|absent)\b).*(?:a|the) public update channel (?:is|remains) (?:available|active|enabled|supported).*$/im,
+  /^(?!.*\b(?:no|not|without|disabled|unsupported|absent)\b).*signed distribution (?:is|remains) (?:available|active|enabled|supported).*$/im,
+  /^(?!.*\b(?:no|not|without|disabled|unsupported|absent)\b).*supported installer download (?:is|remains) (?:available|active|enabled).*$/im,
+];
+for (const [path, content] of [
+  ["README.md", readme],
+  ["CHANGELOG.md", changelog],
+  ["docs/releases/notes.md", releaseNotes],
+  ["project-stage-snapshot.md", projectStage],
+  ["docs/developer-guide/version-policy.md", versionPolicy],
+]) {
+  for (const pattern of unsupportedAffirmativeClaims) {
+    requireCondition(!pattern.test(content), `${path} contains an unauthorized supported-release claim`);
+  }
+}
+
+for (const path of Object.values({
+  packageJson: "package.json",
+  tauriConfig: "src-tauri/tauri.conf.json",
+  cargoToml: "src-tauri/Cargo.toml",
+  cargoLock: "src-tauri/Cargo.lock",
+  runtimeModule: "src/version.ts",
+  projectStage: "project-stage-snapshot.md",
+})) {
+  requireCondition(
+    versionSurfaces.includes(`"${path}"`),
+    `version synchronization tooling does not manage ${path}`,
+  );
+}
+requireCondition(
+  releasePrepare.includes("createVersionSurfacePlan") &&
+    releasePrepare.includes("writeVersionSurfacePlan") &&
+    !releasePrepare.includes('from "node:child_process"'),
+  "release preparation must use the complete version-surface plan without publication subprocesses",
+);
+requireCondition(
+  docsIndex.includes("developer-guide/version-policy.md") &&
+    developerWorkflows.includes("version-policy.md"),
+  "version policy must be linked from the documentation index and developer workflows",
 );
 
 requireCondition(
@@ -306,6 +445,8 @@ for (const markdownPath of [
   "README.md",
   "CONTRIBUTING.md",
   "docs/README.md",
+  "docs/developer-guide/version-policy.md",
+  "docs/developer-guide/workflows.md",
   "docs/developer-guide/legacy-tag-migration.md",
 ]) {
   checkPublicMarkdownLinks(markdownPath);
@@ -352,6 +493,6 @@ for (const line of usesLines) {
 
 if (!process.exitCode) {
   console.log(
-    `repository-audit: passed for Prompt Vault ${packageJson.version} (${usesLines.length} pinned actions, standalone dependency and migration boundary)`,
+    `repository-audit: passed for Prompt Vault ${packageJson.version} (${usesLines.length} pinned actions, synchronized version and standalone dependency boundaries)`,
   );
 }

@@ -27,4 +27,8 @@ The repository is now **standalone-first**:
 
 ## Release status
 
-The source boundary is self-contained, but the release remains pre-release until issue #26 proves a reviewed lockfile, clean standalone install, current-head tests/builds, Playwright, Rust/Tauri packaging, Windows artifact behavior, and legacy tag/project migration.
+The source boundary is self-contained and application version 0.4.0 identifies
+the accepted public source-preview baseline. Closed issue #26 is historical
+planning context, not a current gate. Any future Git tag, GitHub Release,
+signed or supported installer distribution, update channel, or production
+claim requires separate authorization and exact-head acceptance.

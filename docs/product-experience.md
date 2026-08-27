@@ -130,10 +130,15 @@ The current uninstall behavior is data-preserving. Documentation must not imply 
 
 ## Accepted default-branch validation record
 
-The completed v0.3 daily Library workspace is merged on `main` at exact commit
-`34e710c08b5a28b381f3080e4b022bb317a00117`. The earlier accepted standalone
-validation record passed Public-release invariants, Rust validation, Windows
-Tauri bundle, and Standalone Node validation.
+The accepted v0.4 data-safety and recovery baseline is merged on `main` at
+exact commit `6b03686df629494d9814ee4c12064556c249622b`. Default-branch
+workflow `33031847574` concluded successfully. This is source-preview evidence;
+it does not authorize a supported installer, signing, a GitHub Release, public
+update channel, or production deployment.
+
+The measurements below belong to the earlier standalone-boundary validation
+record. They predate the completed v0.3 and v0.4 application milestones and are
+retained as historical evidence rather than current-head totals.
 
 Recorded totals:
 
