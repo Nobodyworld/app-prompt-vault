@@ -28,9 +28,12 @@ Before removing an agent-owned worktree or disposable clone:
 
 If any proof is missing, ownership is uncertain, ignored content is unexplained, unique work exists, or deletion would cross the recorded workspace boundary, stop and retain the workspace. Report the blocker; do not force cleanup.
 
+Destructive reconciliation must run as one bounded, fail-closed operation. A failed precondition, nonzero command result, exception, or canceled confirmation must prevent later deletion and success output. Do not design a command sequence that becomes unsafe when pasted or executed line by line.
+
 ### Normal worktree removal
 
 - Remove a reconciled worktree with `git worktree remove <path>` without `--force`.
+- Capture the command result and always perform the registration and filesystem checks below. A nonzero exit can coexist with successful deregistration and a leftover directory; it is not proof that the worktree remains registered or that raw deletion is safe.
 - Immediately inspect `git worktree list --porcelain` and the filesystem path.
 - If Git still lists the path, cleanup is blocked. Do not use raw deletion, pruning, or force to hide the registered worktree.
 - If Git no longer lists the path and the directory is absent, the removal is complete.
@@ -56,6 +59,7 @@ A slice-owned disposable clone may be removed by its exact path only after the s
 
 - Never use `git worktree remove --force`, `git clean -fd`, `git clean -fdx`, or `git reset --hard` to make a cleanup check pass.
 - Never use broad or pattern-based raw deletion. Raw removal is limited to a reconciled disposable clone or the residual-directory exception above.
+- Never continue with later cleanup commands or print a completion claim after a failed assertion, exception, or canceled confirmation.
 - Never delete a local or remote branch merely because its worktree was removed. Branch deletion requires separate proof that the work is merged or otherwise preserved and explicit authorization when repository policy requires it.
 - Never clear shared npm, pnpm, Yarn, Cargo, Rustup, NuGet, pip, Python, Playwright, browser, or operating-system caches during ordinary slice cleanup.
 - Never delete environment files, secrets, local databases, user data, fixtures, protected evidence, or unknown untracked or ignored paths.
