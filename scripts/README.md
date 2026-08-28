@@ -7,7 +7,8 @@ Key entry points:
 
 - `bootstrap-db.ts` – Creates a SQLite database and applies migrations for local development.
 - `metrics-snapshot.ts` – Generates code complexity, dependency, and latency samples for stewardship reports.
-- `release-prepare.ts` – Bumps package versions and scaffolds changelog/release note sections.
+- `version-surfaces.ts` – Audits and synchronizes application-version surfaces from `package.json`.
+- `release-prepare.ts` – Synchronizes application versions and scaffolds source-preview changelog/release-note sections without publication actions.
 - `scaffold-extension.ts` – Produces a plugin skeleton under `src/extensions/plugins/`.
 - `security-scan.ts` – Wraps dependency scanning with repository-specific defaults.
 

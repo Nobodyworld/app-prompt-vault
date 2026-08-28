@@ -29,8 +29,8 @@ The Library is the primary product surface. Raw interoperability payloads, bundl
 
 - Optional tag and category filters
 - Theme and window placement
-- JSON backup import/export
-- Version history
+- Verified full-history backup export and previewed recovery
+- Version-history preview and bounded comparison
 
 ### Advanced
 
@@ -98,17 +98,47 @@ An older installation used a separate identifier and database:
 %LOCALAPPDATA%\com.promptvault.desktop\prompt-vault.db
 ```
 
-The current application did not overwrite that legacy database. Detection, migration, or explicit non-migration of the legacy identifier remains a product decision and must be handled deliberately.
+The current application does not overwrite that legacy database. The recovery
+center inspects it only after the user requests a native Windows check. A
+compatible source can be previewed and explicitly restored through the same
+conflict engine as a JSON backup; it is never imported at startup, migrated in
+place, renamed, or deleted.
+
+### Data safety and recovery
+
+Settings presents storage facts without prompt content, offers a verified
+backup `2.0` export containing complete observable version history, and uses a
+deliberate choose, validate, preview, policy, confirm, execute, and verify
+workflow. Selection, validation, preview, and cancellation do not mutate data.
+Execution rejects a stale preview and applies its displayed deterministic plan
+inside one transaction.
+
+Conflict policies are explicit: skip existing prompts, add only missing version
+identities without overwriting current metadata, or import a complete history
+as a deterministically named copy. Backup `1.0` remains readable, but its
+preview states that it contains only the latest version. Browser fallback
+reports localStorage limitations honestly and uses one snapshot/persist step
+with rollback on failure.
+
+The last-backup preference contains only timestamp, format, counts, and export
+verification status. Prompt content, source paths, credentials, and environment
+data are excluded. Prompt content, SQLite files, and exported backups remain
+plaintext local data; the feature does not provide encryption at rest,
+automatic backups, cloud sync, or a supported distribution channel.
 
 The current uninstall behavior is data-preserving. Documentation must not imply that uninstall deletes prompts. A future delete-local-data flow, if added, should be explicit and separate from routine uninstall.
 
 ## Accepted default-branch validation record
 
-The accepted source-preview baseline is exact default-branch commit
-`df39c5f3ee148a6c6469b9cb3e2eb806afd77699`. Workflow run
-`30308626325` was a `push` on `main`; all four jobs passed:
-Public-release invariants, Rust validation, Windows Tauri bundle, and
-Standalone Node validation.
+The accepted v0.4 data-safety and recovery baseline is merged on `main` at
+exact commit `6b03686df629494d9814ee4c12064556c249622b`. Default-branch
+workflow `33031847574` concluded successfully. This is source-preview evidence;
+it does not authorize a supported installer, signing, a GitHub Release, public
+update channel, or production deployment.
+
+The measurements below belong to the earlier standalone-boundary validation
+record. They predate the completed v0.3 and v0.4 application milestones and are
+retained as historical evidence rather than current-head totals.
 
 Recorded totals:
 
@@ -136,13 +166,8 @@ relationship migration.
 
 ## Known follow-up work
 
-- complete focused native acceptance of the daily Library workspace with a
-  disposable database, including 400×600 layout, row shortcuts, favorite
-  persistence, and clipboard behavior;
-- decide and test legacy `com.promptvault.desktop` data detection or migration,
-  including relationship rows that have not yet been observed in qualifying
-  historical evidence;
-- improve protection and user guidance for plaintext prompt and database data;
+- improve protection and user guidance for plaintext prompt, backup, and
+  database data;
 - produce accurate screenshots or a short demo only after the current product
   state is accepted;
 - treat signing, installer distribution, and any release decision as separate

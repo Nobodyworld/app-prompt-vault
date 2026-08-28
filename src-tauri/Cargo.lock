@@ -3005,7 +3005,7 @@ dependencies = [
 
 [[package]]
 name = "prompt-vault-app"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "nw-secrets",
@@ -3015,6 +3015,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tempfile",
