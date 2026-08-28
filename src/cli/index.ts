@@ -33,7 +33,6 @@
  * ```
  *
  * @author Prompt Vault Team
- * @version 0.1.0
  * @since 2024
  */
 
@@ -50,6 +49,7 @@ import {
   type PromptVaultPlugin,
 } from "../extensions/index.js";
 import { getPromptVaultConfig } from "../config/index.js";
+import { APPLICATION_VERSION } from "../version.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -277,7 +277,7 @@ async function loadPlugins(): Promise<PromptVaultPlugin[]> {
 program
   .name("prompt-vault")
   .description("Manage your reusable prompt library from the command line.")
-  .version("0.2.0");
+  .version(APPLICATION_VERSION);
 
 function parseTags(tags?: string): string[] | undefined {
   if (!tags) return undefined;

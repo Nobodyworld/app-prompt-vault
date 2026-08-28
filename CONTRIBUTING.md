@@ -6,13 +6,18 @@ Prompt Vault is proprietary source-available software maintained by Nobody Produ
 
 The source tree is self-contained: it declares no `workspace:*` dependencies, private `@nw/*` packages, parent-level configuration, or native package paths outside this repository.
 
-The repository contains reviewed `pnpm-lock.yaml` and `src-tauri/Cargo.lock` files. Clean-checkout Node, Playwright, Rust, Tauri, Windows packaging, restart, persistence, and database-preservation validation established the standalone **source-preview** boundary. The completed v0.3 daily Library workspace is merged on `main` at:
+The repository contains reviewed `pnpm-lock.yaml` and `src-tauri/Cargo.lock` files. Clean-checkout Node, Playwright, Rust, Tauri, Windows packaging, restart, persistence, and database-preservation validation established the standalone **source-preview** boundary. The accepted v0.4 product baseline is merged on `main` at:
 
 ```text
-34e710c08b5a28b381f3080e4b022bb317a00117
+6b03686df629494d9814ee4c12064556c249622b
 ```
 
-That evidence does not authorize a supported downloadable release, signed installer, production deployment, or public-network service. Every new candidate still requires validation at its exact final commit. Current product work is tracked by [issue #58](../../issues/58), and reusable native-validation ownership is tracked separately by [issue #64](../../issues/64).
+Default-branch workflow `33031847574` concluded successfully. That evidence
+does not authorize a supported downloadable release, signed installer,
+production deployment, or public-network service. Every new candidate still
+requires validation at its exact final commit. Application-version convergence
+is tracked by [issue #71](../../issues/71), and reusable native-validation
+ownership is tracked separately by [issue #64](../../issues/64).
 
 ## Toolchain and bootstrap
 
