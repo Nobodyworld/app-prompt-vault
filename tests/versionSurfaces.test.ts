@@ -72,6 +72,14 @@ function readManaged(root: string): Record<string, string> {
   );
 }
 
+function readPreparationFiles(root: string): Record<string, string> {
+  return {
+    ...readManaged(root),
+    "CHANGELOG.md": readFileSync(resolve(root, "CHANGELOG.md"), "utf8"),
+    "docs/releases/notes.md": readFileSync(resolve(root, "docs/releases/notes.md"), "utf8"),
+  };
+}
+
 afterEach(() => {
   while (fixtureRoots.length > 0) {
     const root = fixtureRoots.pop();
@@ -239,6 +247,148 @@ describe("release preparation", () => {
 
     expect(() => prepareRelease(root, "0.4.0", "2026-08-27")).toThrow(/CHANGELOG\.md/);
     expect(readManaged(root)).toEqual(before);
+  });
+
+  it("preserves the complete Unreleased body and historical sections around a new milestone", () => {
+    const root = createFixture();
+    const unreleased = [
+      "## [Unreleased]",
+      "",
+      "- Future work remains pending.",
+      "- A second pending line remains unclassified.",
+      "",
+    ].join("\n");
+    const historical = [
+      "## [0.4.0] - 2026-08-27",
+      "",
+      "### Fixed",
+      "",
+      "- Historical text stays byte-identical.",
+      "",
+    ].join("\n");
+    write(root, "CHANGELOG.md", `# Changelog\n\n${unreleased}${historical}`);
+
+    prepareRelease(root, "0.5.0", "2026-09-01");
+    const changelog = readFileSync(resolve(root, "CHANGELOG.md"), "utf8");
+    const generatedStart = changelog.indexOf("## [0.5.0]");
+    const historicalStart = changelog.indexOf("## [0.4.0]");
+    const generated = changelog.slice(generatedStart, historicalStart);
+
+    expect(changelog.startsWith(`# Changelog\n\n${unreleased}## [0.5.0]`)).toBe(true);
+    expect(changelog.endsWith(historical)).toBe(true);
+    expect(generated).not.toContain("Future work remains pending.");
+    expect(generated).not.toContain("A second pending line remains unclassified.");
+  });
+
+  it("is fully idempotent for the same version and date", () => {
+    const root = createFixture();
+    prepareRelease(root, "0.4.0", "2026-08-27");
+    const once = readPreparationFiles(root);
+
+    const second = prepareRelease(root, "0.4.0", "2026-08-27");
+    const twice = readPreparationFiles(root);
+
+    expect(second.changedPaths).toEqual([]);
+    expect(twice).toEqual(once);
+    expect(twice["CHANGELOG.md"].match(/^## \[0\.4\.0\]/gm)).toHaveLength(1);
+    expect(twice["docs/releases/notes.md"].match(/^## 0\.4\.0 source-preview milestone/gm)).toHaveLength(1);
+  });
+
+  it("rejects a conflicting milestone date before writing any file", () => {
+    const root = createFixture();
+    prepareRelease(root, "0.4.0", "2026-08-27");
+    write(root, "src/version.ts", 'export const APPLICATION_VERSION = "0.2.0";\n');
+    const before = readPreparationFiles(root);
+
+    expect(() => prepareRelease(root, "0.4.0", "2026-08-28")).toThrow(
+      /application version 0\.4\.0 already exists with date 2026-08-27; requested 2026-08-28/,
+    );
+    expect(readPreparationFiles(root)).toEqual(before);
+  });
+
+  it("rejects a conflicting release-note date before writing any file", () => {
+    const root = createFixture();
+    prepareRelease(root, "0.4.0", "2026-08-27");
+    const changelogPath = resolve(root, "CHANGELOG.md");
+    write(
+      root,
+      "CHANGELOG.md",
+      readFileSync(changelogPath, "utf8").replace(
+        "## [0.4.0] - 2026-08-27",
+        "## [0.4.0] - 2026-08-28",
+      ),
+    );
+    write(root, "src/version.ts", 'export const APPLICATION_VERSION = "0.2.0";\n');
+    const before = readPreparationFiles(root);
+
+    expect(() => prepareRelease(root, "0.4.0", "2026-08-28")).toThrow(
+      /docs\/releases\/notes\.md: application version 0\.4\.0 already exists with date 2026-08-27; requested 2026-08-28/,
+    );
+    expect(readPreparationFiles(root)).toEqual(before);
+  });
+
+  it("rejects duplicate requested-version changelog headings before writing", () => {
+    const root = createFixture();
+    write(
+      root,
+      "CHANGELOG.md",
+      "# Changelog\n\n## [Unreleased]\n\nFuture work.\n\n## [0.4.0] - 2026-08-27\n\nOne.\n\n## [0.4.0] - 2026-08-27\n\nTwo.\n",
+    );
+    const before = readPreparationFiles(root);
+
+    expect(() => prepareRelease(root, "0.4.0", "2026-08-27")).toThrow(
+      /CHANGELOG\.md: duplicate milestone headings/,
+    );
+    expect(readPreparationFiles(root)).toEqual(before);
+  });
+
+  it("rejects duplicate requested-version release-note headings before writing", () => {
+    const root = createFixture();
+    write(
+      root,
+      "docs/releases/notes.md",
+      "# Prompt Vault Release Notes\n\n## 0.4.0 source-preview milestone — 2026-08-27\n\nOne.\n\n## 0.4.0 source-preview milestone — 2026-08-27\n\nTwo.\n",
+    );
+    const before = readPreparationFiles(root);
+
+    expect(() => prepareRelease(root, "0.4.0", "2026-08-27")).toThrow(
+      /docs\/releases\/notes\.md: duplicate milestone headings/,
+    );
+    expect(readPreparationFiles(root)).toEqual(before);
+  });
+
+  it("fails closed on ambiguous milestone targets and Unreleased boundaries", () => {
+    const ambiguousVersion = createFixture();
+    write(
+      ambiguousVersion,
+      "CHANGELOG.md",
+      "# Changelog\n\n## [Unreleased]\n\nFuture work.\n\n## [0.4.0] pending-date\n",
+    );
+    expect(() => prepareRelease(ambiguousVersion, "0.4.0", "2026-08-27")).toThrow(
+      /ambiguous milestone heading/,
+    );
+
+    const duplicateUnreleased = createFixture();
+    write(
+      duplicateUnreleased,
+      "CHANGELOG.md",
+      "# Changelog\n\n## [Unreleased]\n\nOne.\n\n## [Unreleased]\n\nTwo.\n",
+    );
+    expect(() => prepareRelease(duplicateUnreleased, "0.4.0", "2026-08-27")).toThrow(
+      /exactly one unambiguous ## \[Unreleased\]/,
+    );
+  });
+
+  it("describes version convergence as durable repository state", () => {
+    const snapshot = readFileSync(resolve(repositoryRoot, "project-stage-snapshot.md"), "utf8");
+
+    expect(snapshot).not.toContain("## Current work");
+    expect(snapshot).not.toMatch(/Issue #71 is .*current|Issue #71 is .*slice/i);
+    expect(snapshot).toContain(
+      "Application-version and repository-truth convergence for 0.4.0 is complete",
+    );
+    expect(snapshot).toMatch(/identity are synchronized and mechanically\s+audited/);
+    expect(snapshot).toMatch(/issue #64[\s\S]*not a Prompt Vault runtime\s+dependency/);
   });
 });
 

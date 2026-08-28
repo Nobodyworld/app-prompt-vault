@@ -22,8 +22,65 @@ function escapeRegExp(value) {
 }
 
 function markdownSection(markdown, heading) {
-  const escaped = escapeRegExp(heading);
-  return markdown.match(new RegExp(`^## ${escaped}\\s*$([\\s\\S]*?)(?=^## |$)`, "m"))?.[1] ?? "";
+  const headings = [...markdown.matchAll(/^##[ \t]+([^\r\n]+?)[ \t]*(?:\r?\n|$)/gm)].map(
+    (match) => ({
+      start: match.index,
+      bodyStart: match.index + match[0].length,
+      title: match[1],
+    }),
+  );
+  const matches = headings.filter(({ title }) => title === heading);
+  if (matches.length !== 1) return "";
+
+  const targetIndex = headings.indexOf(matches[0]);
+  const bodyEnd = headings[targetIndex + 1]?.start ?? markdown.length;
+  return markdown.slice(matches[0].bodyStart, bodyEnd);
+}
+
+function checkMarkdownSectionExtraction() {
+  const markdown = [
+    "# Synthetic document",
+    "",
+    "## Repository state",
+    "",
+    "First required line.",
+    "Second required line.",
+    "Third required line.",
+    "",
+    "## Following section",
+    "",
+    "Outside text.",
+    "",
+    "## Final section",
+    "",
+    "Final first line.",
+    "Final second line.",
+  ].join("\n");
+  const repositoryState = markdownSection(markdown, "Repository state");
+  requireCondition(
+    repositoryState.includes("First required line.") &&
+      repositoryState.includes("Second required line.") &&
+      repositoryState.includes("Third required line.") &&
+      !repositoryState.includes("## Following section") &&
+      !repositoryState.includes("Outside text."),
+    "Markdown section extraction must preserve a complete multi-line body and stop at the next level-two heading",
+  );
+
+  const finalSection = markdownSection(markdown, "Final section");
+  requireCondition(
+    finalSection.includes("Final first line.") && finalSection.includes("Final second line."),
+    "Markdown section extraction must preserve a final section through absolute document end",
+  );
+  requireCondition(
+    markdownSection(markdown, "Absent section") === "",
+    "Markdown section extraction must return empty for an absent heading",
+  );
+
+  const duplicate = `${markdown}\n## Repository state\n\nDuplicate body.\n`;
+  requireCondition(
+    markdownSection(duplicate, "Repository state") === "",
+    "Markdown section extraction must fail closed for duplicate headings",
+  );
 }
 
 function collectSourceFiles(directory) {
@@ -55,6 +112,8 @@ function checkNoWorkspaceImports() {
     }
   }
 }
+
+checkMarkdownSectionExtraction();
 
 function checkPublicMarkdownLinks(path) {
   const markdown = read(path);
@@ -187,6 +246,13 @@ const currentBlockers = markdownSection(projectStage, "Current blockers and limi
 requireCondition(
   !/#2[2-6]\b/.test(currentBlockers),
   "project-stage snapshot still presents completed issues #22 through #26 as current blockers",
+);
+const repositoryState = markdownSection(projectStage, "Repository state");
+requireCondition(
+  /application-version and repository-truth convergence for 0\.4\.0 is complete/i.test(repositoryState) &&
+    /identity are synchronized and mechanically\s+audited/i.test(repositoryState) &&
+    /issue #64[\s\S]*evidence-ownership improvement[\s\S]*not a Prompt Vault runtime\s+dependency[\s\S]*not a source-usage prerequisite/i.test(repositoryState),
+  "project-stage snapshot must describe durable version convergence and separate evidence ownership",
 );
 
 for (const [path, content] of [

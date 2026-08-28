@@ -16,12 +16,12 @@ This is the current repository-truth snapshot. The application version records
 a source milestone; it does not establish a Git tag, GitHub Release, supported
 installer, signing authority, update channel, or production readiness.
 
-## Current work
+## Repository state
 
-Issue #71 is the version and repository-truth convergence slice for the accepted
-v0.4 product baseline. It aligns package, Tauri, Cargo, lockfile, CLI, changelog,
-release-note, and project-stage identity at application version 0.4.0 and adds
-mechanical drift prevention.
+Application-version and repository-truth convergence for 0.4.0 is complete in
+this source milestone. Package, Tauri, Cargo, lockfile, CLI/runtime, changelog,
+release-note, and project-stage identity are synchronized and mechanically
+audited.
 
 External registered native-validation migration remains separately tracked by
 issue #64. It is an evidence-ownership improvement, not a Prompt Vault runtime

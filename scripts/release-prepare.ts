@@ -29,13 +29,81 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+interface LevelTwoHeading {
+  readonly start: number;
+  readonly text: string;
+}
+
+function levelTwoHeadings(content: string): readonly LevelTwoHeading[] {
+  return [...content.matchAll(/^##[ \t]+([^\r\n]+?)[ \t]*(?:\r?\n|$)/gm)].map((match) => ({
+    start: match.index,
+    text: match[1],
+  }));
+}
+
+function documentLineEnding(content: string): "\n" | "\r\n" {
+  return content.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function existingMilestoneDate(
+  headings: readonly LevelTwoHeading[],
+  path: string,
+  version: string,
+  candidatePattern: RegExp,
+  exactPattern: RegExp,
+): string | undefined {
+  const candidates = headings.filter(({ text }) => candidatePattern.test(text));
+  if (candidates.length > 1) {
+    throw new Error(`${path}: duplicate milestone headings for application version ${version}`);
+  }
+  if (candidates.length === 0) return undefined;
+
+  const match = candidates[0].text.match(exactPattern);
+  if (!match) {
+    throw new Error(`${path}: ambiguous milestone heading for application version ${version}`);
+  }
+  return match[1];
+}
+
+function requireMatchingMilestoneDate(
+  path: string,
+  version: string,
+  requestedDate: string,
+  existingDate: string | undefined,
+): boolean {
+  if (!existingDate) return false;
+  if (existingDate !== requestedDate) {
+    throw new Error(
+      `${path}: application version ${version} already exists with date ${existingDate}; requested ${requestedDate}`,
+    );
+  }
+  return true;
+}
+
 function renderChangelog(content: string, version: string, date: string): string {
   requireSingleHeading(content, "# Changelog", "CHANGELOG.md");
-  requireSingleHeading(content, "## \\[Unreleased\\]", "CHANGELOG.md");
-  if (new RegExp(`^## \\[${escapeRegExp(version)}\\](?:\\s|$)`, "m").test(content)) {
+  const headings = levelTwoHeadings(content);
+  const unreleased = headings.filter(({ text }) => text === "[Unreleased]");
+  const unreleasedTargets = headings.filter(({ text }) => text.startsWith("[Unreleased]"));
+  if (unreleased.length !== 1 || unreleasedTargets.length !== 1) {
+    throw new Error(
+      `CHANGELOG.md: expected exactly one unambiguous ## [Unreleased] heading; found ${unreleasedTargets.length}`,
+    );
+  }
+
+  const escapedVersion = escapeRegExp(version);
+  const existingDate = existingMilestoneDate(
+    headings,
+    "CHANGELOG.md",
+    version,
+    new RegExp(`^\\[${escapedVersion}\\]`),
+    new RegExp(`^\\[${escapedVersion}\\] - (\\d{4}-\\d{2}-\\d{2})$`),
+  );
+  if (requireMatchingMilestoneDate("CHANGELOG.md", version, date, existingDate)) {
     return content;
   }
 
+  const lineEnding = documentLineEnding(content);
   const entry = [
     `## [${version}] - ${date}`,
     "",
@@ -52,21 +120,32 @@ function renderChangelog(content: string, version: string, date: string): string
     "### Fixed",
     "",
     "- TODO: Describe fixes.",
-  ].join("\n");
-  return content.replace("## [Unreleased]", `## [Unreleased]\n\n${entry}`);
+  ].join(lineEnding);
+  const unreleasedIndex = headings.indexOf(unreleased[0]);
+  const insertionIndex = headings[unreleasedIndex + 1]?.start ?? content.length;
+  const before = content.slice(0, insertionIndex);
+  const after = content.slice(insertionIndex);
+  const entryPrefix = before.endsWith("\n") ? "" : lineEnding;
+  const entrySuffix = after.length > 0 ? `${lineEnding}${lineEnding}` : "";
+  return `${before}${entryPrefix}${entry}${entrySuffix}${after}`;
 }
 
 function renderReleaseNotes(content: string, version: string, date: string): string {
   requireSingleHeading(content, "# Prompt Vault Release Notes", "docs/releases/notes.md");
-  if (
-    new RegExp(
-      `^## ${escapeRegExp(version)} source-preview milestone — ${escapeRegExp(date)}$`,
-      "m",
-    ).test(content)
-  ) {
+  const headings = levelTwoHeadings(content);
+  const escapedVersion = escapeRegExp(version);
+  const existingDate = existingMilestoneDate(
+    headings,
+    "docs/releases/notes.md",
+    version,
+    new RegExp(`^${escapedVersion}(?:\\s|$)`),
+    new RegExp(`^${escapedVersion} source-preview milestone — (\\d{4}-\\d{2}-\\d{2})$`),
+  );
+  if (requireMatchingMilestoneDate("docs/releases/notes.md", version, date, existingDate)) {
     return content;
   }
 
+  const lineEnding = documentLineEnding(content);
   const entry = [
     `## ${version} source-preview milestone — ${date}`,
     "",
@@ -84,8 +163,11 @@ function renderReleaseNotes(content: string, version: string, date: string): str
     "### Compatibility notes",
     "",
     "- TODO: Record compatibility effects, or state that there are none.",
-  ].join("\n");
-  return content.replace("# Prompt Vault Release Notes", `# Prompt Vault Release Notes\n\n${entry}`);
+  ].join(lineEnding);
+  return content.replace(
+    "# Prompt Vault Release Notes",
+    `# Prompt Vault Release Notes${lineEnding}${lineEnding}${entry}`,
+  );
 }
 
 export function prepareRelease(
