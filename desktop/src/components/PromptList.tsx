@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import type { PromptSummary } from "../types/prompt";
 import { promptFeedbackId } from "../lib/feedbackAnchors";
+import { PromptRowActions } from "./PromptRowActions";
 
 interface PromptListProps {
   readonly prompts: readonly PromptSummary[];
@@ -158,47 +159,14 @@ export function PromptList({
                 </span>
               </button>
 
-              <div className="prompt-row__actions" aria-label={`Actions for ${label}`}>
-                {onToggleFavorite && (
-                  <button
-                    type="button"
-                    className="prompt-row__favorite"
-                    aria-label={
-                      prompt.isFavorite
-                        ? `Remove ${label} from favorites`
-                        : `Add ${label} to favorites`
-                    }
-                    aria-pressed={prompt.isFavorite}
-                    disabled={isFavoritePending}
-                    data-feedback-id={promptFeedbackId(prompt.id, "favorite")}
-                    onClick={() => {
-                      onActivate?.(prompt.id);
-                      onToggleFavorite(prompt);
-                    }}
-                  >
-                    <span aria-hidden="true">{prompt.isFavorite ? "★" : "☆"}</span>
-                    <span>
-                      {isFavoritePending
-                        ? "Saving…"
-                        : prompt.isFavorite
-                          ? "Favorite"
-                          : "Add favorite"}
-                    </span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="prompt-row__edit"
-                  onClick={() => {
-                    onActivate?.(prompt.id);
-                    onEdit(prompt);
-                  }}
-                  aria-label={`Edit prompt ${label}`}
-                  data-feedback-id={promptFeedbackId(prompt.id, "edit")}
-                >
-                  Edit
-                </button>
-              </div>
+              <PromptRowActions
+                prompt={prompt}
+                label={label}
+                isFavoritePending={isFavoritePending}
+                onActivate={onActivate}
+                onEdit={onEdit}
+                onToggleFavorite={onToggleFavorite}
+              />
             </li>
           );
         })}

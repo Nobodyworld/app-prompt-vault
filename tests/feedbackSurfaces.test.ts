@@ -6,6 +6,7 @@ const REPOSITORY_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const SURFACE_FILES = [
   "desktop/src/components/Layout.tsx",
   "desktop/src/components/PromptList.tsx",
+  "desktop/src/components/PromptRowActions.tsx",
   "desktop/src/pages/LibraryPage.tsx",
   "desktop/src/pages/CreatePromptPage.tsx",
   "desktop/src/pages/EditPromptPage.tsx",
@@ -128,14 +129,17 @@ describe("Prompt Vault Feedback Layer surface inventory", () => {
     const promptList = sources.find(
       ({ path }) => path === "desktop/src/components/PromptList.tsx",
     )?.source;
+    const promptRowActions = sources.find(
+      ({ path }) => path === "desktop/src/components/PromptRowActions.tsx",
+    )?.source;
     expect(promptList).toContain("promptFeedbackId(prompt.id)");
     expect(promptList).toContain(
       'promptFeedbackId(prompt.id, "copy")',
     );
-    expect(promptList).toContain(
+    expect(promptRowActions).toContain(
       'promptFeedbackId(prompt.id, "favorite")',
     );
-    expect(promptList).toContain(
+    expect(promptRowActions).toContain(
       'promptFeedbackId(prompt.id, "edit")',
     );
     expect(promptList).toMatch(
