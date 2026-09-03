@@ -29,6 +29,13 @@ test.describe("Feedback Layer development pilot surfaces", () => {
     await expect(search).toHaveAttribute("data-feedback-private", "true");
     await expect(search).toHaveAttribute("data-feedback-redact", "true");
 
+    await page.getByRole("button", { name: "More filters" }).click();
+    for (const name of ["Tag", "Category"]) {
+      const filter = page.getByRole("combobox", { name });
+      await expect(filter).toHaveAttribute("data-feedback-private", "true");
+      await expect(filter).toHaveAttribute("data-feedback-redact", "true");
+    }
+
     await page.getByRole("button", { name: "New prompt" }).click();
     const title = page.getByRole("textbox", { name: "Title", exact: true });
     const body = page.getByRole("textbox", { name: "Prompt", exact: true });
@@ -37,6 +44,20 @@ test.describe("Feedback Layer development pilot surfaces", () => {
     await body.fill(privateBody);
     await expect(title).toHaveAttribute("data-feedback-private", "true");
     await expect(body).toHaveAttribute("data-feedback-redact", "true");
+    await page.getByText("More options", { exact: true }).click();
+    for (const [name, id] of [
+      ["Category", "prompt-vault.editor.create.category"],
+      ["Rating", "prompt-vault.editor.create.rating"],
+    ] as const) {
+      const input = page.getByRole("textbox", { name, exact: true });
+      await expect(input).toHaveAttribute("data-feedback-id", id);
+      await expect(input).toHaveAttribute("data-feedback-private", "true");
+      await expect(input).toHaveAttribute("data-feedback-redact", "true");
+    }
+    await expect(page.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "data-feedback-id",
+      "prompt-vault.editor.create.cancel",
+    );
     await page.getByRole("button", { name: "Save prompt" }).click();
 
     const row = page.getByTestId("prompt-row");

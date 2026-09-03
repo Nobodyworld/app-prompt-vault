@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -17,6 +18,15 @@ const SURFACE_FILES = [
 const sources = SURFACE_FILES.map((path) => ({
   path,
   source: readFileSync(new URL(`../${path}`, import.meta.url), "utf8"),
+})).map((entry) => ({
+  ...entry,
+  sourceFile: ts.createSourceFile(
+    entry.path,
+    entry.source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  ),
 }));
 
 const REQUIRED_STATIC_IDS = [
@@ -88,16 +98,48 @@ const PRIVATE_STATIC_IDS = [
   "prompt-vault.advanced.bulk.tags",
 ] as const;
 
-function openingTagFor(id: string): string {
-  for (const { source } of sources) {
-    const marker = `data-feedback-id="${id}"`;
-    const markerIndex = source.indexOf(marker);
-    if (markerIndex < 0) continue;
-    const start = source.lastIndexOf("<", markerIndex);
-    const end = source.indexOf(">", markerIndex);
-    if (start >= 0 && end >= 0) return source.slice(start, end + 1);
+function feedbackAttributeNamesFor(id: string): string[] {
+  for (const { sourceFile } of sources) {
+    let names: string[] | null = null;
+    const visit = (node: ts.Node): void => {
+      if (
+        names === null &&
+        (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))
+      ) {
+        const attributes = node.attributes.properties.filter(ts.isJsxAttribute);
+        const semanticId = attributes.find(
+          (attribute) => attribute.name.getText(sourceFile) === "data-feedback-id",
+        );
+        if (
+          semanticId?.initializer &&
+          ts.isStringLiteral(semanticId.initializer) &&
+          semanticId.initializer.text === id
+        ) {
+          names = attributes.map((attribute) => attribute.name.getText(sourceFile));
+          return;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    if (names !== null) return names;
   }
   throw new Error(`Static Feedback Layer anchor not found: ${id}`);
+}
+
+function feedbackAttributeStarts(sourceFile: ts.SourceFile): Set<number> {
+  const starts = new Set<number>();
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isJsxAttribute(node) &&
+      node.name.getText(sourceFile).startsWith("data-feedback-")
+    ) {
+      starts.add(node.name.getStart(sourceFile));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return starts;
 }
 
 describe("Prompt Vault Feedback Layer surface inventory", () => {
@@ -119,9 +161,18 @@ describe("Prompt Vault Feedback Layer surface inventory", () => {
 
   it("keeps private and redaction declarations explicit on value-bearing surfaces", () => {
     for (const id of PRIVATE_STATIC_IDS) {
-      const openingTag = openingTagFor(id);
-      expect(openingTag, id).toContain("data-feedback-private");
-      expect(openingTag, id).toContain("data-feedback-redact");
+      const attributeNames = feedbackAttributeNamesFor(id);
+      expect(attributeNames, id).toContain("data-feedback-private");
+      expect(attributeNames, id).toContain("data-feedback-redact");
+    }
+  });
+
+  it("parses every feedback marker as a real JSX attribute", () => {
+    for (const { path, source, sourceFile } of sources) {
+      const starts = feedbackAttributeStarts(sourceFile);
+      for (const marker of source.matchAll(/data-feedback-(?:id|private|redact)/g)) {
+        expect(starts.has(marker.index), `${path}:${marker.index}`).toBe(true);
+      }
     }
   });
 

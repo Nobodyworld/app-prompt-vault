@@ -227,10 +227,10 @@ export function CreatePromptPage(): React.JSX.Element {
                 }))
               }
               placeholder="Work, Personal, Research…"
-            />
               data-feedback-id="prompt-vault.editor.create.category"
               data-feedback-private
               data-feedback-redact
+            />
           </label>
 
           <label>
@@ -242,10 +242,10 @@ export function CreatePromptPage(): React.JSX.Element {
                 setForm((current) => ({ ...current, rating: event.target.value }))
               }
               placeholder="1–5"
-            />
               data-feedback-id="prompt-vault.editor.create.rating"
               data-feedback-private
               data-feedback-redact
+            />
           </label>
 
           <label className="checkbox-field">
@@ -282,8 +282,8 @@ export function CreatePromptPage(): React.JSX.Element {
           type="button"
           className="secondary-action"
           onClick={() => navigate("/")}
-        >
           data-feedback-id="prompt-vault.editor.create.cancel"
+        >
           Cancel
         </button>
         <div className="form-actions__primary">

@@ -465,9 +465,9 @@ export function LibraryPage(): React.JSX.Element {
             <select
               value={tagFilter}
               onChange={(event) => setTagFilter(event.target.value)}
-            >
               data-feedback-private
               data-feedback-redact
+            >
               <option value="">All tags</option>
               {availableTags.map((tag) => (
                 <option key={tag} value={tag}>
@@ -481,9 +481,9 @@ export function LibraryPage(): React.JSX.Element {
             <select
               value={categoryFilter}
               onChange={(event) => setCategoryFilter(event.target.value)}
-            >
               data-feedback-private
               data-feedback-redact
+            >
               <option value="">All categories</option>
               {availableCategories.map((category) => (
                 <option key={category} value={category}>
