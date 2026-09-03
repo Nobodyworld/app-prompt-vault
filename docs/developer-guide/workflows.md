@@ -14,7 +14,7 @@ This document captures the most common developer and operator workflows for Prom
 ```bash
 pnpm test             # Executes the Vitest suite once
 pnpm test:watch       # Watches files and reruns tests incrementally
-pnpm quality:gate     # Audit → lint → build → coverage gates → security scan
+pnpm quality:gate     # Audit → lint → builds → feedback exclusion → coverage → security
 ```
 
 Vitest defaults to the Node environment. Tests rely on the `:memory:` SQLite database to remain hermetic and fast.

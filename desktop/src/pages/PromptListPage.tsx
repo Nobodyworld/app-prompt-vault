@@ -516,13 +516,21 @@ export function PromptListPage(): React.JSX.Element {
   );
 
   return (
-    <div className="library-panel">
+    <div
+      className="library-panel"
+      data-feedback-id="prompt-vault.advanced.workspace"
+      data-feedback-private
+      data-feedback-redact
+    >
       <div className="library-header">
         <div className="search-container">
           <input
             type="text"
             placeholder={t("library.search.placeholder")}
             value={searchQuery}
+            data-feedback-id="prompt-vault.advanced.search"
+            data-feedback-private
+            data-feedback-redact
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
           />
@@ -552,6 +560,9 @@ export function PromptListPage(): React.JSX.Element {
           <input
             type="text"
             value={tagFilter}
+            data-feedback-id="prompt-vault.advanced.filters.tag"
+            data-feedback-private
+            data-feedback-redact
             onChange={(e) => setTagFilter(e.target.value)}
             placeholder={t("library.search.tagPlaceholder")}
             className="search-input search-input--small"
@@ -560,6 +571,9 @@ export function PromptListPage(): React.JSX.Element {
           <input
             type="text"
             value={categoryFilter}
+            data-feedback-id="prompt-vault.advanced.filters.category"
+            data-feedback-private
+            data-feedback-redact
             onChange={(e) => setCategoryFilter(e.target.value)}
             placeholder={t("library.search.categoryPlaceholder")}
             className="search-input search-input--small"
@@ -568,6 +582,9 @@ export function PromptListPage(): React.JSX.Element {
           <input
             type="text"
             value={projectTagIdFilter}
+            data-feedback-id="prompt-vault.advanced.filters.project-tag"
+            data-feedback-private
+            data-feedback-redact
             onChange={(e) => setProjectTagIdFilter(e.target.value)}
             placeholder={t("library.search.projectTagIdPlaceholder")}
             className="search-input search-input--small"
@@ -585,7 +602,10 @@ export function PromptListPage(): React.JSX.Element {
         )}
       </div>
 
-      <div className="interop-card">
+      <div
+        className="interop-card"
+        data-feedback-id="prompt-vault.advanced.interop"
+      >
         <div className="interop-card__header">
           <div>
             <p className="interop-eyebrow">Send to other apps</p>
@@ -609,6 +629,7 @@ export function PromptListPage(): React.JSX.Element {
             type="button"
             className="interop-btn"
             onClick={() => void handleCopyButtonsPayload()}
+            data-feedback-id="prompt-vault.advanced.interop.buttons-export"
             disabled={!buttonsPayload}
             title="Copy a Buttons-compatible switchboard button"
           >
@@ -618,6 +639,7 @@ export function PromptListPage(): React.JSX.Element {
             type="button"
             className="interop-btn secondary"
             onClick={() => void handleCopyPlannerDraft()}
+            data-feedback-id="prompt-vault.advanced.interop.planner-export"
             disabled={!plannerDraft}
             title="Copy a Planner bucket draft with tasks seeded from these prompts"
           >
@@ -626,7 +648,10 @@ export function PromptListPage(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="interop-card">
+      <div
+        className="interop-card"
+        data-feedback-id="prompt-vault.advanced.bundle"
+      >
         <div className="interop-card__header">
           <div>
             <p className="interop-eyebrow">{t("bundle.eyebrow")}</p>
@@ -640,6 +665,9 @@ export function PromptListPage(): React.JSX.Element {
             className="search-input"
             rows={6}
             value={bundleText}
+            data-feedback-id="prompt-vault.advanced.bundle.content"
+            data-feedback-private
+            data-feedback-redact
             onChange={(e) => setBundleText(e.target.value)}
             placeholder={t("bundle.importPlaceholder")}
           />
@@ -648,6 +676,7 @@ export function PromptListPage(): React.JSX.Element {
               type="button"
               className="interop-btn"
               onClick={() => void handleExportBundle("json")}
+              data-feedback-id="prompt-vault.advanced.bundle.export-json"
               disabled={isBundleBusy || displayPrompts.length === 0}
             >
               {t("bundle.exportJson")}
@@ -656,6 +685,7 @@ export function PromptListPage(): React.JSX.Element {
               type="button"
               className="interop-btn secondary"
               onClick={() => void handleExportBundle("yaml")}
+              data-feedback-id="prompt-vault.advanced.bundle.export-yaml"
               disabled={isBundleBusy || displayPrompts.length === 0}
             >
               {t("bundle.exportYaml")}
@@ -664,6 +694,7 @@ export function PromptListPage(): React.JSX.Element {
               type="button"
               className="interop-btn"
               onClick={() => void handleImportBundle("json")}
+              data-feedback-id="prompt-vault.advanced.bundle.import-json"
               disabled={isBundleBusy}
             >
               {t("bundle.importJson")}
@@ -672,6 +703,7 @@ export function PromptListPage(): React.JSX.Element {
               type="button"
               className="interop-btn secondary"
               onClick={() => void handleImportBundle("yaml")}
+              data-feedback-id="prompt-vault.advanced.bundle.import-yaml"
               disabled={isBundleBusy}
             >
               {t("bundle.importYaml")}
@@ -682,7 +714,10 @@ export function PromptListPage(): React.JSX.Element {
 
       {copyError && <p className="error library-error">{copyError}</p>}
 
-      <div className="interop-card">
+      <div
+        className="interop-card"
+        data-feedback-id="prompt-vault.advanced.bulk"
+      >
         <div className="interop-card__header">
           <div>
             <p className="interop-eyebrow">Bulk actions</p>
@@ -699,6 +734,9 @@ export function PromptListPage(): React.JSX.Element {
           <input
             type="text"
             value={bulkTags}
+            data-feedback-id="prompt-vault.advanced.bulk.tags"
+            data-feedback-private
+            data-feedback-redact
             onChange={(event) => setBulkTags(event.target.value)}
             placeholder="Tags to add (comma-separated)"
             className="search-input"
@@ -708,6 +746,7 @@ export function PromptListPage(): React.JSX.Element {
               type="button"
               className="interop-btn secondary"
               onClick={handleSelectAllVisible}
+              data-feedback-id="prompt-vault.advanced.bulk.select"
               disabled={isBulkBusy || displayPrompts.length === 0}
             >
               {selectedCount === displayPrompts.length &&
@@ -719,6 +758,7 @@ export function PromptListPage(): React.JSX.Element {
               type="button"
               className="interop-btn"
               onClick={() => void handleBulkTag()}
+              data-feedback-id="prompt-vault.advanced.bulk.apply-tags"
               disabled={isBulkBusy}
             >
               Add tags
@@ -727,6 +767,7 @@ export function PromptListPage(): React.JSX.Element {
               type="button"
               className="interop-btn secondary"
               onClick={() => void handleBulkDelete()}
+              data-feedback-id="prompt-vault.advanced.bulk.delete"
               disabled={isBulkBusy}
             >
               Delete selected

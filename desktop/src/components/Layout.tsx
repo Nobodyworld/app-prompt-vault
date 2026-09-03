@@ -86,7 +86,7 @@ export function Layout(): React.JSX.Element {
   }, [location.pathname, navigate]);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-feedback-id="prompt-vault.shell">
       {isDesktop && (
         <div className="window-controls-bar" data-tauri-drag-region>
           <div className="window-controls">
@@ -124,7 +124,12 @@ export function Layout(): React.JSX.Element {
       <div className="app-layout">
         <div className="app-main">
           <header className="app-shell__header" data-tauri-drag-region>
-            <NavLink to="/" className="app-brand" aria-label="Prompt Vault home">
+            <NavLink
+              to="/"
+              className="app-brand"
+              aria-label="Prompt Vault home"
+              data-feedback-id="prompt-vault.brand"
+            >
               <span className="app-brand__mark" aria-hidden="true">
                 PV
               </span>
@@ -134,7 +139,10 @@ export function Layout(): React.JSX.Element {
               </span>
             </NavLink>
 
-            <nav aria-label="Primary navigation">
+            <nav
+              aria-label="Primary navigation"
+              data-feedback-id="prompt-vault.navigation.primary"
+            >
               <NavLink to="/">Library</NavLink>
               <NavLink to="/create">New prompt</NavLink>
               <NavLink to="/settings">Settings</NavLink>
@@ -142,12 +150,19 @@ export function Layout(): React.JSX.Element {
           </header>
 
           {fallbackActiveState && (
-            <div className="offline-banner" role="status">
+            <div
+              className="offline-banner"
+              role="status"
+              data-feedback-id="prompt-vault.status.local-fallback"
+            >
               Local fallback mode is active.
             </div>
           )}
 
-          <main className="app-shell__content">
+          <main
+            className="app-shell__content"
+            data-feedback-id="prompt-vault.workspace"
+          >
             <Outlet />
           </main>
         </div>

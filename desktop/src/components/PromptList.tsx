@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import type { PromptSummary } from "../types/prompt";
+import { promptFeedbackId } from "../lib/feedbackAnchors";
 
 interface PromptListProps {
   readonly prompts: readonly PromptSummary[];
@@ -67,6 +68,7 @@ export function PromptList({
           const hiddenTagCount = prompt.tags.length - visibleTags.length;
           const isSelectable = Boolean(selectedPromptIds && onToggleSelected);
           const isSelected = Boolean(selectedPromptIds?.has(prompt.id));
+          const feedbackId = promptFeedbackId(prompt.id);
 
           return (
             <li
@@ -83,6 +85,9 @@ export function PromptList({
                 .join(" ")}
               data-testid="prompt-row"
               data-prompt-id={prompt.id}
+              data-feedback-id={feedbackId}
+              data-feedback-private
+              data-feedback-redact
               aria-current={isActive ? "true" : undefined}
               onPointerDown={() => onActivate?.(prompt.id)}
             >
@@ -95,6 +100,7 @@ export function PromptList({
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => onToggleSelected?.(prompt.id)}
+                    data-feedback-id={promptFeedbackId(prompt.id, "select")}
                   />
                 </label>
               )}
@@ -107,6 +113,7 @@ export function PromptList({
                   onCopy(prompt);
                 }}
                 aria-label={`Copy prompt ${label}`}
+                data-feedback-id={promptFeedbackId(prompt.id, "copy")}
               >
                 <span className="prompt-row__content">
                   <span className="prompt-row__title">{label}</span>
@@ -163,6 +170,7 @@ export function PromptList({
                     }
                     aria-pressed={prompt.isFavorite}
                     disabled={isFavoritePending}
+                    data-feedback-id={promptFeedbackId(prompt.id, "favorite")}
                     onClick={() => {
                       onActivate?.(prompt.id);
                       onToggleFavorite(prompt);
@@ -186,6 +194,7 @@ export function PromptList({
                     onEdit(prompt);
                   }}
                   aria-label={`Edit prompt ${label}`}
+                  data-feedback-id={promptFeedbackId(prompt.id, "edit")}
                 >
                   Edit
                 </button>

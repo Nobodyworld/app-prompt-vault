@@ -87,6 +87,21 @@ FEEDBACK_LAYER_EXPECTED_ORIGIN=http://127.0.0.1:1420
 FEEDBACK_LAYER_CONTRACT=feedback-layer.development-integration@1
 ```
 
+## Implemented development boundary
+
+The pilot implementation lives in `desktop/vite.feedback-layer-pilot.ts` and is wired into Vite with `apply: "serve"`. When valid server-only configuration enables it, the plugin verifies the service-owned contract and SDK before serving either of these same-origin development resources:
+
+```text
+/@prompt-vault/feedback-layer-pilot.js
+/@prompt-vault/feedback-layer-sdk.js
+```
+
+The loader owns one installation, destroys it during HMR disposal, and uses bounded retries only for temporary service loss. Revoked origins, inactive projects, invalid contracts, and integrity mismatches remain fail-closed. Pilot failures are isolated from Prompt Vault's React error boundary.
+
+Static product-semantic anchors are declared in the rendered React surfaces. Dynamic prompt and version anchors pass through bounded record-ID validators before rendering. Value-bearing surfaces explicitly declare both `data-feedback-private` and `data-feedback-redact`.
+
+`pnpm feedback:production-check` recursively inspects the actual `desktop/dist` HTML, JavaScript, CSS, and source maps. It permits only inert semantic/privacy attributes and fails closed on executable integration markers or unexpected output. The command runs inside `pnpm quality:gate`.
+
 ## Configuration behavior
 
 ### Disabled

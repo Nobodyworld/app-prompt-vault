@@ -5,6 +5,7 @@ import type {
   PromptSummary,
   PromptVersionSummary,
 } from "../types/prompt";
+import { versionFeedbackId } from "../lib/feedbackAnchors";
 import {
   addPromptVersion,
   getPromptById,
@@ -321,7 +322,13 @@ export function EditPromptPage(): React.JSX.Element {
   }
 
   return (
-    <form className="prompt-form prompt-form--focused" onSubmit={handleSubmit}>
+    <form
+      className="prompt-form prompt-form--focused"
+      onSubmit={handleSubmit}
+      data-feedback-id="prompt-vault.editor.edit"
+      data-feedback-private
+      data-feedback-redact
+    >
       <header className="form-heading">
         <div>
           <h2>Edit prompt</h2>
@@ -335,6 +342,9 @@ export function EditPromptPage(): React.JSX.Element {
           autoFocus
           required
           value={title}
+          data-feedback-id="prompt-vault.editor.edit.title"
+          data-feedback-private
+          data-feedback-redact
           onChange={(event) => setTitle(event.target.value)}
         />
       </label>
@@ -345,6 +355,9 @@ export function EditPromptPage(): React.JSX.Element {
           required
           rows={14}
           value={body}
+          data-feedback-id="prompt-vault.editor.edit.body"
+          data-feedback-private
+          data-feedback-redact
           onChange={(event) => setBody(event.target.value)}
         />
       </label>
@@ -354,13 +367,19 @@ export function EditPromptPage(): React.JSX.Element {
         <input
           aria-label="Tags"
           value={tags}
+          data-feedback-id="prompt-vault.editor.edit.tags"
+          data-feedback-private
+          data-feedback-redact
           onChange={(event) => setTags(event.target.value)}
           placeholder="writing, reporting, client-work"
         />
         <small>Separate tags with commas. Repeated tags are removed.</small>
       </label>
 
-      <details className="advanced-fields">
+      <details
+        className="advanced-fields"
+        data-feedback-id="prompt-vault.editor.edit.options"
+      >
         <summary>Version and organization</summary>
         <div className="advanced-fields__content">
           <label>
@@ -368,6 +387,9 @@ export function EditPromptPage(): React.JSX.Element {
             <input
               aria-label="Category"
               value={category}
+              data-feedback-id="prompt-vault.editor.edit.category"
+              data-feedback-private
+              data-feedback-redact
               onChange={(event) => setCategory(event.target.value)}
               placeholder="Work, Personal, Research…"
             />
@@ -378,6 +400,9 @@ export function EditPromptPage(): React.JSX.Element {
             <input
               inputMode="numeric"
               value={rating}
+              data-feedback-id="prompt-vault.editor.edit.rating"
+              data-feedback-private
+              data-feedback-redact
               onChange={(event) => setRating(event.target.value)}
               placeholder="1–5"
             />
@@ -387,6 +412,7 @@ export function EditPromptPage(): React.JSX.Element {
             <input
               type="checkbox"
               checked={isFavorite}
+              data-feedback-id="prompt-vault.editor.edit.favorite"
               onChange={(event) => setIsFavorite(event.target.checked)}
             />
             Mark as favorite
@@ -396,6 +422,9 @@ export function EditPromptPage(): React.JSX.Element {
             Next semantic version
             <input
               value={semanticVersion}
+              data-feedback-id="prompt-vault.editor.edit.version"
+              data-feedback-private
+              data-feedback-redact
               onChange={(event) => setSemanticVersion(event.target.value)}
               placeholder="1.0.1"
             />
@@ -407,6 +436,9 @@ export function EditPromptPage(): React.JSX.Element {
             <textarea
               rows={3}
               value={changelog}
+              data-feedback-id="prompt-vault.editor.edit.changelog"
+              data-feedback-private
+              data-feedback-redact
               onChange={(event) => setChangelog(event.target.value)}
             />
           </label>
@@ -426,7 +458,11 @@ export function EditPromptPage(): React.JSX.Element {
             )}
           </div>
 
-          <section className="metadata-preview" aria-label="Version history">
+          <section
+            className="metadata-preview"
+            aria-label="Version history"
+            data-feedback-id="prompt-vault.editor.version-history"
+          >
             <div>
               <span className="metadata-label">Version history</span>
               <span className="metadata-value">
@@ -447,6 +483,7 @@ export function EditPromptPage(): React.JSX.Element {
                         type="button"
                         className="secondary"
                         aria-pressed={selectedVersionId === version.id}
+                        data-feedback-id={versionFeedbackId(version.id, "preview")}
                         onClick={() => setSelectedVersionId(version.id)}
                       >
                         Preview
@@ -455,6 +492,7 @@ export function EditPromptPage(): React.JSX.Element {
                         type="button"
                         className="secondary"
                         onClick={() => void handleRevert(version)}
+                        data-feedback-id={versionFeedbackId(version.id, "revert")}
                         disabled={isSaving}
                       >
                         Revert
@@ -465,13 +503,20 @@ export function EditPromptPage(): React.JSX.Element {
               </ul>
             )}
             {selectedVersion && comparison && (
-              <section className="version-history__preview" aria-live="polite">
+              <section
+                className="version-history__preview"
+                aria-live="polite"
+                data-feedback-id="prompt-vault.editor.version-preview"
+                data-feedback-private
+                data-feedback-redact
+              >
                 <header>
                   <strong>Preview v{selectedVersion.semanticVersion}</strong>
                   <button
                     type="button"
                     className="text-button"
                     onClick={() => setSelectedVersionId(null)}
+                    data-feedback-id="prompt-vault.editor.version-preview.close"
                   >
                     Close preview
                   </button>
@@ -485,7 +530,12 @@ export function EditPromptPage(): React.JSX.Element {
                   <strong>Changelog:</strong>{" "}
                   {selectedVersion.changelog || "No changelog was recorded."}
                 </p>
-                <pre className="version-history__body">
+                <pre
+                  className="version-history__body"
+                  data-feedback-id="prompt-vault.editor.version-preview.body"
+                  data-feedback-private
+                  data-feedback-redact
+                >
                   {selectedVersion.body.slice(0, 50_000)}
                 </pre>
                 {selectedVersion.body.length > 50_000 && (
@@ -521,10 +571,19 @@ export function EditPromptPage(): React.JSX.Element {
       {error && <p className="error">{error}</p>}
 
       <div className="form-actions form-actions--balanced">
-        <button className="secondary" type="button" onClick={() => navigate(-1)}>
+        <button
+          className="secondary"
+          type="button"
+          onClick={() => navigate(-1)}
+          data-feedback-id="prompt-vault.editor.edit.cancel"
+        >
           Cancel
         </button>
-        <button type="submit" disabled={isSaving}>
+        <button
+          type="submit"
+          disabled={isSaving}
+          data-feedback-id="prompt-vault.editor.edit.save"
+        >
           {isSaving ? "Saving…" : "Save changes"}
         </button>
       </div>
