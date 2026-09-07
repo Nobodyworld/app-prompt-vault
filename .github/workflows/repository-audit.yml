@@ -19,29 +19,38 @@ jobs:
     name: Public-release invariants
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
       - name: Check out repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
           check-latest: false
-
       - name: Run dependency-free repository audit
         shell: bash
         run: |
           set -o pipefail
           node scripts/repository-audit.mjs 2>&1 | tee repository-audit.txt
-
+      - name: Test Windows graph failure handling
+        shell: bash
+        run: node --test scripts/check-windows-glib.test.mjs
+      - name: Install pinned pnpm for early dependency audit
+        shell: bash
+        run: npm install --global pnpm@10.24.0
+      - name: Audit production dependencies before native builds
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm audit --prod --audit-level=high 2>&1 | tee dependency-audit.txt
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: repository-audit
-          path: repository-audit.txt
+          path: |
+            repository-audit.txt
+            dependency-audit.txt
           if-no-files-found: warn
           retention-days: 14
 
@@ -50,11 +59,14 @@ jobs:
     needs: audit
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
       - name: Check out repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-
+      - name: Set up Node.js for Windows graph verification
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          check-latest: false
       - name: Install Tauri Linux prerequisites
         shell: bash
         run: |
@@ -67,56 +79,40 @@ jobs:
             libssl-dev \
             libwebkit2gtk-4.1-dev \
             libxdo-dev
-
       - name: Record Rust toolchain
         shell: bash
         run: |
           rustc --version | tee rust-toolchain.txt
           cargo --version | tee -a rust-toolchain.txt
           rustup component add rustfmt clippy
-
       - name: Check Rust formatting
         shell: bash
         run: |
           set -o pipefail
           cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check 2>&1 | tee cargo-fmt.txt
-
       - name: Run strict Clippy
         shell: bash
         run: |
           set -o pipefail
           cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings 2>&1 | tee cargo-clippy.txt
-
       - name: Run Rust tests
         shell: bash
         run: |
           set -o pipefail
           cargo test --locked --manifest-path src-tauri/Cargo.toml 2>&1 | tee cargo-test.txt
-
       - name: Verify glib is absent from the Windows target graph
         shell: bash
         run: |
-          set +e
-          cargo tree --locked --manifest-path src-tauri/Cargo.toml \
-            --target x86_64-pc-windows-msvc --invert glib \
-            > windows-glib-tree.txt 2>&1
-          cat windows-glib-tree.txt
-          if grep -Eq '^glib v' windows-glib-tree.txt; then
-            echo "glib unexpectedly appears in the Windows target dependency graph" >&2
-            exit 1
-          fi
-          exit 0
-
+          set -o pipefail
+          node scripts/check-windows-glib.mjs 2>&1 | tee windows-glib-tree.txt
       - name: Install cargo-audit
         shell: bash
         run: cargo install cargo-audit --locked
-
       - name: Audit Rust lockfile
         shell: bash
         run: |
           set -o pipefail
           cargo audit --file src-tauri/Cargo.lock 2>&1 | tee rust-audit.txt
-
       - name: Upload Rust validation evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -137,24 +133,20 @@ jobs:
     needs: audit
     runs-on: windows-latest
     timeout-minutes: 60
-
     steps:
       - name: Check out repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
           check-latest: false
-
       - name: Record Windows and Rust toolchains
         shell: pwsh
         run: |
           Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsBuildNumber | Format-List | Out-File windows-toolchain.txt
           rustc --version | Tee-Object -FilePath rust-windows-toolchain.txt
           cargo --version | Tee-Object -FilePath rust-windows-toolchain.txt -Append
-
       - name: Validate Windows acceptance script syntax
         shell: pwsh
         run: |
@@ -174,23 +166,19 @@ jobs:
           }
           "PowerShell syntax valid: $scriptPath" |
             Tee-Object -FilePath window-measurement-script-syntax.txt
-
       - name: Install pinned pnpm
         shell: pwsh
         run: npm install --global pnpm@10.24.0
-
       - name: Install standalone dependencies from lockfile
         shell: pwsh
         run: |
           pnpm install --frozen-lockfile *>&1 | Tee-Object -FilePath windows-install.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Build unsigned Windows Tauri bundle
         shell: pwsh
         run: |
           pnpm tauri:build *>&1 | Tee-Object -FilePath tauri-windows-build.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Inventory Windows bundle
         shell: pwsh
         run: |
@@ -207,7 +195,6 @@ jobs:
             $hash = (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLowerInvariant()
             "{0}`t{1}`t{2}" -f $_.Length, $hash, $relative
           } | Sort-Object | Tee-Object -FilePath windows-bundle-inventory.txt
-
       - name: Upload Windows Tauri bundle
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -226,87 +213,70 @@ jobs:
 
   node-validation:
     name: Standalone Node validation
-    needs:
-      - audit
-      - rust-validation
-      - windows-bundle
+    needs: audit
     runs-on: ubuntu-latest
     timeout-minutes: 40
-
     steps:
       - name: Check out repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
           check-latest: false
-
       - name: Install pinned pnpm
         shell: bash
         run: npm install --global pnpm@10.24.0
-
       - name: Install standalone dependencies from lockfile
         shell: bash
         run: |
           set -o pipefail
           pnpm install --frozen-lockfile 2>&1 | tee install.txt
-
       - name: Audit production dependencies
         shell: bash
         run: |
           set -o pipefail
           pnpm audit --prod --audit-level=high 2>&1 | tee dependency-audit.txt
-
       - name: Run repository audit
         shell: bash
         run: |
           set -o pipefail
           pnpm repository:audit 2>&1 | tee audit-validation.txt
-
       - name: Run lint
         shell: bash
         run: |
           set -o pipefail
           pnpm lint 2>&1 | tee lint.txt
-
       - name: Run typecheck
         shell: bash
         run: |
           set -o pipefail
           pnpm typecheck 2>&1 | tee typecheck.txt
-
       - name: Build Node surface
         shell: bash
         run: |
           set -o pipefail
           pnpm build 2>&1 | tee build.txt
-
       - name: Run unit and integration tests with coverage
         shell: bash
         run: |
           set -o pipefail
           pnpm test:coverage 2>&1 | tee coverage-tests.txt
-
       - name: Summarize coverage
         shell: bash
         run: |
           set -o pipefail
           pnpm coverage:summary 2>&1 | tee coverage-summary.txt
-
       - name: Install Chromium for Playwright
         shell: bash
         run: |
           set -o pipefail
           pnpm exec playwright install --with-deps chromium 2>&1 | tee playwright-install.txt
-
       - name: Run Playwright UI smoke tests
         shell: bash
         run: |
           set -o pipefail
           pnpm test:ui 2>&1 | tee playwright.txt
-
       - name: Upload standalone validation evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
