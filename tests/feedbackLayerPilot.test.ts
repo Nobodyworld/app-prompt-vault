@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import vm from "node:vm";
+import { createServer } from "vite";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -310,6 +311,28 @@ describe("Feedback Layer contract and SDK verification", () => {
 });
 
 describe("Feedback Layer development loader", () => {
+  it("registers the served loader with Vite's real HMR module graph", async () => {
+    const server = await createServer({
+      configFile: false,
+      envFile: false,
+      appType: "custom",
+      logLevel: "silent",
+      optimizeDeps: { noDiscovery: true, include: [] },
+      server: { host: "127.0.0.1", port: 1420, strictPort: true, watch: null },
+      plugins: [feedbackLayerPilot(validEnvironment(), { fetchImpl: serviceFetch() })],
+    });
+    try {
+      const transformed = await server.transformRequest(PILOT_LOADER_ROUTE);
+      expect(transformed?.code).toContain("__vite__createHotContext");
+      expect(transformed?.code).toContain("import.meta.hot.accept()");
+      expect(transformed?.code).toContain("import.meta.hot.dispose");
+      const module = await server.moduleGraph.getModuleByUrl(PILOT_LOADER_ROUTE);
+      expect(module?.isSelfAccepting).toBe(true);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("injects only for an enabled serve plugin and carries bounded evidence", async () => {
     const plugin = feedbackLayerPilot(validEnvironment(), {
       fetchImpl: serviceFetch(),
@@ -367,6 +390,7 @@ describe("Feedback Layer development loader", () => {
       },
       __importPilot: async () => ({}),
       __hot: {
+        accept() {},
         dispose(callback: () => void) {
           disposeCallback = callback;
         },

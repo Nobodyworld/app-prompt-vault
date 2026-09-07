@@ -17,6 +17,7 @@ export const FEEDBACK_LAYER_SDK_MAX_BYTES = 4 * 1024 * 1024;
 const PROJECT_ID_PATTERN = /^project_[a-f0-9]{32}$/;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const RETRY_DELAYS_MS = [0, 500, 1_500, 3_000] as const;
+const PILOT_LOADER_ID = "\0prompt-vault:feedback-layer-pilot";
 
 export interface FeedbackLayerPilotConfig {
   serviceUrl: string;
@@ -485,7 +486,7 @@ const boundedWarning = (authorizationFailure = false) => {
 async function attempt(index) {
   if (state.disposed) return;
   try {
-    await import("${PILOT_SDK_ROUTE}?attempt=" + index);
+    await import(/* @vite-ignore */ "${PILOT_SDK_ROUTE}?attempt=" + index);
     if (state.disposed) return;
     const api = window.FeedbackLayer;
     if (
@@ -530,7 +531,10 @@ async function attempt(index) {
   }
 }
 void attempt(0);
-if (import.meta.hot) import.meta.hot.dispose(() => state.dispose());
+if (import.meta.hot) {
+  import.meta.hot.accept();
+  import.meta.hot.dispose(() => state.dispose());
+}
 `;
 }
 
@@ -611,6 +615,20 @@ export function feedbackLayerPilot(
     apply: "serve",
     enforce: "post",
 
+    resolveId(id) {
+      if (config && id.split("?")[0] === PILOT_LOADER_ROUTE) {
+        return PILOT_LOADER_ID;
+      }
+      return null;
+    },
+
+    load(id) {
+      if (config && id === PILOT_LOADER_ID) {
+        return createPilotLoaderSource(config);
+      }
+      return null;
+    },
+
     async configResolved(resolved): Promise<void> {
       if (!config) return;
       validateResolvedServer(resolved);
@@ -623,18 +641,8 @@ export function feedbackLayerPilot(
 
     configureServer(server: ViteDevServer): void {
       if (!config) return;
-      const loaderBytes = Buffer.from(createPilotLoaderSource(config), "utf8");
       server.middlewares.use(async (request, response, next) => {
         const pathname = requestPath(request);
-        if (pathname === PILOT_LOADER_ROUTE) {
-          sendBytes(
-            response,
-            200,
-            loaderBytes,
-            "text/javascript; charset=utf-8",
-          );
-          return;
-        }
         if (pathname !== PILOT_SDK_ROUTE) {
           next();
           return;
