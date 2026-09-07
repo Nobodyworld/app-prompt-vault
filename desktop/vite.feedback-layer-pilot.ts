@@ -11,6 +11,8 @@ export const FEEDBACK_LAYER_SDK_ROUTE =
   "/integration/feedback-layer.development@1.js";
 export const PILOT_LOADER_ROUTE = "/@prompt-vault/feedback-layer-pilot.js";
 export const PILOT_SDK_ROUTE = "/@prompt-vault/feedback-layer-sdk.js";
+export const FEEDBACK_LAYER_CONTRACT_MAX_BYTES = 64 * 1024;
+export const FEEDBACK_LAYER_SDK_MAX_BYTES = 4 * 1024 * 1024;
 
 const PROJECT_ID_PATTERN = /^project_[a-f0-9]{32}$/;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -148,23 +150,82 @@ export function parseFeedbackLayerPilotConfig(
   };
 }
 
-async function fetchWithTimeout(
+async function fetchBytesWithTimeout(
   fetchImpl: FetchImplementation,
   url: string,
   timeoutMs: number,
-): Promise<Response> {
+  maxBytes: number,
+  expectedContentType: string,
+  label: string,
+): Promise<Buffer> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response | undefined;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cancelBody = (): void => {
+    // Cancellation may itself stall for a custom stream; never await it.
+    if (reader) void reader.cancel().catch(() => {});
+    else if (response?.body && !response.body.locked) {
+      void response.body.cancel().catch(() => {});
+    }
+  };
+  const consume = async (): Promise<Buffer> => {
+    try {
+      response = await fetchImpl(url, {
+        cache: "no-store",
+        redirect: "error",
+        signal: controller.signal,
+      });
+      controller.signal.throwIfAborted();
+      if (response.status >= 500) throw new FeedbackLayerServiceUnavailable();
+      if (!response.ok) configurationError(`${label} route was rejected.`);
+      assertNoStoreHeaders(response, expectedContentType, label);
+      const declaredLength = response.headers.get("content-length");
+      if (declaredLength !== null && (
+        !/^\d+$/.test(declaredLength) ||
+        !Number.isSafeInteger(Number(declaredLength)) ||
+        Number(declaredLength) > maxBytes
+      )) {
+        configurationError(`${label} exceeds its response byte limit.`);
+      }
+      if (!response.body) return Buffer.alloc(0);
+      reader = response.body.getReader();
+      // Fixed capacity avoids accumulating an unbounded body or chunk list.
+      const bytes = Buffer.alloc(maxBytes);
+      let length = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        controller.signal.throwIfAborted();
+        if (done) return bytes.subarray(0, length);
+        if (value.byteLength > maxBytes - length) {
+          configurationError(`${label} exceeds its response byte limit.`);
+        }
+        bytes.set(value, length);
+        length += value.byteLength;
+      }
+    } finally {
+      cancelBody();
+      reader?.releaseLock();
+    }
+  };
+  // The per-response deadline covers headers AND body, even if an injected
+  // fetch/stream ignores AbortSignal. The size bound is enforced before copying.
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      cancelBody();
+      reject(new FeedbackLayerServiceUnavailable());
+    }, timeoutMs);
+  });
   try {
-    return await fetchImpl(url, {
-      cache: "no-store",
-      redirect: "error",
-      signal: controller.signal,
-    });
-  } catch {
+    return await Promise.race([consume(), deadline]);
+  } catch (error) {
+    if (error instanceof FeedbackLayerPilotConfigurationError) throw error;
     throw new FeedbackLayerServiceUnavailable();
   } finally {
     clearTimeout(timer);
+    controller.abort();
+    cancelBody();
   }
 }
 
@@ -242,6 +303,7 @@ function validateContract(value: unknown): {
     sdk.global !== "FeedbackLayer" ||
     !Number.isSafeInteger(sdk.byteLength) ||
     Number(sdk.byteLength) <= 0 ||
+    Number(sdk.byteLength) > FEEDBACK_LAYER_SDK_MAX_BYTES ||
     typeof sdk.sha256 !== "string" ||
     !/^[a-f0-9]{64}$/.test(sdk.sha256)
   ) {
@@ -330,26 +392,21 @@ export async function fetchVerifiedFeedbackLayerSdk(
     timeoutMs = 1_500,
   }: { fetchImpl?: FetchImplementation; timeoutMs?: number } = {},
 ): Promise<VerifiedFeedbackLayerSdk> {
-  const contractResponse = await fetchWithTimeout(
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    configurationError("the response timeout must be a positive bounded integer.");
+  }
+  const contractBytes = await fetchBytesWithTimeout(
     fetchImpl,
     config.serviceUrl + FEEDBACK_LAYER_CONTRACT_ROUTE,
     timeoutMs,
-  );
-  if (contractResponse.status >= 500) {
-    throw new FeedbackLayerServiceUnavailable();
-  }
-  if (!contractResponse.ok) {
-    configurationError("the versioned contract route was rejected.");
-  }
-  assertNoStoreHeaders(
-    contractResponse,
+    FEEDBACK_LAYER_CONTRACT_MAX_BYTES,
     "application/json",
     "the versioned contract",
   );
 
   let contractValue: unknown;
   try {
-    contractValue = await contractResponse.json();
+    contractValue = JSON.parse(new TextDecoder().decode(contractBytes));
   } catch {
     configurationError("the versioned contract is not valid JSON.");
   }
@@ -365,24 +422,14 @@ export async function fetchVerifiedFeedbackLayerSdk(
     configurationError("the SDK route escaped the configured service origin.");
   }
 
-  const sdkResponse = await fetchWithTimeout(
+  const bytes = await fetchBytesWithTimeout(
     fetchImpl,
     sdkUrl.href,
     timeoutMs,
-  );
-  if (sdkResponse.status >= 500) {
-    throw new FeedbackLayerServiceUnavailable();
-  }
-  if (!sdkResponse.ok) {
-    configurationError("the versioned SDK route was rejected.");
-  }
-  assertNoStoreHeaders(
-    sdkResponse,
+    metadata.byteLength,
     "text/javascript",
     "the versioned SDK",
   );
-
-  const bytes = Buffer.from(await sdkResponse.arrayBuffer());
   const digest = createHash("sha256").update(bytes).digest("hex");
   if (bytes.length !== metadata.byteLength || digest !== metadata.sha256) {
     configurationError("the SDK byte length or SHA-256 did not match.");
