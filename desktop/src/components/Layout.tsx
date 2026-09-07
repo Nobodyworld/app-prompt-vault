@@ -162,6 +162,8 @@ export function Layout(): React.JSX.Element {
           <main
             className="app-shell__content"
             data-feedback-id="prompt-vault.workspace"
+            data-feedback-private
+            data-feedback-redact
           >
             <Outlet />
           </main>

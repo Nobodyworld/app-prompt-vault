@@ -6,11 +6,14 @@ import { feedbackLayerPilot } from "./vite.feedback-layer-pilot";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig(() => {
+export default defineConfig(({ command, isPreview }) => {
   const isTauri = !!process.env.TAURI_ENV;
 
   return {
-    plugins: [react(), feedbackLayerPilot()],
+    plugins: [
+      react(),
+      ...(command === "serve" && !isPreview ? [feedbackLayerPilot()] : []),
+    ],
     root: rootDir,
     server: {
       port: 1420,
