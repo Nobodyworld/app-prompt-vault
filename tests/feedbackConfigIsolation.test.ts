@@ -9,7 +9,9 @@ vi.mock("../desktop/vite.feedback-layer-pilot", () => ({ feedbackLayerPilot: pil
 vi.mock("@vitejs/plugin-react", () => ({ default: () => ({ name: "test-react" }) }));
 
 const configure = configuration as UserConfigFnObject;
-beforeEach(() => pilot.mockClear());
+beforeEach(() => {
+  pilot.mockClear();
+});
 
 describe("Feedback Layer configuration isolation", () => {
   for (const environment of [
