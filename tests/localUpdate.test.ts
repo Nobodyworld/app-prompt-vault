@@ -111,6 +111,7 @@ describe("local update manifest contract", () => {
     "bundle/candidate.msi:stream",
     "bundle/candidate.msi.",
     "bundle/candidate.msi ",
+    " bundle/candidate.msi",
   ])("rejects escaping or ambiguous artifact path %s", (relativePath) => {
     const candidate = manifest({ artifact: { ...manifest().artifact, relativePath } });
     const result = validateLocalUpdateManifest(candidate);
@@ -158,12 +159,19 @@ describe("Windows Installer ProductVersion ordering", () => {
     expect(parseMsiProductVersion(version)).not.toBeNull();
   });
 
-  it.each(["1.2", "1.2.3.4", "256.0.0", "1.256.0", "1.2.65536", "01.2.3", "1.2.-1"])(
-    'rejects invalid or unsupported version "%s"',
-    (version) => {
-      expect(parseMsiProductVersion(version)).toBeNull();
-    },
-  );
+  it.each([
+    "1.2",
+    "1.2.3.4",
+    "256.0.0",
+    "1.256.0",
+    "1.2.65536",
+    "01.2.3",
+    "1.2.-1",
+    " 1.2.3",
+    "1.2.3 ",
+  ])('rejects invalid or unsupported version "%s"', (version) => {
+    expect(parseMsiProductVersion(version)).toBeNull();
+  });
 
   it("compares only the supported three MSI fields", () => {
     expect(compareMsiProductVersions("0.4.0", "0.5.0")).toBe(-1);
@@ -209,8 +217,10 @@ describe("installed update planning", () => {
       mutatesInstallation: false,
     });
     expect(
-      planLocalUpdate(candidate, matching ? { ...matching, upgradeCode: "{99999999-9999-9999-9999-999999999999}" } : matching)
-        .decision,
+      planLocalUpdate(candidate, {
+        ...matching,
+        upgradeCode: "{99999999-9999-9999-9999-999999999999}",
+      }).decision,
     ).toBe("refuse-same-version-different-payload");
   });
 
@@ -282,6 +292,15 @@ describe("failure classification", () => {
     ).toMatchObject({ transactionRollbackProven: true, followUp: "none" });
   });
 
+  it("does not report success before explicit committed-install verification", () => {
+    expect(classifyLocalUpdateOutcome({ installerLaunched: true, installerExitCode: 0 })).toEqual({
+      kind: "committed-verification-pending",
+      installerCommitted: true,
+      transactionRollbackProven: false,
+      followUp: "verify-committed-install",
+    });
+  });
+
   it("classifies post-commit verification and restart failures as recovery-required", () => {
     expect(
       classifyLocalUpdateOutcome({
@@ -301,12 +320,32 @@ describe("failure classification", () => {
     ).toMatchObject({ kind: "committed-restart-failed", followUp: "recovery-required" });
   });
 
-  it("distinguishes ordinary success, reboot-required success, and no launch", () => {
+  it("requires explicit restart evidence after a verified ordinary commit", () => {
     expect(
       classifyLocalUpdateOutcome({
         installerLaunched: true,
         installerExitCode: 0,
         postInstallVerificationPassed: true,
+      }),
+    ).toMatchObject({ kind: "committed-restart-pending", followUp: "restart-required" });
+    expect(
+      classifyLocalUpdateOutcome({
+        installerLaunched: true,
+        installerExitCode: 0,
+        postInstallVerificationPassed: true,
+        restartAttempted: true,
+      }),
+    ).toMatchObject({ kind: "committed-restart-pending", followUp: "restart-required" });
+  });
+
+  it("distinguishes verified success, reboot-required success, and no launch", () => {
+    expect(
+      classifyLocalUpdateOutcome({
+        installerLaunched: true,
+        installerExitCode: 0,
+        postInstallVerificationPassed: true,
+        restartAttempted: true,
+        restartPassed: true,
       }).kind,
     ).toBe("success");
     expect(
@@ -314,8 +353,8 @@ describe("failure classification", () => {
         installerLaunched: true,
         installerExitCode: 3010,
         postInstallVerificationPassed: true,
-      }).kind,
-    ).toBe("success-reboot-required");
+      }),
+    ).toMatchObject({ kind: "success-reboot-required", followUp: "restart-required" });
     expect(classifyLocalUpdateOutcome({ installerLaunched: false, installerExitCode: null })).toEqual({
       kind: "not-started",
       installerCommitted: false,

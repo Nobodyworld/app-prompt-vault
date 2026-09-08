@@ -85,7 +85,9 @@ export interface RecoverySourceResult {
 export type LocalUpdateOutcomeKind =
   | "not-started"
   | "transaction-failed"
+  | "committed-verification-pending"
   | "committed-verification-failed"
+  | "committed-restart-pending"
   | "committed-restart-failed"
   | "success"
   | "success-reboot-required";
@@ -93,6 +95,8 @@ export type LocalUpdateOutcomeKind =
 export type LocalUpdateFollowUp =
   | "none"
   | "verify-transaction-rollback"
+  | "verify-committed-install"
+  | "restart-required"
   | "recovery-required";
 
 export interface LocalUpdateOutcome {
@@ -183,7 +187,7 @@ export function normalizeConfinedRelativePath(value: string): string | null {
 }
 
 export function parseMsiProductVersion(value: string): VersionTriplet | null {
-  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(value.trim());
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(value);
   if (!match) return null;
   const major = Number(match[1]);
   const minor = Number(match[2]);
@@ -426,7 +430,31 @@ export function classifyLocalUpdateOutcome(input: {
       followUp: "recovery-required",
     };
   }
-  if (input.restartAttempted && input.restartPassed === false) {
+  if (input.postInstallVerificationPassed !== true) {
+    return {
+      kind: "committed-verification-pending",
+      installerCommitted: true,
+      transactionRollbackProven: false,
+      followUp: "verify-committed-install",
+    };
+  }
+  if (input.installerExitCode === 3010) {
+    return {
+      kind: "success-reboot-required",
+      installerCommitted: true,
+      transactionRollbackProven: false,
+      followUp: "restart-required",
+    };
+  }
+  if (input.restartAttempted !== true || input.restartPassed === undefined) {
+    return {
+      kind: "committed-restart-pending",
+      installerCommitted: true,
+      transactionRollbackProven: false,
+      followUp: "restart-required",
+    };
+  }
+  if (input.restartPassed === false) {
     return {
       kind: "committed-restart-failed",
       installerCommitted: true,
@@ -435,7 +463,7 @@ export function classifyLocalUpdateOutcome(input: {
     };
   }
   return {
-    kind: input.installerExitCode === 3010 ? "success-reboot-required" : "success",
+    kind: "success",
     installerCommitted: true,
     transactionRollbackProven: false,
     followUp: "none",
