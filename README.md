@@ -184,6 +184,7 @@ pnpm desktop:refresh-installed # Windows: rebuild and replace the installed MSI 
 pnpm web:dev                   # Express API and built web assets
 pnpm tags:migrate-legacy       # Explicit legacy tag/project migration
 pnpm quality:gate              # Repository quality gate
+pnpm feedback:production-check # Reject executable pilot material in desktop/dist
 ```
 
 See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md) for the difference between the hot-reloading development window, release preview, and Windows-installed application.

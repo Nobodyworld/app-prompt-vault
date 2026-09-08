@@ -353,6 +353,7 @@ export function LibraryPage(): React.JSX.Element {
       className="library-home"
       aria-labelledby="library-heading"
       aria-describedby="library-keyboard-help"
+      data-feedback-id="prompt-vault.library.workspace"
     >
       <header className="library-hero">
         <div>
@@ -363,12 +364,17 @@ export function LibraryPage(): React.JSX.Element {
           type="button"
           className="primary-action"
           onClick={() => navigate("/create")}
+          data-feedback-id="prompt-vault.library.new"
         >
           New prompt
         </button>
       </header>
 
-      <div className="library-toolbar" role="search">
+      <div
+        className="library-toolbar"
+        role="search"
+        data-feedback-id="prompt-vault.library.filters"
+      >
         <div className="library-search">
           <input
             ref={searchInputRef}
@@ -377,6 +383,9 @@ export function LibraryPage(): React.JSX.Element {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search titles, text, tags, or categories"
             aria-label="Search prompts"
+            data-feedback-id="prompt-vault.library.search"
+            data-feedback-private
+            data-feedback-redact
           />
           {query && (
             <button
@@ -395,6 +404,7 @@ export function LibraryPage(): React.JSX.Element {
             className={`secondary-action favorite-filter${favoritesOnly ? " is-active" : ""}`}
             aria-pressed={favoritesOnly}
             onClick={() => setFavoritesOnly((current) => !current)}
+            data-feedback-id="prompt-vault.library.filters.favorites"
           >
             <span aria-hidden="true">★</span>
             Favorites
@@ -410,6 +420,7 @@ export function LibraryPage(): React.JSX.Element {
                 setSortMode(nextMode);
                 saveLibrarySortPreference(nextMode);
               }}
+              data-feedback-id="prompt-vault.library.sort"
             >
               {LIBRARY_SORT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -425,6 +436,7 @@ export function LibraryPage(): React.JSX.Element {
             onClick={() => setShowFilters((current) => !current)}
             aria-expanded={showFilters}
             aria-controls="library-filters"
+            data-feedback-id="prompt-vault.library.filters.more"
           >
             {showFilters ? "Hide filters" : "More filters"}
           </button>
@@ -433,6 +445,7 @@ export function LibraryPage(): React.JSX.Element {
             <button
               type="button"
               className="text-button library-reset"
+              data-feedback-id="prompt-vault.library.filters.reset"
               onClick={resetFilters}
             >
               Reset all
@@ -442,12 +455,18 @@ export function LibraryPage(): React.JSX.Element {
       </div>
 
       {showFilters && (
-        <div className="filter-panel" id="library-filters">
+        <div
+          className="filter-panel"
+          id="library-filters"
+          data-feedback-id="prompt-vault.library.filters.extended"
+        >
           <label>
             Tag
             <select
               value={tagFilter}
               onChange={(event) => setTagFilter(event.target.value)}
+              data-feedback-private
+              data-feedback-redact
             >
               <option value="">All tags</option>
               {availableTags.map((tag) => (
@@ -462,6 +481,8 @@ export function LibraryPage(): React.JSX.Element {
             <select
               value={categoryFilter}
               onChange={(event) => setCategoryFilter(event.target.value)}
+              data-feedback-private
+              data-feedback-redact
             >
               <option value="">All categories</option>
               {availableCategories.map((category) => (
@@ -475,7 +496,12 @@ export function LibraryPage(): React.JSX.Element {
       )}
 
       {hasFilters && (
-        <div className="active-filters" aria-label="Active filters">
+        <div
+          className="active-filters"
+          aria-label="Active filters"
+          data-feedback-private
+          data-feedback-redact
+        >
           <span>Active filters:</span>
           {query.trim() && <span className="filter-chip">Query: {query.trim()}</span>}
           {favoritesOnly && <span className="filter-chip">Favorites</span>}
@@ -534,7 +560,10 @@ export function LibraryPage(): React.JSX.Element {
       )}
 
       {!isLoading && !error && prompts.length > 0 && (
-        <>
+        <div
+          className="library-results"
+          data-feedback-id="prompt-vault.library.results"
+        >
           <div className="library-count" aria-live="polite" aria-atomic="true">
             {visiblePrompts.length === prompts.length
               ? `${prompts.length} prompt${prompts.length === 1 ? "" : "s"}`
@@ -572,7 +601,7 @@ export function LibraryPage(): React.JSX.Element {
               onToggleFavorite={(prompt) => void handleToggleFavorite(prompt)}
             />
           )}
-        </>
+        </div>
       )}
     </section>
   );

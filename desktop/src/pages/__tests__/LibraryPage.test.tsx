@@ -532,4 +532,61 @@ describe("LibraryPage", () => {
     expect(favoriteButton).not.toHaveAttribute("tabindex", "-1");
     expect(editButton).not.toHaveAttribute("tabindex", "-1");
   });
+  it("renders unique dynamic anchors with private rows and useful controls", async () => {
+    await renderLoadedLibrary();
+
+    const anchoredElements = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-feedback-id]"),
+    );
+    const anchoredIds = anchoredElements.map(
+      (element) => element.dataset.feedbackId,
+    );
+    expect(new Set(anchoredIds).size).toBe(anchoredIds.length);
+
+    const search = screen.getByRole("searchbox", { name: "Search prompts" });
+    expect(search).toHaveAttribute(
+      "data-feedback-id",
+      "prompt-vault.library.search",
+    );
+    expect(search).toHaveAttribute("data-feedback-private");
+    expect(search).toHaveAttribute("data-feedback-redact");
+
+    for (const promptItem of prompts) {
+      const row = promptRow(promptItem.id);
+      expect(row).toHaveAttribute(
+        "data-feedback-id",
+        `prompt-vault.prompt.${promptItem.id}`,
+      );
+      expect(row).toHaveAttribute("data-feedback-private");
+      expect(row).toHaveAttribute("data-feedback-redact");
+
+      const controls = within(row);
+      expect(
+        controls.getByRole("button", {
+          name: `Copy prompt ${promptItem.title}`,
+        }),
+      ).toHaveAttribute(
+        "data-feedback-id",
+        `prompt-vault.prompt.${promptItem.id}.copy`,
+      );
+      expect(
+        controls.getByRole("button", {
+          name: promptItem.isFavorite
+            ? `Remove ${promptItem.title} from favorites`
+            : `Add ${promptItem.title} to favorites`,
+        }),
+      ).toHaveAttribute(
+        "data-feedback-id",
+        `prompt-vault.prompt.${promptItem.id}.favorite`,
+      );
+      expect(
+        controls.getByRole("button", {
+          name: `Edit prompt ${promptItem.title}`,
+        }),
+      ).toHaveAttribute(
+        "data-feedback-id",
+        `prompt-vault.prompt.${promptItem.id}.edit`,
+      );
+    }
+  });
 });

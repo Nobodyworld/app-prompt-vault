@@ -351,7 +351,10 @@ export function SettingsPage(): React.JSX.Element {
   };
 
   return (
-    <section className="settings-page settings-page--simplified">
+    <section
+      className="settings-page settings-page--simplified"
+      data-feedback-id="prompt-vault.settings.workspace"
+    >
       <header className="form-heading">
         <div>
           <h2>Settings</h2>
@@ -388,11 +391,21 @@ export function SettingsPage(): React.JSX.Element {
         </div>
       </section>
 
-      <section className="settings-section data-safety" id="data">
+      <section
+        className="settings-section data-safety"
+        id="data"
+        data-feedback-id="prompt-vault.settings.data-safety"
+      >
         <h3>Data safety and recovery</h3>
         <p>{storage?.plaintextWarning ?? "Loading local storage status…"}</p>
         {storage && (
-          <dl className="storage-status" aria-label="Storage status">
+          <dl
+            className="storage-status"
+            aria-label="Storage status"
+            data-feedback-id="prompt-vault.settings.storage.status"
+            data-feedback-private
+            data-feedback-redact
+          >
             <div><dt>Runtime</dt><dd>{storage.runtime}</dd></div>
             <div><dt>Storage</dt><dd>{storage.storage}</dd></div>
             {storage.databasePath && <div><dt>Private database path</dt><dd className="private-path">{storage.databasePath}</dd></div>}
@@ -405,11 +418,22 @@ export function SettingsPage(): React.JSX.Element {
         )}
         {storageError && <p className="error" role="alert">{storageError}</p>}
         <div className="data-actions data-actions--compact">
-          <button type="button" onClick={() => void handleExport()} disabled={isExporting}>
+          <button
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={isExporting}
+            data-feedback-id="prompt-vault.settings.backup.export"
+          >
             {isExporting ? "Verifying export…" : "Export verified backup 2.0"}
           </button>
           {storage?.storage === "sqlite" && (
-            <button type="button" className="secondary-action" onClick={() => void loadStorageStatus(true)} disabled={isCheckingIntegrity}>
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={() => void loadStorageStatus(true)}
+              disabled={isCheckingIntegrity}
+              data-feedback-id="prompt-vault.settings.storage.integrity"
+            >
               {isCheckingIntegrity ? "Checking…" : "Verify database integrity"}
             </button>
           )}
@@ -420,19 +444,49 @@ export function SettingsPage(): React.JSX.Element {
           </p>
         )}
 
-        <div className="recovery-workflow" aria-labelledby="restore-heading">
+        <div
+          className="recovery-workflow"
+          aria-labelledby="restore-heading"
+          data-feedback-id="prompt-vault.settings.recovery"
+          data-feedback-private
+          data-feedback-redact
+        >
           <h4 id="restore-heading">Restore from backup</h4>
           <ol className="workflow-steps" aria-label="Restore workflow">
             <li>Choose source</li><li>Validate</li><li>Preview</li><li>Policy</li><li>Confirm</li><li>Execute</li><li>Verify</li>
           </ol>
           <label className="import-button secondary-action">
             {isPreviewing ? "Validating…" : "Choose backup JSON"}
-            <input type="file" accept=".json,application/json" onChange={(event) => void handleFileSelection(event)} disabled={isPreviewing || isExecuting} className="import-input" />
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={(event) => void handleFileSelection(event)}
+              disabled={isPreviewing || isExecuting}
+              className="import-input"
+              data-feedback-id="prompt-vault.settings.recovery.file"
+              data-feedback-private
+              data-feedback-redact
+            />
           </label>
-          {sourceName && <p className="source-name" title={sourceName}>Selected: {sourceName}</p>}
+          {sourceName && (
+            <p
+              className="source-name"
+              title={sourceName}
+              data-feedback-private
+              data-feedback-redact
+            >
+              Selected: {sourceName}
+            </p>
+          )}
 
           {validation && (
-            <section className="recovery-preview" aria-live="polite">
+            <section
+              className="recovery-preview"
+              aria-live="polite"
+              data-feedback-id="prompt-vault.settings.recovery.preview"
+              data-feedback-private
+              data-feedback-redact
+            >
               <h5>{validation.valid ? "Validation complete" : "Validation failed"}</h5>
               <p>Format {validation.version ?? "unknown"} · {validation.promptCount} prompts · {validation.versionCount} versions</p>
               {validation.latestVersionOnly && <p className="warning">Backup 1.0 is latest-version-only. Absent history was not preserved or verified.</p>}
@@ -442,49 +496,100 @@ export function SettingsPage(): React.JSX.Element {
           )}
 
           {plan && !restoreResult && (
-            <section className="recovery-plan" aria-label="Restore plan">
+            <section
+              className="recovery-plan"
+              aria-label="Restore plan"
+              data-feedback-id="prompt-vault.settings.recovery.confirmation"
+            >
               <h5>Previewed restore plan</h5>
               <ul>
                 {planCounts.map(([kind, count]) => <li key={kind}>{conflictLabel(kind as RestorePlan["entries"][number]["kind"])}: {count}</li>)}
               </ul>
               <label>
                 Conflict policy
-                <select value={policy} onChange={(event) => { setPolicy(event.target.value as RestorePolicy); setConfirmed(false); }} disabled={isExecuting}>
+                <select
+                  value={policy}
+                  onChange={(event) => { setPolicy(event.target.value as RestorePolicy); setConfirmed(false); }}
+                  disabled={isExecuting}
+                  data-feedback-id="prompt-vault.settings.recovery.policy"
+                  data-feedback-private
+                  data-feedback-redact
+                >
                   <option value="skip-existing">Skip existing</option>
                   <option value="add-missing-versions">Add missing versions</option>
                   <option value="import-as-copy">Import conflicts as copies</option>
                 </select>
               </label>
-              <label className="checkbox-field recovery-confirmation">
-                <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={isExecuting} />
+              <label
+                className="checkbox-field recovery-confirmation"
+                data-feedback-id="prompt-vault.settings.recovery.confirm"
+              >
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(event) => setConfirmed(event.target.checked)}
+                  disabled={isExecuting}
+                  data-feedback-id="prompt-vault.settings.recovery.confirm.input"
+                />
                 Confirm {validation?.promptCount ?? plan.entries.length} prompt records using {policy.replaceAll("-", " ")}
               </label>
               <div className="data-actions data-actions--compact">
-                <button type="button" onClick={() => void handleExecute()} disabled={!confirmed || isExecuting}>
+                <button
+                  type="button"
+                  onClick={() => void handleExecute()}
+                  disabled={!confirmed || isExecuting}
+                  data-feedback-id="prompt-vault.settings.recovery.apply"
+                >
                   {isExecuting ? "Restoring…" : "Execute transactional restore"}
                 </button>
-                <button type="button" className="secondary-action" onClick={resetRecovery} disabled={isExecuting}>Cancel preview</button>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={resetRecovery}
+                  disabled={isExecuting}
+                  data-feedback-id="prompt-vault.settings.recovery.cancel"
+                >Cancel preview</button>
               </div>
             </section>
           )}
 
           {restoreResult && (
-            <section className="recovery-result" aria-live="polite">
+            <section
+              className="recovery-result"
+              aria-live="polite"
+              data-feedback-id="prompt-vault.settings.recovery.status"
+            >
               <h5>Restore verified</h5>
               <p>{restoreResult.newPrompts} new · {restoreResult.copiedPrompts} copied · {restoreResult.mergedVersions} versions merged · {restoreResult.skippedPrompts} prompts skipped · {restoreResult.skippedVersions} versions skipped</p>
               <p>Integrity: {restoreResult.integrityResult} · foreign-key violations: {restoreResult.foreignKeyViolationCount}</p>
               <div className="data-actions data-actions--compact">
-                <button type="button" className="secondary-action" onClick={() => void copyEvidence()}>Copy redacted evidence</button>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() => void copyEvidence()}
+                  data-feedback-id="prompt-vault.settings.recovery.evidence"
+                >Copy redacted evidence</button>
                 <button type="button" className="secondary-action" onClick={resetRecovery}>Start a new preview</button>
               </div>
             </section>
           )}
         </div>
 
-        <div className="legacy-recovery">
+        <div
+          className="legacy-recovery"
+          data-feedback-id="prompt-vault.settings.recovery.legacy"
+          data-feedback-private
+          data-feedback-redact
+        >
           <h4>Historical desktop database</h4>
           <p>Detection and recovery are native Windows-only, read-only until you explicitly confirm a restore, and never automatic.</p>
-          <button type="button" className="secondary-action" onClick={() => void handleLegacyInspection()} disabled={!isTauriAvailable() || isCheckingLegacy || isExecuting}>
+          <button
+            type="button"
+            className="secondary-action"
+            onClick={() => void handleLegacyInspection()}
+            disabled={!isTauriAvailable() || isCheckingLegacy || isExecuting}
+            data-feedback-id="prompt-vault.settings.recovery.legacy.inspect"
+          >
             {isCheckingLegacy ? "Inspecting read-only…" : "Check historical database"}
           </button>
           {!isTauriAvailable() && <p className="quiet-status">Legacy database recovery is unavailable in browser fallback.</p>}
@@ -494,7 +599,13 @@ export function SettingsPage(): React.JSX.Element {
               {legacyStatus.state === "compatible" && <p>{legacyStatus.promptCount ?? 0} prompts · {legacyStatus.versionCount ?? 0} versions · source SHA-256 recorded</p>}
               {legacyStatus.warnings.map((warning) => <p key={warning} className="warning">{warning}</p>)}
               {legacyStatus.state === "compatible" && (
-                <button type="button" className="secondary-action" onClick={() => void handleLegacyPreview()} disabled={isPreviewing || isExecuting}>Preview historical recovery</button>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() => void handleLegacyPreview()}
+                  disabled={isPreviewing || isExecuting}
+                  data-feedback-id="prompt-vault.settings.recovery.legacy.preview"
+                >Preview historical recovery</button>
               )}
             </div>
           )}
@@ -506,7 +617,13 @@ export function SettingsPage(): React.JSX.Element {
       <section className="settings-section settings-section--quiet">
         <h3>Advanced tools</h3>
         <p>Raw bundle tooling and bulk administration stay separate from everyday recovery.</p>
-        <Link className="secondary-action inline-action" to="/advanced">Open advanced tools</Link>
+        <Link
+          className="secondary-action inline-action"
+          to="/advanced"
+          data-feedback-id="prompt-vault.settings.advanced"
+        >
+          Open advanced tools
+        </Link>
       </section>
 
       <footer className="settings-footer">

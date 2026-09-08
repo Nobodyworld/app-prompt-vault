@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import type { PromptSummary } from "../types/prompt";
+import { promptFeedbackId } from "../lib/feedbackAnchors";
+import { PromptRowActions } from "./PromptRowActions";
 
 interface PromptListProps {
   readonly prompts: readonly PromptSummary[];
@@ -67,6 +69,7 @@ export function PromptList({
           const hiddenTagCount = prompt.tags.length - visibleTags.length;
           const isSelectable = Boolean(selectedPromptIds && onToggleSelected);
           const isSelected = Boolean(selectedPromptIds?.has(prompt.id));
+          const feedbackId = promptFeedbackId(prompt.id);
 
           return (
             <li
@@ -83,6 +86,9 @@ export function PromptList({
                 .join(" ")}
               data-testid="prompt-row"
               data-prompt-id={prompt.id}
+              data-feedback-id={feedbackId}
+              data-feedback-private
+              data-feedback-redact
               aria-current={isActive ? "true" : undefined}
               onPointerDown={() => onActivate?.(prompt.id)}
             >
@@ -95,6 +101,7 @@ export function PromptList({
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => onToggleSelected?.(prompt.id)}
+                    data-feedback-id={promptFeedbackId(prompt.id, "select")}
                   />
                 </label>
               )}
@@ -107,6 +114,7 @@ export function PromptList({
                   onCopy(prompt);
                 }}
                 aria-label={`Copy prompt ${label}`}
+                data-feedback-id={promptFeedbackId(prompt.id, "copy")}
               >
                 <span className="prompt-row__content">
                   <span className="prompt-row__title">{label}</span>
@@ -151,45 +159,14 @@ export function PromptList({
                 </span>
               </button>
 
-              <div className="prompt-row__actions" aria-label={`Actions for ${label}`}>
-                {onToggleFavorite && (
-                  <button
-                    type="button"
-                    className="prompt-row__favorite"
-                    aria-label={
-                      prompt.isFavorite
-                        ? `Remove ${label} from favorites`
-                        : `Add ${label} to favorites`
-                    }
-                    aria-pressed={prompt.isFavorite}
-                    disabled={isFavoritePending}
-                    onClick={() => {
-                      onActivate?.(prompt.id);
-                      onToggleFavorite(prompt);
-                    }}
-                  >
-                    <span aria-hidden="true">{prompt.isFavorite ? "★" : "☆"}</span>
-                    <span>
-                      {isFavoritePending
-                        ? "Saving…"
-                        : prompt.isFavorite
-                          ? "Favorite"
-                          : "Add favorite"}
-                    </span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="prompt-row__edit"
-                  onClick={() => {
-                    onActivate?.(prompt.id);
-                    onEdit(prompt);
-                  }}
-                  aria-label={`Edit prompt ${label}`}
-                >
-                  Edit
-                </button>
-              </div>
+              <PromptRowActions
+                prompt={prompt}
+                label={label}
+                isFavoritePending={isFavoritePending}
+                onActivate={onActivate}
+                onEdit={onEdit}
+                onToggleFavorite={onToggleFavorite}
+              />
             </li>
           );
         })}

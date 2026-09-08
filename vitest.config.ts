@@ -13,8 +13,9 @@ export default defineConfig({
       "dist/**",
       "node_modules/**",
       "tests/playwright/**",
-      // node:test harness, run by test:regressions and the CI graph gate.
+      // node:test harnesses run by test:regressions; transport also has a Vitest registration.
       "scripts/check-windows-glib.test.mjs",
+      "scripts/feedback-layer-transport.test.mjs",
     ],
     coverage: {
       ...coverage,

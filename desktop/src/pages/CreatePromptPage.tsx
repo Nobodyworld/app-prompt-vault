@@ -149,7 +149,13 @@ export function CreatePromptPage(): React.JSX.Element {
   };
 
   return (
-    <form className="prompt-form prompt-form--focused" onSubmit={handleSubmit}>
+    <form
+      className="prompt-form prompt-form--focused"
+      onSubmit={handleSubmit}
+      data-feedback-id="prompt-vault.editor.create"
+      data-feedback-private
+      data-feedback-redact
+    >
       <header className="form-heading">
         <div>
           <h2>New prompt</h2>
@@ -167,6 +173,9 @@ export function CreatePromptPage(): React.JSX.Element {
             setForm((current) => ({ ...current, title: event.target.value }))
           }
           placeholder="Example: Weekly project status update"
+          data-feedback-id="prompt-vault.editor.create.title"
+          data-feedback-private
+          data-feedback-redact
         />
       </label>
 
@@ -180,6 +189,9 @@ export function CreatePromptPage(): React.JSX.Element {
             setForm((current) => ({ ...current, body: event.target.value }))
           }
           placeholder="Write or paste the reusable prompt here…"
+          data-feedback-id="prompt-vault.editor.create.body"
+          data-feedback-private
+          data-feedback-redact
         />
       </label>
 
@@ -191,11 +203,17 @@ export function CreatePromptPage(): React.JSX.Element {
             setForm((current) => ({ ...current, tags: event.target.value }))
           }
           placeholder="writing, reporting, client-work"
+          data-feedback-id="prompt-vault.editor.create.tags"
+          data-feedback-private
+          data-feedback-redact
         />
         <small>Separate tags with commas.</small>
       </label>
 
-      <details className="advanced-fields">
+      <details
+        className="advanced-fields"
+        data-feedback-id="prompt-vault.editor.create.options"
+      >
         <summary>More options</summary>
         <div className="advanced-fields__content">
           <label>
@@ -209,6 +227,9 @@ export function CreatePromptPage(): React.JSX.Element {
                 }))
               }
               placeholder="Work, Personal, Research…"
+              data-feedback-id="prompt-vault.editor.create.category"
+              data-feedback-private
+              data-feedback-redact
             />
           </label>
 
@@ -221,6 +242,9 @@ export function CreatePromptPage(): React.JSX.Element {
                 setForm((current) => ({ ...current, rating: event.target.value }))
               }
               placeholder="1–5"
+              data-feedback-id="prompt-vault.editor.create.rating"
+              data-feedback-private
+              data-feedback-redact
             />
           </label>
 
@@ -234,6 +258,7 @@ export function CreatePromptPage(): React.JSX.Element {
                   isFavorite: event.target.checked,
                 }))
               }
+              data-feedback-id="prompt-vault.editor.create.favorite"
             />
             Mark as favorite
           </label>
@@ -257,6 +282,7 @@ export function CreatePromptPage(): React.JSX.Element {
           type="button"
           className="secondary-action"
           onClick={() => navigate("/")}
+          data-feedback-id="prompt-vault.editor.create.cancel"
         >
           Cancel
         </button>
@@ -267,10 +293,15 @@ export function CreatePromptPage(): React.JSX.Element {
             onClick={() => {
               if (window.confirm("Clear this draft?")) resetForm();
             }}
+            data-feedback-id="prompt-vault.editor.create.clear"
           >
             Clear draft
           </button>
-          <button type="submit" disabled={isSubmitting}>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            data-feedback-id="prompt-vault.editor.create.save"
+          >
             {isSubmitting ? "Saving…" : "Save prompt"}
           </button>
         </div>
