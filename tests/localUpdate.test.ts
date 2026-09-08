@@ -5,6 +5,7 @@ import {
   compareMsiProductVersions,
   evaluateRecoverySource,
   normalizeConfinedRelativePath,
+  normalizeMsiGuid,
   parseMsiProductVersion,
   planLocalUpdate,
   validateLocalUpdateManifest,
@@ -90,7 +91,6 @@ describe("local update manifest contract", () => {
         installScope: "per-user",
       },
     });
-
     const result = validateLocalUpdateManifest(candidate);
     expect(result.valid).toBe(true);
     expect(result.errors).toEqual([]);
@@ -108,10 +108,11 @@ describe("local update manifest contract", () => {
     "\\\\server\\share\\candidate.msi",
     "/absolute/candidate.msi",
     "bundle//candidate.msi",
+    "bundle/candidate.msi:stream",
+    "bundle/candidate.msi.",
+    "bundle/candidate.msi ",
   ])("rejects escaping or ambiguous artifact path %s", (relativePath) => {
-    const candidate = manifest({
-      artifact: { ...manifest().artifact, relativePath },
-    });
+    const candidate = manifest({ artifact: { ...manifest().artifact, relativePath } });
     const result = validateLocalUpdateManifest(candidate);
     expect(result.valid).toBe(false);
     expect(result.errors).toContain("artifact.relativePath must be a confined relative path.");
@@ -120,11 +121,7 @@ describe("local update manifest contract", () => {
   it("rejects malformed identity, digests, source commit, and unsupported scope", () => {
     const candidate = {
       ...manifest(),
-      application: {
-        identifier: "foreign.app",
-        version: "0.5.0.1",
-        sourceCommit: "abc",
-      },
+      application: { identifier: "foreign.app", version: "0.5.0.1", sourceCommit: "abc" },
       artifact: { ...manifest().artifact, sha256: "not-a-hash" },
       msi: {
         productCode: "not-a-guid",
@@ -148,6 +145,12 @@ describe("local update manifest contract", () => {
       ]),
     );
   });
+
+  it("rejects mismatched GUID braces while accepting bare canonical GUIDs", () => {
+    expect(normalizeMsiGuid("11111111-1111-1111-1111-111111111111")).toBe(PRODUCT_CODE);
+    expect(normalizeMsiGuid("{11111111-1111-1111-1111-111111111111")).toBeNull();
+    expect(normalizeMsiGuid("11111111-1111-1111-1111-111111111111}")).toBeNull();
+  });
 });
 
 describe("Windows Installer ProductVersion ordering", () => {
@@ -162,9 +165,11 @@ describe("Windows Installer ProductVersion ordering", () => {
     },
   );
 
-  expect(compareMsiProductVersions("0.4.0", "0.5.0")).toBe(-1);
-  expect(compareMsiProductVersions("1.0.0", "1.0.0")).toBe(0);
-  expect(compareMsiProductVersions("2.0.0", "1.255.65535")).toBe(1);
+  it("compares only the supported three MSI fields", () => {
+    expect(compareMsiProductVersions("0.4.0", "0.5.0")).toBe(-1);
+    expect(compareMsiProductVersions("1.0.0", "1.0.0")).toBe(0);
+    expect(compareMsiProductVersions("2.0.0", "1.255.65535")).toBe(1);
+  });
 });
 
 describe("installed update planning", () => {
@@ -192,16 +197,21 @@ describe("installed update planning", () => {
 
   it("returns no-op only when same-version package and executable identity match", () => {
     const candidate = manifest();
-    const plan = planLocalUpdate(
-      candidate,
-      installed({
-        version: "0.5.0",
-        executableSha256: candidate.executable.sha256,
-        productCode: candidate.msi.productCode,
-        packageCode: candidate.msi.packageCode,
-      }),
-    );
-    expect(plan).toMatchObject({ decision: "no-op", mutatesInstallation: false });
+    const matching = installed({
+      version: "0.5.0",
+      executableSha256: candidate.executable.sha256,
+      productCode: candidate.msi.productCode,
+      upgradeCode: candidate.msi.upgradeCode,
+      packageCode: candidate.msi.packageCode,
+    });
+    expect(planLocalUpdate(candidate, matching)).toMatchObject({
+      decision: "no-op",
+      mutatesInstallation: false,
+    });
+    expect(
+      planLocalUpdate(candidate, matching ? { ...matching, upgradeCode: "{99999999-9999-9999-9999-999999999999}" } : matching)
+        .decision,
+    ).toBe("refuse-same-version-different-payload");
   });
 
   it("allows only a higher version with matching UpgradeCode", () => {
@@ -256,15 +266,20 @@ describe("recovery source precondition", () => {
 });
 
 describe("failure classification", () => {
-  it("does not claim rollback for a failed MSI transaction", () => {
-    expect(
-      classifyLocalUpdateOutcome({ installerLaunched: true, installerExitCode: 1603 }),
-    ).toEqual({
+  it("requires rollback verification after a failed MSI transaction", () => {
+    expect(classifyLocalUpdateOutcome({ installerLaunched: true, installerExitCode: 1603 })).toEqual({
       kind: "transaction-failed",
       installerCommitted: false,
-      recoveryRequired: false,
       transactionRollbackProven: false,
+      followUp: "verify-transaction-rollback",
     });
+    expect(
+      classifyLocalUpdateOutcome({
+        installerLaunched: true,
+        installerExitCode: 1603,
+        transactionRollbackProven: true,
+      }),
+    ).toMatchObject({ transactionRollbackProven: true, followUp: "none" });
   });
 
   it("classifies post-commit verification and restart failures as recovery-required", () => {
@@ -274,7 +289,7 @@ describe("failure classification", () => {
         installerExitCode: 0,
         postInstallVerificationPassed: false,
       }),
-    ).toMatchObject({ kind: "committed-verification-failed", recoveryRequired: true });
+    ).toMatchObject({ kind: "committed-verification-failed", followUp: "recovery-required" });
     expect(
       classifyLocalUpdateOutcome({
         installerLaunched: true,
@@ -283,10 +298,10 @@ describe("failure classification", () => {
         restartAttempted: true,
         restartPassed: false,
       }),
-    ).toMatchObject({ kind: "committed-restart-failed", recoveryRequired: true });
+    ).toMatchObject({ kind: "committed-restart-failed", followUp: "recovery-required" });
   });
 
-  it("distinguishes ordinary success from reboot-required success", () => {
+  it("distinguishes ordinary success, reboot-required success, and no launch", () => {
     expect(
       classifyLocalUpdateOutcome({
         installerLaunched: true,
@@ -301,9 +316,12 @@ describe("failure classification", () => {
         postInstallVerificationPassed: true,
       }).kind,
     ).toBe("success-reboot-required");
-    expect(classifyLocalUpdateOutcome({ installerLaunched: false, installerExitCode: null }).kind).toBe(
-      "not-started",
-    );
+    expect(classifyLocalUpdateOutcome({ installerLaunched: false, installerExitCode: null })).toEqual({
+      kind: "not-started",
+      installerCommitted: false,
+      transactionRollbackProven: false,
+      followUp: "none",
+    });
   });
 });
 

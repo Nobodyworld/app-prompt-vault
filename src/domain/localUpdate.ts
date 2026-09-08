@@ -90,11 +90,16 @@ export type LocalUpdateOutcomeKind =
   | "success"
   | "success-reboot-required";
 
+export type LocalUpdateFollowUp =
+  | "none"
+  | "verify-transaction-rollback"
+  | "recovery-required";
+
 export interface LocalUpdateOutcome {
   readonly kind: LocalUpdateOutcomeKind;
   readonly installerCommitted: boolean;
-  readonly recoveryRequired: boolean;
-  readonly transactionRollbackProven: false;
+  readonly transactionRollbackProven: boolean;
+  readonly followUp: LocalUpdateFollowUp;
 }
 
 interface VersionTriplet {
@@ -126,11 +131,11 @@ function readPositiveInteger(
   errors: string[],
 ): number | null {
   const value = record[field];
-  if (!Number.isSafeInteger(value) || Number(value) <= 0) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
     errors.push(`${field} must be a positive safe integer.`);
     return null;
   }
-  return Number(value);
+  return value;
 }
 
 export function normalizeSha256(value: string): string | null {
@@ -140,7 +145,10 @@ export function normalizeSha256(value: string): string | null {
 
 export function normalizeMsiGuid(value: string): string | null {
   const normalized = value.trim().toUpperCase();
-  const bare = normalized.replace(/^\{/, "").replace(/\}$/, "");
+  const hasOpenBrace = normalized.startsWith("{");
+  const hasCloseBrace = normalized.endsWith("}");
+  if (hasOpenBrace !== hasCloseBrace) return null;
+  const bare = hasOpenBrace ? normalized.slice(1, -1) : normalized;
   if (!/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(bare)) {
     return null;
   }
@@ -153,13 +161,22 @@ export function normalizeConfinedRelativePath(value: string): string | null {
   if (
     normalized.length === 0 ||
     normalized.startsWith("/") ||
-    normalized.startsWith("//") ||
-    /^[A-Za-z]:/.test(normalized)
+    /^[A-Za-z]:/.test(normalized) ||
+    normalized.includes(":")
   ) {
     return null;
   }
   const segments = normalized.split("/");
-  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
+  if (
+    segments.some(
+      (segment) =>
+        segment.length === 0 ||
+        segment === "." ||
+        segment === ".." ||
+        segment.endsWith(".") ||
+        segment.endsWith(" "),
+    )
+  ) {
     return null;
   }
   return segments.join("/");
@@ -235,7 +252,9 @@ export function validateLocalUpdateManifest(value: unknown): ManifestValidationR
   if (artifactPath && !normalizeConfinedRelativePath(artifactPath)) {
     errors.push("artifact.relativePath must be a confined relative path.");
   }
-  if (artifactSha && !normalizeSha256(artifactSha)) errors.push("artifact.sha256 must be a SHA-256 hex digest.");
+  if (artifactSha && !normalizeSha256(artifactSha)) {
+    errors.push("artifact.sha256 must be a SHA-256 hex digest.");
+  }
   if (productCode && !normalizeMsiGuid(productCode)) errors.push("msi.productCode must be a GUID.");
   if (upgradeCode && !normalizeMsiGuid(upgradeCode)) errors.push("msi.upgradeCode must be a GUID.");
   if (packageCode && !normalizeMsiGuid(packageCode)) errors.push("msi.packageCode must be a GUID.");
@@ -245,9 +264,9 @@ export function validateLocalUpdateManifest(value: unknown): ManifestValidationR
   if (executablePath && !normalizeConfinedRelativePath(executablePath)) {
     errors.push("executable.relativePath must be a confined relative path.");
   }
-  if (fileVersion && fileVersion.trim().length === 0) errors.push("executable.fileVersion cannot be empty.");
-  if (productVersion && productVersion.trim().length === 0) errors.push("executable.productVersion cannot be empty.");
-  if (executableSha && !normalizeSha256(executableSha)) errors.push("executable.sha256 must be a SHA-256 hex digest.");
+  if (executableSha && !normalizeSha256(executableSha)) {
+    errors.push("executable.sha256 must be a SHA-256 hex digest.");
+  }
 
   if (errors.length > 0) return { valid: false, errors };
 
@@ -321,6 +340,7 @@ export function planLocalUpdate(
     const samePayload =
       normalizeSha256(installed.executableSha256) === manifest.executable.sha256 &&
       normalizeMsiGuid(installed.productCode) === manifest.msi.productCode &&
+      normalizeMsiGuid(installed.upgradeCode) === manifest.msi.upgradeCode &&
       normalizeMsiGuid(installed.packageCode) === manifest.msi.packageCode;
     return samePayload
       ? {
@@ -354,6 +374,9 @@ function verifyFileEvidence(file: VerifiedFileEvidence, label: string, errors: s
   if (!Number.isSafeInteger(file.expectedByteLength) || file.expectedByteLength <= 0) {
     errors.push(`${label} expected byte length is invalid.`);
   }
+  if (!Number.isSafeInteger(file.actualByteLength) || file.actualByteLength <= 0) {
+    errors.push(`${label} actual byte length is invalid.`);
+  }
   if (file.actualByteLength !== file.expectedByteLength) errors.push(`${label} byte length does not match.`);
   const expectedSha = normalizeSha256(file.expectedSha256);
   const actualSha = normalizeSha256(file.actualSha256);
@@ -373,6 +396,7 @@ export function evaluateRecoverySource(evidence: RecoverySourceEvidence): Recove
 export function classifyLocalUpdateOutcome(input: {
   readonly installerLaunched: boolean;
   readonly installerExitCode: number | null;
+  readonly transactionRollbackProven?: boolean;
   readonly postInstallVerificationPassed?: boolean;
   readonly restartAttempted?: boolean;
   readonly restartPassed?: boolean;
@@ -381,38 +405,39 @@ export function classifyLocalUpdateOutcome(input: {
     return {
       kind: "not-started",
       installerCommitted: false,
-      recoveryRequired: false,
       transactionRollbackProven: false,
+      followUp: "none",
     };
   }
   if (input.installerExitCode !== 0 && input.installerExitCode !== 3010) {
+    const rollbackProven = input.transactionRollbackProven === true;
     return {
       kind: "transaction-failed",
       installerCommitted: false,
-      recoveryRequired: false,
-      transactionRollbackProven: false,
+      transactionRollbackProven: rollbackProven,
+      followUp: rollbackProven ? "none" : "verify-transaction-rollback",
     };
   }
   if (input.postInstallVerificationPassed === false) {
     return {
       kind: "committed-verification-failed",
       installerCommitted: true,
-      recoveryRequired: true,
       transactionRollbackProven: false,
+      followUp: "recovery-required",
     };
   }
   if (input.restartAttempted && input.restartPassed === false) {
     return {
       kind: "committed-restart-failed",
       installerCommitted: true,
-      recoveryRequired: true,
       transactionRollbackProven: false,
+      followUp: "recovery-required",
     };
   }
   return {
     kind: input.installerExitCode === 3010 ? "success-reboot-required" : "success",
     installerCommitted: true,
-    recoveryRequired: false,
     transactionRollbackProven: false,
+    followUp: "none",
   };
 }
