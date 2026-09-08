@@ -156,8 +156,8 @@ export function normalizeMsiGuid(value: string): string | null {
 }
 
 export function normalizeConfinedRelativePath(value: string): string | null {
-  if (value.includes("\0")) return null;
-  const normalized = value.trim().replaceAll("\\", "/");
+  if (value !== value.trim() || value.includes("\0")) return null;
+  const normalized = value.replaceAll("\\", "/");
   if (
     normalized.length === 0 ||
     normalized.startsWith("/") ||
