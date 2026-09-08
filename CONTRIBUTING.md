@@ -41,6 +41,7 @@ Run the checks relevant to the change. The standard Node and UI matrix is:
 
 ```bash
 pnpm audit --prod --audit-level=high
+node --test scripts/check-windows-glib.test.mjs
 pnpm repository:audit
 pnpm lint
 pnpm typecheck
@@ -58,10 +59,12 @@ Native or Tauri changes should also pass:
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 cargo test --locked --manifest-path src-tauri/Cargo.toml
-cargo tree --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --invert glib
+node scripts/check-windows-glib.mjs
 cargo audit --file src-tauri/Cargo.lock
 pnpm tauri:build
 ```
+
+The Windows graph check requires a successful, nonempty full target query before concluding that `glib` is absent. A Cargo failure is not evidence of absence. CI runs the production dependency audit before native builds; all native and Node checks remain required where applicable.
 
 Documentation-only changes should at minimum pass `pnpm repository:audit` and `git diff --check`, followed by the repository's exact-head hosted checks.
 
@@ -70,7 +73,9 @@ State exactly which checks ran, their results, and which checks were not run. A 
 ## Working and delivery rules
 
 - Start material work from an exact accepted base in a focused branch, isolated worktree, or isolated clone.
+- Verify root, origin, branch, full HEAD, upstream/ahead-behind state, working-tree status, and `git worktree list --porcelain` before edits. Preserve an unused primary checkout even if its branch is not named `main`.
 - Do not clean, reset, overwrite, or repurpose a protected or dirty primary checkout.
+- A failed gate stops unsafe mutation or promotion; diagnose and repair ordinary related defects within the authorized scope, then rerun affected checks.
 - Use disposable databases and synthetic prompt content for development and acceptance.
 - Keep the normal Prompt Vault database and historical source databases unchanged unless the owner explicitly authorizes a reviewed operation.
 - Open material work as a focused pull request, normally in draft state.

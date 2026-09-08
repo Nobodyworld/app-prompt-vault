@@ -7,7 +7,15 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    exclude: ["dist/**", "node_modules/**", "tests/playwright/**"],
+    // Keep concurrent file-backed database fixtures within the existing timeouts.
+    maxWorkers: 2,
+    exclude: [
+      "dist/**",
+      "node_modules/**",
+      "tests/playwright/**",
+      // node:test harness, run by test:regressions and the CI graph gate.
+      "scripts/check-windows-glib.test.mjs",
+    ],
     coverage: {
       ...coverage,
       include: ["src/**/*.ts"],
