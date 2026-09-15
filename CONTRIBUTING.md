@@ -6,18 +6,17 @@ Prompt Vault is proprietary source-available software maintained by Nobody Produ
 
 The source tree is self-contained: it declares no `workspace:*` dependencies, private `@nw/*` packages, parent-level configuration, or native package paths outside this repository.
 
-The repository contains reviewed `pnpm-lock.yaml` and `src-tauri/Cargo.lock` files. Clean-checkout Node, Playwright, Rust, Tauri, Windows packaging, restart, persistence, and database-preservation validation established the standalone **source-preview** boundary. The accepted v0.4 product baseline is merged on `main` at:
+The repository contains reviewed `pnpm-lock.yaml` and `src-tauri/Cargo.lock` files. Clean-checkout Node, Playwright, Rust, Tauri, Windows packaging, restart, persistence, and database-preservation validation established the standalone **source-preview** boundary.
+
+Current validated `main` is:
 
 ```text
-6b03686df629494d9814ee4c12064556c249622b
+d50532778235b5de28b2276adb71ce6a963e427f
 ```
 
-Default-branch workflow `33031847574` concluded successfully. That evidence
-does not authorize a supported downloadable release, signed installer,
-production deployment, or public-network service. Every new candidate still
-requires validation at its exact final commit. Application-version convergence
-is tracked by [issue #71](../../issues/71), and reusable native-validation
-ownership is tracked separately by [issue #64](../../issues/64).
+Default-branch workflow `34269176064` concluded successfully after PR #79 merged the deterministic, non-mutating updater contract. This evidence does not authorize MSI/UAC mutation, a supported downloadable release, signed installer, production deployment, or public-network service.
+
+The completed v0.4 data-safety and recovery product milestone remains the historical accepted baseline at `6b03686df629494d9814ee4c12064556c249622b` with workflow `33031847574`. Issue #73 is the active installed-update line of work; its next slice is read-only artifact/installed identity, recovery evidence, and update planning. Reusable native-validation ownership is tracked separately by [issue #64](../../issues/64).
 
 ## Toolchain and bootstrap
 
@@ -82,6 +81,14 @@ State exactly which checks ran, their results, and which checks were not run. A 
 - Keep pull requests unmerged until review, final-head validation, required native acceptance, and explicit owner authorization are complete.
 - Do not enable auto-merge, publish a release, distribute an installer, sign artifacts, or change repository visibility as part of ordinary contribution work.
 
+## Installed-build workflow boundary
+
+- `pnpm desktop:reinstall-local` is an explicit uninstall-first clean local reinstall. It is exceptional maintenance, not an update-validation path.
+- `pnpm desktop:refresh-installed` is retired and must not perform uninstall-first replacement under a refresh label.
+- There is no `desktop:update-installed` command yet.
+- Changes under issue #73 must keep read-only planning separate from mutating MSI/UAC execution until the required attended synthetic acceptance has passed.
+- Do not use clean-reinstall success as evidence that the verified installed updater is safe.
+
 ## Change requirements
 
 - Keep prompt bodies, credentials, tokens, personal data, private paths, and environment dumps out of logs, fixtures, screenshots, telemetry, and public evidence.
@@ -103,5 +110,6 @@ Do not disclose suspected vulnerabilities in a public issue, pull request, discu
 - [Documentation index](docs/README.md)
 - [Standalone dependency matrix](docs/developer-guide/standalone-dependency-matrix.md)
 - [Developer workflows](docs/developer-guide/workflows.md)
+- [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md)
 - [Security policy](docs/security/policies/security.md)
-- [Current data-safety milestone](../../issues/58)
+- [Current installed-update work](../../issues/73)
