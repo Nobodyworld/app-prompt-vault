@@ -1,10 +1,15 @@
 [CmdletBinding()]
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$ConfirmReinstall
 )
 
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
+
+if (-not $ConfirmReinstall) {
+    throw "This script performs an uninstall-first clean local reinstall. Re-run only when that behavior is intended, using -ConfirmReinstall. For ordinary installed-build update work, follow issue #73 instead."
+}
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $bundleRoot = Join-Path $repoRoot "src-tauri\target\release\bundle\msi"
@@ -39,11 +44,13 @@ function Get-MsiProductCode([object]$installRecord) {
 
 Push-Location $repoRoot
 try {
-    Write-Host "Prompt Vault local desktop refresh" -ForegroundColor Cyan
+    Write-Host "Prompt Vault explicit clean local reinstall" -ForegroundColor Cyan
     Write-Host "Publisher metadata: Nobody Production"
     Write-Host "Trust status: unsigned local development package" -ForegroundColor Yellow
     Write-Host "Windows may display 'Unknown publisher' until trusted production code signing is configured." -ForegroundColor Yellow
-    Write-Host "This workflow preserves the local Prompt Vault database." -ForegroundColor Yellow
+    Write-Host "WARNING: this is not an in-place updater." -ForegroundColor Yellow
+    Write-Host "It force-closes prompt-vault-app and uninstalls the currently registered Prompt Vault MSI before installing the selected local build." -ForegroundColor Yellow
+    Write-Host "The workflow is intended only for an explicitly requested clean local reinstall and preserves the normal Prompt Vault database path." -ForegroundColor Yellow
     Write-Host ""
 
     if (-not $SkipBuild) {
@@ -69,6 +76,12 @@ try {
         "No trusted signer attached"
     }
 
+    Write-Host "Clean reinstall package candidate:" -ForegroundColor Cyan
+    Write-Host "  Package: $($msi.FullName)"
+    Write-Host "  Manufacturer metadata: Nobody Production"
+    Write-Host "  Signature status: $($signature.Status)"
+    Write-Host "  Signer: $signatureLabel"
+
     Get-Process -Name "prompt-vault-app" -ErrorAction SilentlyContinue |
         Stop-Process -Force
 
@@ -76,10 +89,10 @@ try {
     if ($installed) {
         $productCode = Get-MsiProductCode $installed
         if (-not $productCode) {
-            throw "Prompt Vault is installed, but its MSI product code could not be determined safely. Uninstall it from Windows Installed Apps, then rerun this command."
+            throw "Prompt Vault is installed, but its MSI product code could not be determined safely. Uninstall it from Windows Installed Apps, then rerun this explicit clean reinstall command."
         }
 
-        Write-Host "Replacing the previously installed local Prompt Vault build..." -ForegroundColor Cyan
+        Write-Host "Explicit clean reinstall: uninstalling the previously installed local Prompt Vault MSI..." -ForegroundColor Cyan
         $uninstall = Start-Process -FilePath "msiexec.exe" `
             -ArgumentList "/x $productCode /passive /norestart" `
             -Wait `
@@ -107,7 +120,7 @@ try {
         throw "Windows Installer install failed with exit code $($install.ExitCode)."
     }
 
-    Write-Host "Installed Prompt Vault was refreshed successfully." -ForegroundColor Green
+    Write-Host "Prompt Vault clean local reinstall completed successfully." -ForegroundColor Green
     Write-Host "User data was not removed. Expected database path:" -ForegroundColor Yellow
     Write-Host "  $dataPath"
 
@@ -122,7 +135,7 @@ try {
     if ($shortcut) {
         Start-Process -FilePath $shortcut.FullName
     } else {
-        Write-Warning "The install completed, but a Prompt Vault Start-menu shortcut was not located automatically."
+        Write-Warning "The clean reinstall completed, but a Prompt Vault Start-menu shortcut was not located automatically."
     }
 
     $schemaChanges = git status --short -- src-tauri/gen/schemas
