@@ -2,7 +2,7 @@
 
 This directory contains product, development, operations, security, and release documentation for Prompt Vault.
 
-> Source code, the repository README, and current acceptance records are authoritative when an older planning document conflicts with current behavior. Closed issue #26 is historical planning context, not a current governing release gate.
+> Source code, the repository README, current acceptance records, and open governing issues are authoritative when an older planning document conflicts with current behavior. Closed issue #26 is historical planning context, not a current governing release gate.
 
 ## Start here
 
@@ -25,8 +25,10 @@ This directory contains product, development, operations, security, and release 
 - Raw bundle text, cross-app payloads, and bulk administration are advanced tools.
 - The desktop app is independent even when integrated into a larger Nobodyworld system.
 - Windows uninstall currently preserves the local Prompt Vault database.
+- `desktop:reinstall-local` is an explicit uninstall-first clean reinstall; it is not an updater.
+- `desktop:refresh-installed` is retired, and issue #73 owns the not-yet-enabled verified installed-update path.
 
-See [Product experience](product-experience.md) for the detailed hierarchy, exact-head local validation record, installer hashes, and current/legacy data-location findings.
+See [Product experience](product-experience.md) for the detailed hierarchy and validation context, and [Windows local desktop workflow](developer-guide/windows-local-desktop-workflow.md) for the current install/update boundary.
 
 ## Development and automation
 
@@ -61,7 +63,8 @@ See [Product experience](product-experience.md) for the detailed hierarchy, exac
 ## Current product status
 
 - Prompt Vault remains a proprietary source-available source preview with no supported downloadable release or GitHub Release.
-- The accepted default-branch validation record is documented in the repository README and [Product experience](product-experience.md).
-- Current application version is 0.4.0 at accepted v0.4 source baseline
-  `6b03686df629494d9814ee4c12064556c249622b`; unsigned workflow installers
-  remain validation evidence only.
+- Current application version is 0.4.0.
+- Current validated `main` is `d50532778235b5de28b2276adb71ce6a963e427f`; default-branch workflow `34269176064` passed after PR #79 merged the deterministic, non-mutating updater contract.
+- The accepted v0.4 data-safety/recovery milestone remains historical baseline `6b03686df629494d9814ee4c12064556c249622b`; later validated work does not rewrite that milestone.
+- The next issue #73 slice is read-only selected-MSI, installed-identity, recovery-evidence, and update planning. MSI/UAC mutation remains separately gated.
+- Unsigned workflow installers remain validation evidence only.
