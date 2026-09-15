@@ -8,13 +8,13 @@ The source tree is self-contained: it declares no `workspace:*` dependencies, pr
 
 The repository contains reviewed `pnpm-lock.yaml` and `src-tauri/Cargo.lock` files. Clean-checkout Node, Playwright, Rust, Tauri, Windows packaging, restart, persistence, and database-preservation validation established the standalone **source-preview** boundary.
 
-Current validated `main` is:
+PR #79's accepted deterministic updater-contract baseline is:
 
 ```text
 d50532778235b5de28b2276adb71ce6a963e427f
 ```
 
-Default-branch workflow `34269176064` concluded successfully after PR #79 merged the deterministic, non-mutating updater contract. This evidence does not authorize MSI/UAC mutation, a supported downloadable release, signed installer, production deployment, or public-network service.
+Default-branch workflow `34269176064` concluded successfully on that exact commit. This is an acceptance record rather than a live `main` pointer; every later candidate still requires validation at its exact final commit. The evidence does not authorize MSI/UAC mutation, a supported downloadable release, signed installer, production deployment, or public-network service.
 
 The completed v0.4 data-safety and recovery product milestone remains the historical accepted baseline at `6b03686df629494d9814ee4c12064556c249622b` with workflow `33031847574`. Issue #73 is the active installed-update line of work; its next slice is read-only artifact/installed identity, recovery evidence, and update planning. Reusable native-validation ownership is tracked separately by [issue #64](../../issues/64).
 
