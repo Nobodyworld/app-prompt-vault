@@ -95,10 +95,10 @@ Supported credentials are Prompt Vault `HS256` JWTs signed with an explicitly in
 
 Without `JWT_SECRET`, the local server can still start and configured API keys can authenticate, but JWT verification and issuance remain disabled. A valid API key sent to `/auth/token` receives a deliberate `503`; Prompt Vault does not create a process-local random signing authority. See [HTTP security](docs/SECURITY.md) for the exact token schema, 60-second clock-skew rule, and plaintext-data limitations.
 
-## Current default-branch validation
+## Accepted updater-contract baseline
 
-The current validated `main` includes the deterministic, non-mutating local
-updater contract merged through PR #79:
+PR #79 established the accepted deterministic, non-mutating updater-contract
+baseline at:
 
 ```text
 Main:     d50532778235b5de28b2276adb71ce6a963e427f
@@ -106,16 +106,17 @@ Workflow: 34269176064
 Result:   success
 ```
 
-That workflow passed the repository's public-release invariants, Node/UI
-validation, Rust validation, and Windows Tauri bundle jobs. It validates the
-source-preview head; it does **not** authorize MSI/UAC mutation, a Git tag,
-GitHub Release, supported installer, signing, public update channel, or
-production deployment.
+That exact baseline passed the repository's public-release invariants, Node/UI
+validation, Rust validation, and Windows Tauri bundle jobs. It does **not**
+authorize MSI/UAC mutation, a Git tag, GitHub Release, supported installer,
+signing, public update channel, or production deployment. Every later candidate
+requires its own exact-head validation; this block is an acceptance record, not
+a live `main` pointer.
 
 The completed v0.4 data-safety and recovery product milestone remains the
 historical accepted product baseline at
 `6b03686df629494d9814ee4c12064556c249622b` with workflow `33031847574`.
-Later validated default-branch work does not rewrite that historical milestone.
+Later validated work does not rewrite that historical milestone.
 
 ### Historical standalone validation measurements
 
