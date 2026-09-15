@@ -130,14 +130,15 @@ automatic backups, cloud sync, or a supported distribution channel.
 
 The current uninstall behavior is data-preserving. Documentation must not imply that uninstall deletes prompts. A future delete-local-data flow, if added, should be explicit and separate from routine uninstall.
 
-## Current default-branch validation record
+## Accepted updater-contract validation record
 
-Current validated `main` is exact commit
-`d50532778235b5de28b2276adb71ce6a963e427f`. Default-branch workflow
-`34269176064` concluded successfully after PR #79 merged the deterministic,
-non-mutating local updater contract. This source-preview evidence does not
-authorize MSI/UAC mutation, a supported installer, signing, a GitHub Release,
-public update channel, or production deployment.
+PR #79 established the accepted deterministic, non-mutating updater-contract
+baseline at exact commit `d50532778235b5de28b2276adb71ce6a963e427f`.
+Default-branch workflow `34269176064` concluded successfully on that exact
+baseline. This source-preview evidence does not authorize MSI/UAC mutation, a
+supported installer, signing, a GitHub Release, public update channel, or
+production deployment. Later candidates require their own exact-head
+validation; this is an acceptance record rather than a live branch pointer.
 
 The accepted v0.4 data-safety and recovery product milestone remains the
 historical baseline at `6b03686df629494d9814ee4c12064556c249622b`
