@@ -19,8 +19,9 @@ This is a dated repository-truth snapshot, not a live branch pointer. Every late
 ## Repository state
 
 Application-version and repository-truth convergence for 0.4.0 is complete.
-Package, Tauri, Cargo, lockfile, CLI/runtime, changelog, release-note, and
-project-stage identity remain synchronized and mechanically audited.
+Application version and identity are synchronized and mechanically audited
+across package, Tauri, Cargo, lockfile, CLI/runtime, changelog, release-note,
+and project-stage surfaces.
 
 PR #79 is merged. It adds the deterministic, non-mutating updater contract for
 manifest/path/hash/MSI identity validation, three-field MSI version ordering,
