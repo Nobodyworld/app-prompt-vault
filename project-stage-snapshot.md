@@ -6,17 +6,15 @@
 
 **Status:** public source preview / pre-release
 
-**Current validated `main`:** `d50532778235b5de28b2276adb71ce6a963e427f`
+**Accepted PR #79 updater-contract baseline:** `d50532778235b5de28b2276adb71ce6a963e427f`
 
-**Current default-branch workflow:** `34269176064`
+**Baseline workflow:** `34269176064`
 
-**Current default-branch workflow conclusion:** success
+**Baseline workflow conclusion:** success
 
 **Historical accepted v0.4 product baseline:** `6b03686df629494d9814ee4c12064556c249622b`
 
-This is the current repository-truth snapshot. The application version records
-a source milestone; it does not establish a Git tag, GitHub Release, supported
-installer, signing authority, update channel, or production readiness.
+This is a dated repository-truth snapshot, not a live branch pointer. Every later candidate requires its own exact-head validation. The application version records a source milestone; it does not establish a Git tag, GitHub Release, supported installer, signing authority, update channel, or production readiness.
 
 ## Repository state
 
@@ -82,4 +80,4 @@ license and documented local-only boundaries.
 | Tauri application | Local source-buildable pre-release; unsigned artifacts are validation evidence only |
 | Local install/update workflow | Explicit clean reinstall exists; verified updater remains read-only planning work under #73 |
 | Automation and integration | App-owned contracts; external integrations remain optional |
-| Documentation and operations | Aligned to current validated `main`, application version 0.4.0, and the active #73 boundary |
+| Documentation and operations | Aligned to the accepted PR #79 baseline, application version 0.4.0, and the active #73 boundary; later heads require exact-head validation |
