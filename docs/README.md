@@ -64,7 +64,7 @@ See [Product experience](product-experience.md) for the detailed hierarchy and v
 
 - Prompt Vault remains a proprietary source-available source preview with no supported downloadable release or GitHub Release.
 - Current application version is 0.4.0.
-- Current validated `main` is `d50532778235b5de28b2276adb71ce6a963e427f`; default-branch workflow `34269176064` passed after PR #79 merged the deterministic, non-mutating updater contract.
+- PR #79's accepted deterministic updater-contract baseline is `d50532778235b5de28b2276adb71ce6a963e427f`; default-branch workflow `34269176064` passed on that exact commit. This is an acceptance record, not a live `main` pointer; later candidates require their own exact-head validation.
 - The accepted v0.4 data-safety/recovery milestone remains historical baseline `6b03686df629494d9814ee4c12064556c249622b`; later validated work does not rewrite that milestone.
 - The next issue #73 slice is read-only selected-MSI, installed-identity, recovery-evidence, and update planning. MSI/UAC mutation remains separately gated.
 - Unsigned workflow installers remain validation evidence only.
