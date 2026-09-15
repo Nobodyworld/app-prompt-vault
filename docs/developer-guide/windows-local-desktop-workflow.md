@@ -68,12 +68,14 @@ This Windows-only command is an **exceptional clean reinstall**, not an installe
 
 1. requires the explicit reinstall command;
 2. builds fresh MSI and NSIS packages from the current branch unless the script is called with `-SkipBuild`;
-3. reports package manufacturer metadata, Authenticode signature status, signer identity, and SHA-256;
-4. force-closes a running `prompt-vault-app` process;
-5. detects and uninstalls the currently registered Prompt Vault MSI package when present;
-6. installs the selected locally built MSI;
-7. launches the Start-menu shortcut when found;
-8. reports any tracked Tauri schema files regenerated during packaging.
+3. selects exactly one current-version MSI after a build, or requires an explicit MSI path when reusing existing output;
+4. reports package manufacturer metadata, Authenticode signature status, signer identity, and SHA-256;
+5. refuses ambiguous Prompt Vault uninstall registrations;
+6. verifies any running `prompt-vault-app` process is under the registered install location before force-closing it;
+7. uninstalls the currently registered Prompt Vault MSI package when present;
+8. installs the selected locally built MSI;
+9. launches the Start-menu shortcut when found;
+10. reports any tracked Tauri schema files regenerated during packaging.
 
 Do not use this command as a substitute for an in-place update. It intentionally crosses an uninstall boundary and therefore does not prove Windows Installer update, rollback, or installed-identity behavior.
 
@@ -91,14 +93,17 @@ The clean-reinstall workflow does not delete application data. The expected curr
 %LOCALAPPDATA%\com.nobodyworld.promptvault\prompt-vault.db
 ```
 
-To reuse an already built MSI without rebuilding, call the script explicitly and acknowledge its behavior:
+To reuse an already built MSI without rebuilding, call the script explicitly, acknowledge its behavior, and select the exact MSI instead of relying on timestamps:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass `
   -File scripts/windows/install-local-build.ps1 `
   -ConfirmReinstall `
-  -SkipBuild
+  -SkipBuild `
+  -MsiPath 'src-tauri\target\release\bundle\msi\Prompt Vault_0.4.0_x64_en-US.msi'
 ```
+
+If the exact filename differs, inspect the bundle directory and supply that exact `.msi` path. The script accepts only an MSI contained under the repository's MSI bundle directory.
 
 ### Verified installed update work
 
