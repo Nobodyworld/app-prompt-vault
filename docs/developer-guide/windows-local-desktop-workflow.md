@@ -58,36 +58,60 @@ This command:
 
 Use it to inspect optimized release behavior without replacing the installed application.
 
-### Refresh the Windows-installed copy
+### Explicit clean local reinstall
+
+```powershell
+pnpm desktop:reinstall-local
+```
+
+This Windows-only command is an **exceptional clean reinstall**, not an installed-build updater. It deliberately:
+
+1. requires the explicit reinstall command;
+2. builds fresh MSI and NSIS packages from the current branch unless the script is called with `-SkipBuild`;
+3. selects exactly one current-version MSI after a build, or requires an explicit MSI path when reusing existing output;
+4. reports package manufacturer metadata, Authenticode signature status, signer identity, and SHA-256;
+5. refuses ambiguous Prompt Vault uninstall registrations;
+6. verifies any running `prompt-vault-app` process is under the registered install location before force-closing it;
+7. uninstalls the currently registered Prompt Vault MSI package when present;
+8. installs the selected locally built MSI;
+9. launches the Start-menu shortcut when found;
+10. reports any tracked Tauri schema files regenerated during packaging.
+
+Do not use this command as a substitute for an in-place update. It intentionally crosses an uninstall boundary and therefore does not prove Windows Installer update, rollback, or installed-identity behavior.
+
+The legacy command name is retired:
 
 ```powershell
 pnpm desktop:refresh-installed
 ```
 
-This Windows-only command:
+It now exits with an error instead of silently performing uninstall-first replacement.
 
-1. identifies the operation as a local development refresh before changing Windows installation state;
-2. builds fresh MSI and NSIS packages from the current branch;
-3. reports package manufacturer metadata, Authenticode signature status, signer identity, and SHA-256;
-4. closes a running `prompt-vault-app` process;
-5. detects and removes the currently installed Prompt Vault MSI package;
-6. installs the newly built MSI;
-7. launches the Start-menu shortcut when found;
-8. reports any tracked Tauri schema files regenerated during packaging.
-
-The workflow does not delete application data. The expected current database remains:
+The clean-reinstall workflow does not delete application data. The expected current database remains:
 
 ```text
 %LOCALAPPDATA%\com.nobodyworld.promptvault\prompt-vault.db
 ```
 
-To reuse an already built MSI without rebuilding:
+To reuse an already built MSI without rebuilding, call the script explicitly, acknowledge its behavior, and select the exact MSI instead of relying on timestamps:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass `
   -File scripts/windows/install-local-build.ps1 `
-  -SkipBuild
+  -ConfirmReinstall `
+  -SkipBuild `
+  -MsiPath 'src-tauri\target\release\bundle\msi\Prompt Vault_0.4.0_x64_en-US.msi'
 ```
+
+If the exact filename differs, inspect the bundle directory and supply that exact `.msi` path. The script accepts only an MSI contained under the repository's MSI bundle directory.
+
+### Verified installed update work
+
+Issue #73 owns the future verified installed-build update workflow. PR #79 merged the deterministic, non-mutating contract for manifest validation, MSI version ordering, installed-target planning, recovery-source checks, and failure classification.
+
+The next slice is still read-only: collect and reconcile the explicitly selected MSI identity, installed registration/executable identity, complete prior-installation recovery evidence, and produce a non-mutating plan. There is currently **no** `desktop:update-installed` command and no authorized MSI/UAC mutation path.
+
+Actual installer execution remains gated on the separately attended, isolated synthetic MSI acceptance required by issue #73. The clean reinstall above is not evidence for that gate.
 
 ## Package identity versus Windows trust
 
@@ -102,13 +126,15 @@ Prompt Vault packages declare the following truthful product metadata:
 
 This metadata improves Windows Installed Apps, file details, and installer product identity. It does **not** create a cryptographic publisher identity.
 
-Local development packages are currently unsigned. Windows may therefore display `Unknown publisher` or an unsigned-application warning even though the MSI manufacturer metadata says `Nobody Production`. The local refresh script reports this state before invoking Windows Installer rather than hiding it.
+Local development packages are currently unsigned. Windows may therefore display `Unknown publisher` or an unsigned-application warning even though the MSI manufacturer metadata says `Nobody Production`. The clean-reinstall script reports this state before invoking Windows Installer rather than hiding it.
 
 Removing the Windows trust warning requires signing the executable and installers with a trusted Windows code-signing identity. Signing configuration must be added only after the project selects and securely provisions a certificate or managed signing service. Never commit a private signing key or certificate password to the repository.
 
 ## Why the installed app does not change automatically
 
-`pnpm tauri:dev` runs a development executable connected to the Vite development server. Windows Installed Apps launches files copied and registered by the last MSI installation. Source changes cannot mutate that installed package automatically; it must be replaced through a new build and installation.
+`pnpm tauri:dev` runs a development executable connected to the Vite development server. Windows Installed Apps launches files copied and registered by the last MSI installation. Source changes cannot mutate that installed package automatically; it must be changed through an explicitly authorized installation workflow.
+
+For ordinary development, prefer `pnpm tauri:dev` or `pnpm desktop:preview-release`. Use `pnpm desktop:reinstall-local` only when an uninstall-first clean reinstall is intentionally required. Do not infer that a reinstall validates the future in-place updater.
 
 ## Source ownership
 

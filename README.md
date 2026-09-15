@@ -95,20 +95,28 @@ Supported credentials are Prompt Vault `HS256` JWTs signed with an explicitly in
 
 Without `JWT_SECRET`, the local server can still start and configured API keys can authenticate, but JWT verification and issuance remain disabled. A valid API key sent to `/auth/token` receives a deliberate `503`; Prompt Vault does not create a process-local random signing authority. See [HTTP security](docs/SECURITY.md) for the exact token schema, 60-second clock-skew rule, and plaintext-data limitations.
 
-## Accepted default-branch validation
+## Accepted updater-contract baseline
 
-The accepted v0.4 data-safety and recovery product baseline is merged on
-`main` at:
+PR #79 established the accepted deterministic, non-mutating updater-contract
+baseline at:
 
 ```text
-Main:     6b03686df629494d9814ee4c12064556c249622b
-Workflow: 33031847574
+Main:     d50532778235b5de28b2276adb71ce6a963e427f
+Workflow: 34269176064
 Result:   success
 ```
 
-That workflow evidence remains source-preview validation only. It does not
-authorize a Git tag, GitHub Release, supported installer, signing, public
-update channel, or production deployment.
+That exact baseline passed the repository's public-release invariants, Node/UI
+validation, Rust validation, and Windows Tauri bundle jobs. It does **not**
+authorize MSI/UAC mutation, a Git tag, GitHub Release, supported installer,
+signing, public update channel, or production deployment. Every later candidate
+requires its own exact-head validation; this block is an acceptance record, not
+a live `main` pointer.
+
+The completed v0.4 data-safety and recovery product milestone remains the
+historical accepted product baseline at
+`6b03686df629494d9814ee4c12064556c249622b` with workflow `33031847574`.
+Later validated work does not rewrite that historical milestone.
 
 ### Historical standalone validation measurements
 
@@ -180,21 +188,30 @@ Useful commands:
 pnpm desktop:dev               # Shared React/Vite UI in a browser
 pnpm tauri:dev                 # Shared UI in a native development WebView
 pnpm desktop:preview-release   # Build and launch an optimized uninstalled executable
-pnpm desktop:refresh-installed # Windows: rebuild and replace the installed MSI copy
+pnpm desktop:reinstall-local   # Windows: explicit uninstall-first clean local reinstall
 pnpm web:dev                   # Express API and built web assets
 pnpm tags:migrate-legacy       # Explicit legacy tag/project migration
 pnpm quality:gate              # Repository quality gate
 pnpm feedback:production-check # Reject executable pilot material in desktop/dist
 ```
 
-See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md) for the difference between the hot-reloading development window, release preview, and Windows-installed application.
+`desktop:refresh-installed` is retired because it previously hid an
+uninstall-first replacement behind a refresh name. There is no
+`desktop:update-installed` command yet. Issue #73 owns the verified in-place
+update work, whose next slice is read-only installed/artifact identity and
+update planning.
+
+See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md) for the difference between the hot-reloading development window, release preview, explicit clean reinstall, and the not-yet-enabled verified installed-update path.
 
 ## Next product work
 
-- produce truthful screenshots or a short demo only from an accepted product
-  state;
+- complete issue #73's read-only selected-MSI, installed-registration,
+  executable-identity, recovery-evidence, and update-plan layer before any
+  installer mutation is enabled;
 - continue improving local-data protection while clearly communicating that
   prompt text, backup files, and databases remain plaintext;
+- produce truthful screenshots or a short demo only from an accepted product
+  state;
 - keep signing, installer distribution, and any release decision in separately
   reviewed work. The current repository remains a source preview.
 

@@ -78,7 +78,9 @@ Development modes:
 - `pnpm desktop:dev` — shared frontend in a browser;
 - `pnpm tauri:dev` — the same frontend in a native development WebView with hot reload;
 - `pnpm desktop:preview-release` — optimized release executable without Windows installation;
-- `pnpm desktop:refresh-installed` — Windows-only rebuild, MSI replacement, and launch of the refreshed installed copy.
+- `pnpm desktop:reinstall-local` — explicit Windows-only uninstall-first clean local reinstall.
+
+The legacy `desktop:refresh-installed` command is retired because its name obscured uninstall-first replacement. A verified in-place `desktop:update-installed` command does not exist yet; issue #73 owns that work.
 
 See [Windows local desktop workflow](developer-guide/windows-local-desktop-workflow.md).
 
@@ -128,13 +130,19 @@ automatic backups, cloud sync, or a supported distribution channel.
 
 The current uninstall behavior is data-preserving. Documentation must not imply that uninstall deletes prompts. A future delete-local-data flow, if added, should be explicit and separate from routine uninstall.
 
-## Accepted default-branch validation record
+## Accepted updater-contract validation record
 
-The accepted v0.4 data-safety and recovery baseline is merged on `main` at
-exact commit `6b03686df629494d9814ee4c12064556c249622b`. Default-branch
-workflow `33031847574` concluded successfully. This is source-preview evidence;
-it does not authorize a supported installer, signing, a GitHub Release, public
-update channel, or production deployment.
+PR #79 established the accepted deterministic, non-mutating updater-contract
+baseline at exact commit `d50532778235b5de28b2276adb71ce6a963e427f`.
+Default-branch workflow `34269176064` concluded successfully on that exact
+baseline. This source-preview evidence does not authorize MSI/UAC mutation, a
+supported installer, signing, a GitHub Release, public update channel, or
+production deployment. Later candidates require their own exact-head
+validation; this is an acceptance record rather than a live branch pointer.
+
+The accepted v0.4 data-safety and recovery product milestone remains the
+historical baseline at `6b03686df629494d9814ee4c12064556c249622b`
+with workflow `33031847574`.
 
 The measurements below belong to the earlier standalone-boundary validation
 record. They predate the completed v0.3 and v0.4 application milestones and are
@@ -166,6 +174,9 @@ relationship migration.
 
 ## Known follow-up work
 
+- finish issue #73's read-only selected-artifact, installed-identity,
+  recovery-evidence, and update-plan layer before any installed mutation is
+  enabled;
 - improve protection and user guidance for plaintext prompt, backup, and
   database data;
 - produce accurate screenshots or a short demo only after the current product
