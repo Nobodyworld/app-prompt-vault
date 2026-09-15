@@ -147,25 +147,41 @@ jobs:
           Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsBuildNumber | Format-List | Out-File windows-toolchain.txt
           rustc --version | Tee-Object -FilePath rust-windows-toolchain.txt
           cargo --version | Tee-Object -FilePath rust-windows-toolchain.txt -Append
-      - name: Validate Windows acceptance script syntax
+      - name: Validate Windows PowerShell script syntax
         shell: pwsh
         run: |
-          $scriptPath = Join-Path $PWD "scripts\windows\measure-window-client.ps1"
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            $scriptPath,
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors |
-              ForEach-Object { $_.ToString() } |
-              Tee-Object -FilePath window-measurement-script-syntax.txt
-            exit 1
+          $scriptRoot = Join-Path $PWD "scripts\windows"
+          $scripts = @(Get-ChildItem -LiteralPath $scriptRoot -Filter '*.ps1' -File -Recurse)
+          if ($scripts.Count -eq 0) {
+            throw "No Windows PowerShell scripts were found under $scriptRoot"
           }
-          "PowerShell syntax valid: $scriptPath" |
-            Tee-Object -FilePath window-measurement-script-syntax.txt
+
+          $failures = @()
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $script.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+
+            if ($errors.Count -gt 0) {
+              foreach ($error in $errors) {
+                $failures += "{0}: {1}" -f $script.FullName, $error.ToString()
+              }
+            }
+          }
+
+          if ($failures.Count -gt 0) {
+            $failures | Tee-Object -FilePath windows-powershell-script-syntax.txt
+            throw "Windows PowerShell script syntax validation failed."
+          }
+
+          $scripts.FullName |
+            Sort-Object |
+            ForEach-Object { "PowerShell syntax valid: $_" } |
+            Tee-Object -FilePath windows-powershell-script-syntax.txt
       - name: Install pinned pnpm
         shell: pwsh
         run: npm install --global pnpm@10.24.0
@@ -204,7 +220,7 @@ jobs:
             src-tauri/target/release/bundle/**/*
             windows-toolchain.txt
             rust-windows-toolchain.txt
-            window-measurement-script-syntax.txt
+            windows-powershell-script-syntax.txt
             windows-install.txt
             tauri-windows-build.txt
             windows-bundle-inventory.txt
