@@ -4,7 +4,13 @@ All notable changes to Prompt Vault will be documented in this file.
 
 ## [Unreleased]
 
-No future changes are currently recorded.
+### Added
+
+- `desktop:plan-update` for explicit read-only MSI/manifest inspection, installed
+  registration and executable reconciliation, complete recovery-media checks,
+  and deterministic update planning. MSI cabinet payloads supply executable
+  hashes directly; missing or unsupported evidence blocks the plan. The command
+  performs no installation, process control, elevation, or application-data access.
 
 ## [0.4.0] - 2026-08-27
 
