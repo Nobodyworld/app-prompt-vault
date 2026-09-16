@@ -9,7 +9,7 @@ using System.Windows.Forms;
 static class SyntheticUpdateApp {
     const string Identifier = "com.nobodyworld.promptvault.updateacceptance";
     static IntPtr database;
-    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_open16(string path, out IntPtr db);
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)] static extern int sqlite3_open16(string path, out IntPtr db);
     [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_close(IntPtr db);
     [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_exec(IntPtr db, byte[] sql, Callback callback, IntPtr state, out IntPtr error);
     [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern void sqlite3_free(IntPtr value);
@@ -32,17 +32,19 @@ static class SyntheticUpdateApp {
     }
     [STAThread] static int Main(string[] args) {
         if (new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator)) return 77;
-        if (args.Length != 1 || (args[0] != "--run" && args[0] != "--seed" && args[0] != "--refuse-close" && args[0] != "--restart-failure")) return 64;
+        if (args.Length != 1 || (args[0] != "--run" && args[0] != "--seed" && args[0] != "--refuse-close" && args[0] != "--restart-failure" && args[0] != "--self-test")) return 64;
         if (args[0] == "--restart-failure") return 42;
-        string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Identifier);
+        bool selfTest = args[0] == "--self-test";
+        bool seed = args[0] == "--seed" || selfTest;
+        string root = selfTest ? Path.Combine(Path.GetTempPath(), "prompt-vault-update-acceptance-selftest-" + Guid.NewGuid().ToString("N")) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Identifier);
         if (Directory.Exists(root) && (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0) return 65;
-        if (args[0] != "--seed" && !File.Exists(Path.Combine(root, "acceptance.db"))) return 66;
+        if (!seed && !File.Exists(Path.Combine(root, "acceptance.db"))) return 66;
         Directory.CreateDirectory(root);
         foreach (string file in Directory.GetFiles(root)) if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0) return 65;
         if (sqlite3_open16(Path.Combine(root, "acceptance.db"), out database) != 0) return 70;
         try {
             Query("PRAGMA journal_mode=WAL;");
-            if (args[0] == "--seed") {
+            if (seed) {
                 Query("CREATE TABLE records(id INTEGER PRIMARY KEY,body TEXT); CREATE TABLE versions(id INTEGER PRIMARY KEY,record_id INTEGER,body TEXT); CREATE TABLE settings(name TEXT PRIMARY KEY,value TEXT); INSERT INTO records VALUES(1,'synthetic fixture only'); INSERT INTO versions VALUES(1,1,'synthetic revision one'),(2,1,'synthetic revision two'); INSERT INTO settings VALUES('theme','acceptance');");
                 // Supported synthetic backup and restore: SQLite snapshot, restore
                 // into a separate disposable database, then logical comparison.
@@ -56,6 +58,7 @@ static class SyntheticUpdateApp {
                 File.WriteAllText(Path.Combine(root, "logical-expected.txt"), original);
             }
             if (Logical() != File.ReadAllText(Path.Combine(root, "logical-expected.txt"))) return 73;
+            if (selfTest) return 0;
             var form = new Form { Text = "Prompt Vault Update Acceptance", Width = 430, Height = 180 };
             form.Controls.Add(new Label { Text = "Disposable synthetic MSI fixture\nRecords, versions, settings and backup verified.", Dock = DockStyle.Fill });
             bool refusing = args[0] == "--refuse-close";
@@ -68,6 +71,20 @@ static class SyntheticUpdateApp {
             form.Shown += delegate { File.WriteAllText(Path.Combine(root, "logical-observed.txt"), Logical()); };
             Application.Run(form); timer.Dispose();
             return 0;
-        } finally { sqlite3_close(database); }
+        } finally {
+            sqlite3_close(database);
+            if (selfTest) {
+                // Only this newly created, fixed-prefix temp fixture is eligible.
+                // Unknown files or links stop cleanup and preserve evidence.
+                string temp = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (!Path.GetFullPath(root).StartsWith(temp, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(root).StartsWith("prompt-vault-update-acceptance-selftest-", StringComparison.Ordinal) || (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0 || Directory.GetDirectories(root).Length != 0) throw new InvalidOperationException("Self-test cleanup boundary failed");
+                foreach (string file in Directory.GetFiles(root)) {
+                    string name = Path.GetFileName(file);
+                    if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0 || (name != "acceptance.db" && name != "acceptance.db-wal" && name != "acceptance.db-shm" && name != "backup.db" && name != "restore-check.db" && name != "restore-check.db-wal" && name != "restore-check.db-shm" && name != "logical-expected.txt")) throw new InvalidOperationException("Unknown self-test file retained");
+                }
+                foreach (string file in Directory.GetFiles(root)) File.Delete(file);
+                Directory.Delete(root, false);
+            }
+        }
     }
 }

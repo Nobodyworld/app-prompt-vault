@@ -29,6 +29,9 @@ using System.Reflection;
     $exe = Join-Path $folder 'prompt-vault-update-acceptance.exe'
     & $compiler /nologo /target:winexe /platform:x64 /optimize+ "/out:$exe" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'SyntheticUpdateApp.cs') $assembly
     if ($LASTEXITCODE -ne 0) { throw 'Synthetic fixture compilation failed.' }
+    $selfTest = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -WindowStyle Hidden
+    if (-not $selfTest.WaitForExit(30000)) { throw 'Synthetic SQLite self-test timed out; process retained for inspection.' }
+    if ($selfTest.ExitCode -ne 0) { throw ('Synthetic SQLite self-test failed: ' + $selfTest.ExitCode) }
     $product = '{' + [Guid]::NewGuid().ToString().ToUpperInvariant() + '}'
     $package = '{' + [Guid]::NewGuid().ToString().ToUpperInvariant() + '}'
     $wxs = Join-Path $folder 'acceptance.wxs'
