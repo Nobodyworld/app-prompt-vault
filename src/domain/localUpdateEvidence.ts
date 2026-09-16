@@ -18,6 +18,7 @@ const msiSchema = z.object({
 });
 const observationSchema = z.object({
   schemaVersion: z.literal(1), selected: msiSchema.nullable(), recovery: msiSchema.nullable(), procedure: digest.nullable(),
+  recoverySource: z.enum(["not-supplied", "independent-media", "installer-cache", "unverified"]),
   roots: z.array(z.string()), relatedProducts: z.array(z.string()), errors: z.array(z.string()),
   registrations: z.array(z.object({
     source: z.string(), key: z.string(), displayName: z.string(), displayVersion: z.string(), publisher: z.string(),
@@ -208,15 +209,15 @@ export function planObservedLocalUpdate(manifestInput: unknown, observationInput
   let recoveryReady = false; let procedureVerified = false;
   const recovery = observation?.recovery ?? null;
   const recoveryManifest = validateLocalUpdateManifest(recoveryInput).manifest;
+  const recoveryStart = blockers.length;
+  if (observation?.recoverySource === "installer-cache") blockers.push("recovery:cached-msi-is-insufficient");
+  if (observation?.recoverySource === "unverified" || (recovery && observation?.recoverySource === "not-supplied")) blockers.push("recovery:source-provenance-unverified");
   if (!recovery || !recoveryManifest) blockers.push("recovery:complete-original-media-required");
   else {
-    const start = blockers.length;
     verifyManifest(recovery, recoveryManifest, "recovery", blockers);
     verifyMedia(recovery, extension(recoveryInput, "media"), "recovery", blockers);
     verifyPayload(recovery, recoveryManifest, "recovery", blockers);
     if (!installed || planLocalUpdate(recoveryManifest, installed).decision !== "no-op") blockers.push("recovery:prior-installation-identity-mismatch");
-    const cached = observation?.registrations[0]?.cachedMsi;
-    if (cached && cached.digest.sha256 === recovery.digest.sha256 && recovery.media.some((medium) => !medium.members.length)) blockers.push("recovery:cached-msi-is-insufficient");
     const procedure = procedureReceipt.safeParse(extension(recoveryInput, "recoveryProcedure"));
     procedureVerified = procedure.success && !!normalizeConfinedRelativePath(procedure.data.relativePath)
       && /\.(md|txt)$/i.test(procedure.data.relativePath) && procedure.data.testedSourceCommit === recoveryManifest.application.sourceCommit
@@ -231,7 +232,7 @@ export function planObservedLocalUpdate(manifestInput: unknown, observationInput
     }));
     const source = evaluateRecoverySource({ originalMsi: { relativePath: recoveryManifest.artifact.relativePath, expectedByteLength: recoveryManifest.artifact.byteLength, expectedSha256: recoveryManifest.artifact.sha256, actualByteLength: recovery.digest.byteLength, actualSha256: recovery.digest.sha256, exists: true }, requiresExternalCabinets: external.length > 0, cabinets: files });
     if (!source.ready) blockers.push("recovery:source-verification-failed");
-    recoveryReady = blockers.length === start;
+    recoveryReady = blockers.length === recoveryStart;
   }
   let plan: LocalUpdatePlan | null = null;
   // Domain comparison is meaningful only after the selected and installed identity reconcile.

@@ -23,6 +23,37 @@ function Assert-PlainPath([string]$Path) {
     return $item
 }
 
+function Resolve-RecoveryIdentityPath([string]$Path) {
+    # Do not guess at device, UNC, stream, short-name or trimmed-name aliases.
+    # Unsupported or inaccessible paths leave recovery provenance unverified.
+    $pathText = $Path.Replace('/', '\')
+    if ($pathText -notmatch '^[A-Za-z]:\\' -or $pathText -cne $pathText.Trim() -or $pathText.Substring(2) -match '[\x00-\x1f"<>|?*:~]') { throw 'Unsupported identity path.' }
+    foreach ($part in $pathText.Substring(3).Split('\')) {
+        if (-not $part -or ($part -notin @('.', '..') -and $part -match '[. ]$')) { throw 'Ambiguous identity path.' }
+    }
+    $item = Assert-PlainPath ([IO.Path]::GetFullPath($pathText))
+    if ($item.PSIsContainer) { throw 'Identity file required.' }
+    return $item.FullName
+}
+
+function Get-RecoverySource([string]$RecoveryPath, [object[]]$Registrations) {
+    if (-not $RecoveryPath) { return 'not-supplied' }
+    try { $recoveryIdentity = Resolve-RecoveryIdentityPath $RecoveryPath } catch { return 'unverified' }
+    $matched = $false; $unverified = $false; $compared = 0
+    foreach ($registration in $Registrations) {
+        foreach ($service in $registration.services) {
+            try {
+                $cacheIdentity = Resolve-RecoveryIdentityPath $service.localPackage
+                $compared++
+                if ([string]::Equals($recoveryIdentity, $cacheIdentity, [StringComparison]::OrdinalIgnoreCase)) { $matched = $true }
+            } catch { $unverified = $true }
+        }
+    }
+    if ($matched) { return 'installer-cache' }
+    if ($unverified -or $compared -eq 0) { return 'unverified' }
+    return 'independent-media'
+}
+
 function Read-File([string]$Path, [switch]$Executable) {
     $item = Assert-PlainPath $Path
     if ($item.PSIsContainer) { throw 'File required.' }
@@ -174,6 +205,7 @@ try {
             finally { if ($null -ne $root) { $root.Dispose() }; if ($null -ne $base) { $base.Dispose() } }
         }
     }
+    $recoverySource = Get-RecoverySource $request.recoveryPath $registrations
     $processes = @()
     try {
         foreach ($process in Get-CimInstance -ClassName Win32_Process -Property Name, ProcessId, ExecutablePath) {
@@ -186,7 +218,7 @@ try {
             }
         }
     } catch { $errors.Add('process-inventory-unreadable') }
-    $evidence = @{ schemaVersion = 1; selected = $selected; recovery = $recovery; procedure = $procedure; roots = $roots; relatedProducts = $relatedProducts; registrations = $registrations; processes = $processes; errors = @($errors) }
+    $evidence = @{ schemaVersion = 1; selected = $selected; recovery = $recovery; recoverySource = $recoverySource; procedure = $procedure; roots = $roots; relatedProducts = $relatedProducts; registrations = $registrations; processes = $processes; errors = @($errors) }
 } finally {
     foreach ($handle in $locks) { $handle.Dispose() }
     # Only generated cabinet/payload files live here. Fail closed before deletion.

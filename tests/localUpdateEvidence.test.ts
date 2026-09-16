@@ -1,6 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { planObservedLocalUpdate, REGISTRATION_ROOTS } from "../src/domain/localUpdateEvidence.js";
 import type { UpdateObservation } from "../src/domain/localUpdateEvidence.js";
 import type { LocalUpdateManifest } from "../src/domain/localUpdate.js";
@@ -34,7 +36,7 @@ function fixture(): { manifest: LocalUpdateManifest; prior: LocalUpdateManifest 
   }
   const location = "C:\\Program Files\\Prompt Vault";
   const observation: UpdateObservation = {
-    schemaVersion: 1, selected: msi(manifest), recovery: msi(prior), procedure: { byteLength: 100, sha256: sha("e") },
+    schemaVersion: 1, selected: msi(manifest), recovery: msi(prior), recoverySource: "independent-media", procedure: { byteLength: 100, sha256: sha("e") },
     roots: [...REGISTRATION_ROOTS], relatedProducts: [prior.msi.productCode], errors: [], processes: [],
     registrations: [{ source: REGISTRATION_ROOTS[2], key: prior.msi.productCode, displayName: "Prompt Vault", displayVersion: "0.4.0", publisher: "Nobody Production",
       installLocation: location, displayIcon: location + "\\prompt-vault-app.exe,0", windowsInstaller: "1", errors: [],
@@ -57,6 +59,52 @@ describe("observed read-only update planning", () => {
   it.each([null, [], {}, { schemaVersion: 2 }, { ...fixture().observation, roots: "HKLM" }])("rejects malformed observations without throwing", (raw) => {
     expect(planObservedLocalUpdate(fixture().manifest, raw).blockers).toContain("evidence:malformed-observations");
   });
+  it("refuses the registered LocalPackage even with complete matching recovery payloads", () => {
+    const f = fixture(); f.observation.recoverySource = "installer-cache";
+    const report = run(f);
+    expect(report.recovery.media?.media).toEqual([{ embedded: true, sha256: sha("f"), byteLength: 500, memberCount: 1 }]);
+    expect(report.recovery.media?.executable?.sha256).toBe(f.prior.executable.sha256);
+    expect(report.recovery.procedureVerified).toBe(true);
+    expect(report.blockers).toEqual(["recovery:cached-msi-is-insufficient"]);
+    expect(report.recovery.ready).toBe(false);
+  });
+  it("allows independently retained media with the same digest and package identity as LocalPackage", () => {
+    const f = fixture(); const cached = f.observation.registrations[0].cachedMsi!;
+    expect(f.observation.recoverySource).toBe("independent-media");
+    expect(f.observation.recovery!.digest).toEqual(cached.digest);
+    expect(f.observation.recovery!.packageCode).toBe(cached.packageCode);
+    expect(f.observation.recovery!.properties).toEqual(cached.properties);
+    const report = run(f);
+    expect(report.blockers).toEqual([]);
+    expect(report.recovery.ready).toBe(true);
+  });
+  it("reports incomplete independent cabinets without inferring cache provenance from equal digests", () => {
+    const f = fixture(); f.observation.recovery!.media[0].members = [];
+    const report = run(f);
+    expect(report.blockers).toContain("recovery:incomplete-cabinet");
+    expect(report.blockers).toContain("recovery:executable-payload-unproven");
+    expect(report.blockers).not.toContain("recovery:cached-msi-is-insufficient");
+    expect(report.recovery.ready).toBe(false);
+  });
+  it.each([undefined, null, false, "unknown"])("requires valid recovery provenance: %s", (recoverySource) => {
+    const f = fixture();
+    const report = planObservedLocalUpdate(f.manifest, { ...f.observation, recoverySource }, f.prior);
+    expect(report.blockers).toContain("evidence:malformed-observations");
+    expect(report.recovery.ready).toBe(false);
+  });
+  it.each(["unverified", "not-supplied"] as const)("refuses complete recovery with %s provenance", (source) => {
+    const f = fixture(); f.observation.recoverySource = source;
+    const report = run(f);
+    expect(report.blockers).toEqual(["recovery:source-provenance-unverified"]);
+    expect(report.recovery.ready).toBe(false);
+  });
+  it("keeps the cache refusal when recovery inspection or its manifest is unavailable", () => {
+    const f = fixture(); f.observation.recoverySource = "installer-cache"; f.observation.recovery = null;
+    const report = planObservedLocalUpdate(f.manifest, f.observation);
+    expect(report.blockers).toContain("recovery:cached-msi-is-insufficient");
+    expect(report.blockers).toContain("recovery:complete-original-media-required");
+    expect(report.recovery.ready).toBe(false);
+  });
   it.each([
     ["tampered MSI", (f: ReturnType<typeof fixture>) => { f.observation.selected!.digest.sha256 = sha("0"); }, "selected:artifact-digest-mismatch"],
     ["tampered payload", (f: ReturnType<typeof fixture>) => { f.observation.selected!.media[0].members[0].file.sha256 = sha("0"); }, "selected:executable-payload-unproven"],
@@ -73,7 +121,6 @@ describe("observed read-only update planning", () => {
     ["missing media", (f: ReturnType<typeof fixture>) => { f.observation.recovery = null; }, "recovery:complete-original-media-required"],
     ["missing procedure", (f: ReturnType<typeof fixture>) => { f.observation.procedure = null; }, "recovery:verified-procedure-required"],
     ["wrong recovery product", (f: ReturnType<typeof fixture>) => { f.prior.msi.productCode = guid("9"); }, "recovery:prior-installation-identity-mismatch"],
-    ["cached MSI only", (f: ReturnType<typeof fixture>) => { f.observation.recovery!.media[0].members = []; }, "recovery:cached-msi-is-insufficient"],
     ["process inventory unavailable", (f: ReturnType<typeof fixture>) => { f.observation.errors = ["process-inventory-unreadable"]; }, "installed:process-inventory-incomplete"],
   ])("fails closed for %s", (_name, alter, blocker) => {
     const f = fixture(); alter(f); const report = run(f);
@@ -127,6 +174,83 @@ describe("observed read-only update planning", () => {
     const f = fixture(); f.observation.errors = ["C:\\Private\\operator"];
     expect(JSON.stringify(run(f))).not.toContain("C:");
   });
+  it.each(["installer-cache", "independent-media"] as const)("never exposes recovery or LocalPackage paths for %s", (source) => {
+    const f = fixture(); f.observation.recoverySource = source;
+    const localPackage = f.observation.registrations[0].services[0].localPackage;
+    const recoveryPath = source === "installer-cache" ? localPackage : "C:\\Private\\retained\\prior.msi";
+    const report = planObservedLocalUpdate(f.manifest, { ...f.observation, recoveryPath }, f.prior);
+    const serialized = JSON.stringify(report);
+    expect(serialized).not.toContain(JSON.stringify(recoveryPath).slice(1, -1));
+    expect(serialized).not.toContain(JSON.stringify(localPackage).slice(1, -1));
+    expect(serialized).not.toContain("C:");
+  });
+});
+
+describe.skipIf(process.platform !== "win32")("Windows recovery path provenance", () => {
+  it("compares every registered full path and fails closed on unsupported identities", () => {
+    const root = mkdtempSync(join(tmpdir(), "pv73-provenance-"));
+    try {
+      const cache = join(root, "package.msi"); const retained = join(root, "retained", "package.msi");
+      const sibling = join(root, "other.msi");
+      mkdirSync(join(root, "retained"));
+      for (const file of [cache, retained, sibling]) writeFileSync(file, "identical synthetic MSI bytes");
+      symlinkSync(join(root, "retained"), join(root, "link"), "junction");
+      const registrations = (...groups: string[][]): { services: { localPackage: string }[] }[] => groups.map((paths) => ({ services: paths.map((localPackage) => ({ localPackage })) }));
+      const cases = [
+        { name: "exact path", recoveryPath: cache, registrations: registrations([cache]), expected: "installer-cache" },
+        { name: "case insensitive", recoveryPath: cache.toUpperCase(), registrations: registrations([cache]), expected: "installer-cache" },
+        { name: "normalized path", recoveryPath: root + "\\retained\\..\\package.msi", registrations: registrations([cache]), expected: "installer-cache" },
+        { name: "normalized cache path", recoveryPath: cache, registrations: registrations([root + "\\retained\\..\\package.msi"]), expected: "installer-cache" },
+        { name: "Windows separators", recoveryPath: cache.replaceAll("\\", "/"), registrations: registrations([cache]), expected: "installer-cache" },
+        { name: "all registrations and services", recoveryPath: cache, registrations: registrations([retained], [sibling, cache]), expected: "installer-cache" },
+        { name: "known match despite another invalid path", recoveryPath: cache, registrations: registrations(["relative.msi", cache]), expected: "installer-cache" },
+        { name: "same name and bytes at independent path", recoveryPath: retained, registrations: registrations([cache]), expected: "independent-media" },
+        { name: "same directory and bytes at independent path", recoveryPath: sibling, registrations: registrations([cache]), expected: "independent-media" },
+        { name: "relative service path", recoveryPath: retained, registrations: registrations([cache], ["relative.msi"]), expected: "unverified" },
+        { name: "missing service file", recoveryPath: retained, registrations: registrations([join(root, "missing.msi")]), expected: "unverified" },
+        { name: "empty service path", recoveryPath: retained, registrations: registrations([""]), expected: "unverified" },
+        { name: "no registrations", recoveryPath: retained, registrations: [], expected: "unverified" },
+        { name: "no services", recoveryPath: retained, registrations: registrations([]), expected: "unverified" },
+        { name: "relative recovery", recoveryPath: "package.msi", registrations: registrations([cache]), expected: "unverified" },
+        { name: "missing recovery", recoveryPath: join(root, "missing.msi"), registrations: registrations([cache]), expected: "unverified" },
+        { name: "stream alias", recoveryPath: cache + ":stream", registrations: registrations([cache]), expected: "unverified" },
+        { name: "trimmed alias", recoveryPath: cache + ".", registrations: registrations([cache]), expected: "unverified" },
+        { name: "short-name alias", recoveryPath: join(root, "PACKAG~1.MSI"), registrations: registrations([cache]), expected: "unverified" },
+        { name: "directory", recoveryPath: root, registrations: registrations([cache]), expected: "unverified" },
+        { name: "recovery reparse point", recoveryPath: join(root, "link", "package.msi"), registrations: registrations([cache]), expected: "unverified" },
+        { name: "service reparse point", recoveryPath: retained, registrations: registrations([join(root, "link", "package.msi")]), expected: "unverified" },
+        { name: "not supplied", recoveryPath: "", registrations: registrations([cache]), expected: "not-supplied" },
+      ];
+      // Load only these path helpers from the trusted collector source; do
+      // not execute collection, query installed registrations or open an MSI.
+      const command = `
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+$inputCases = [Console]::In.ReadToEnd() | ConvertFrom-Json
+$tokens = $null; $parseErrors = $null
+$tree = [Management.Automation.Language.Parser]::ParseFile($inputCases.collector, [ref]$tokens, [ref]$parseErrors)
+if ($parseErrors.Count) { throw 'Collector syntax invalid.' }
+$names = @('Assert-PlainPath', 'Resolve-RecoveryIdentityPath', 'Get-RecoverySource')
+$functions = @($tree.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in $names }, $true))
+if ($functions.Count -ne $names.Count) { throw 'Path helpers missing.' }
+foreach ($definition in $functions) { . ([scriptblock]::Create($definition.Extent.Text)) }
+@(foreach ($case in $inputCases.cases) { Get-RecoverySource $case.recoveryPath $case.registrations }) | ConvertTo-Json -Compress
+`;
+      const result = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", command], {
+        encoding: "utf8", timeout: 15_000, windowsHide: true,
+        input: JSON.stringify({ collector: fileURLToPath(new URL("../scripts/windows/collect-update-evidence.ps1", import.meta.url)), cases }),
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      const sources: unknown[] = JSON.parse(result.stdout);
+      expect(sources).toHaveLength(cases.length);
+      cases.forEach((testCase, index) => expect(sources[index], testCase.name).toBe(testCase.expected));
+    } finally {
+      rmSync(join(root, "link"), { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 20_000);
 });
 
 describe("explicit planner inputs", () => {
