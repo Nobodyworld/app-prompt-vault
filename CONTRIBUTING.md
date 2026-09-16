@@ -16,7 +16,7 @@ d50532778235b5de28b2276adb71ce6a963e427f
 
 Default-branch workflow `34269176064` concluded successfully on that exact commit. This is an acceptance record rather than a live `main` pointer; every later candidate still requires validation at its exact final commit. The evidence does not authorize MSI/UAC mutation, a supported downloadable release, signed installer, production deployment, or public-network service.
 
-The completed v0.4 data-safety and recovery product milestone remains the historical accepted baseline at `6b03686df629494d9814ee4c12064556c249622b` with workflow `33031847574`. Issue #73 is the active installed-update line of work; its next slice is read-only artifact/installed identity, recovery evidence, and update planning. Reusable native-validation ownership is tracked separately by [issue #64](../../issues/64).
+The completed v0.4 data-safety and recovery product milestone remains the historical accepted baseline at `6b03686df629494d9814ee4c12064556c249622b` with workflow `33031847574`. Issue #73 is the active installed-update line of work; `desktop:plan-update` provides read-only artifact/installed identity, recovery evidence, and update planning for review. Reusable native-validation ownership is tracked separately by [issue #64](../../issues/64).
 
 ## Toolchain and bootstrap
 
@@ -86,6 +86,7 @@ State exactly which checks ran, their results, and which checks were not run. A 
 - `pnpm desktop:reinstall-local` is an explicit uninstall-first clean local reinstall. It is exceptional maintenance, not an update-validation path.
 - `pnpm desktop:refresh-installed` is retired and must not perform uninstall-first replacement under a refresh label.
 - There is no `desktop:update-installed` command yet.
+- `desktop:plan-update` reads one explicit MSI/manifest and reports blockers without installation, process, or application-data mutation.
 - Changes under issue #73 must keep read-only planning separate from mutating MSI/UAC execution until the required attended synthetic acceptance has passed.
 - Do not use clean-reinstall success as evidence that the verified installed updater is safe.
 

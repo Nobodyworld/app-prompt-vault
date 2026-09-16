@@ -217,6 +217,12 @@ jobs:
             $hash = (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLowerInvariant()
             "{0}`t{1}`t{2}" -f $_.Length, $hash, $relative
           } | Sort-Object | Tee-Object -FilePath windows-bundle-inventory.txt
+      - name: Validate read-only MSI inspection
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          pnpm exec tsx scripts/test-update-inspection.ts --msi "src-tauri/target/release/bundle/msi/Prompt Vault_${version}_x64_en-US.msi" *>&1 | Tee-Object -FilePath windows-readonly-msi.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload Windows Tauri bundle
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -230,6 +236,7 @@ jobs:
             windows-install.txt
             tauri-windows-build.txt
             windows-bundle-inventory.txt
+            windows-readonly-msi.txt
           if-no-files-found: warn
           retention-days: 14
 

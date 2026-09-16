@@ -109,7 +109,83 @@ If the exact filename differs, inspect the bundle directory and supply that exac
 
 Issue #73 owns the future verified installed-build update workflow. PR #79 merged the deterministic, non-mutating contract for manifest validation, MSI version ordering, installed-target planning, recovery-source checks, and failure classification.
 
-The next slice is still read-only: collect and reconcile the explicitly selected MSI identity, installed registration/executable identity, complete prior-installation recovery evidence, and produce a non-mutating plan. There is currently **no** `desktop:update-installed` command and no authorized MSI/UAC mutation path.
+The read-only command is now available:
+
+```powershell
+pnpm desktop:plan-update --manifest 'artifacts/selected.json' --recovery-manifest 'recovery/prior.json'
+```
+
+Select exactly one manifest or one MSI. For inspection before a source manifest exists:
+
+```powershell
+pnpm desktop:plan-update --msi 'src-tauri/target/release/bundle/msi/Prompt Vault_0.4.0_x64_en-US.msi'
+```
+
+No timestamp selection, installation, shutdown, restart, elevation, recovery execution, or application database access occurs. Exit `0` means complete evidence produced a no-op or conditional upgrade plan. Exit `2` means a refusal or missing evidence. A proposed upgrade describes a future operation; the report's `installationMutationOccurred` remains `false`. The separately listed `futureExecutionGates` always remain outside this command's authority. MSI-only inspection reports the observed package and payload, but blocks planning until a valid source manifest is supplied.
+
+The manifest is the version `1` contract in `src/domain/localUpdate.ts`. Paths are relative to the manifest's directory, and must remain inside it without junctions/symbolic links. `executable.relativePath` is relative to the installation root; the supported Tauri layout uses `prompt-vault-app.exe`. Example **synthetic values**, to replace with a retained build receipt and observed identities:
+
+```json
+{
+  "manifestVersion": "1",
+  "application": {
+    "identifier": "com.nobodyworld.promptvault",
+    "version": "0.4.0",
+    "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "artifact": {
+    "format": "msi",
+    "relativePath": "Prompt Vault_0.4.0_x64_en-US.msi",
+    "byteLength": 123456,
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "msi": {
+    "productCode": "{11111111-1111-1111-1111-111111111111}",
+    "upgradeCode": "{22222222-2222-2222-2222-222222222222}",
+    "packageCode": "{33333333-3333-3333-3333-333333333333}",
+    "installScope": "per-machine"
+  },
+  "executable": {
+    "relativePath": "prompt-vault-app.exe",
+    "fileVersion": "0.4.0.0",
+    "productVersion": "0.4.0",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "media": { "cabinets": [] }
+}
+```
+
+For external cabinets, `media.cabinets` must enumerate the exact MSI Media-table set, each with `relativePath` (the cabinet filename), `byteLength`, and `sha256`. Embedded cabinets are covered by the MSI digest and are extracted and hashed independently. Complete media requires every MSI File-table member to be extracted with its declared size. The expected executable hash/version comes from these selected-MSI bytes; a loose release executable is never consulted. Four numeric PE file-version fields are reported separately from the MSI's three-field ProductVersion.
+
+The prior recovery manifest has the same identity/media contract, and additionally:
+
+```json
+{
+  "recoveryProcedure": {
+    "relativePath": "prior-installation-recovery.md",
+    "byteLength": 1234,
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "kind": "manual-prior-msi",
+    "testedSourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}
+```
+
+That field belongs in the prior manifest, alongside its other required fields. Retain the reviewed procedure as a `.md` or `.txt` file. Its receipt must bind the prior source commit and exact document bytes. The document should identify the prior product/package/scope, required media, preconditions, the separately accepted recovery procedure and its evidence, data-preservation boundaries, and post-recovery identity checks. This command verifies the receipt and media; it does not execute or independently attest the procedure or source-build provenance. A hand-written claim or a cached `LocalPackage` is not recovery acceptance. Missing original media, any cabinet, matching installed payload, or procedure evidence blocks readiness.
+
+Collection uses Windows Installer database handles opened with `MSIDBOPEN_READONLY`, plus current-user/machine uninstall registration in both native and WOW6432Node locations. Read-only Installer APIs reconcile product context, cached package metadata and related UpgradeCode products. Missing/inaccessible roots, duplicate registrations, inconsistent scope/locations/versions, and foreign or unverifiable running executables block the plan. Process names only identify candidates needing path/hash verification. Other users' unloaded registry hives are outside this command's inventory.
+
+Only the Windows collector sees private paths. The CLI emits redacted identities, hashes, media readiness, planner decisions and blockers. Scratch cabinet/payload files are bounded, written to a newly owned temporary directory, and removed after ownership/link/content checks. Cabinet member names never become destination paths. Spanning cabinets, loose/uncompressed media, administrative images, non-x64 packages, dual-purpose scopes, and nonstandard executable layouts fail closed. Do not use raw collector JSON as public evidence.
+
+The domain adapter validates untrusted observations, then delegates version/identity decisions and recovery file verification to `src/domain/localUpdate.ts`. No PowerShell decision implementation exists. The collector's native boundary can be exercised read-only against an explicitly selected built MSI:
+
+```powershell
+pnpm exec tsx scripts/test-update-inspection.ts --msi 'src-tauri/target/release/bundle/msi/Prompt Vault_0.4.0_x64_en-US.msi'
+```
+
+The Windows CI bundle job also performs this check. It verifies payload correspondence and rejection of changed manifest/package digests without invoking an installer. It does not count as attended MSI install/update/rollback acceptance. Microsoft documents the [read-only database mode](https://learn.microsoft.com/en-us/windows/win32/api/msiquery/nf-msiquery-msiopendatabasea), [Media table](https://learn.microsoft.com/en-us/windows/win32/msi/media-table), and [cabinet callback destination control](https://learn.microsoft.com/en-us/windows/win32/setupapi/spfilenotify-fileincabinet).
+
+There is currently **no** `desktop:update-installed` command and no authorized MSI/UAC mutation path.
 
 Actual installer execution remains gated on the separately attended, isolated synthetic MSI acceptance required by issue #73. The clean reinstall above is not evidence for that gate.
 

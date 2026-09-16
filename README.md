@@ -198,16 +198,16 @@ pnpm feedback:production-check # Reject executable pilot material in desktop/dis
 `desktop:refresh-installed` is retired because it previously hid an
 uninstall-first replacement behind a refresh name. There is no
 `desktop:update-installed` command yet. Issue #73 owns the verified in-place
-update work, whose next slice is read-only installed/artifact identity and
-update planning.
+update work. `pnpm desktop:plan-update --manifest <manifest.json>` collects
+read-only installed/artifact identity and recovery evidence and reports a plan.
 
 See [Windows local desktop workflow](docs/developer-guide/windows-local-desktop-workflow.md) for the difference between the hot-reloading development window, release preview, explicit clean reinstall, and the not-yet-enabled verified installed-update path.
 
 ## Next product work
 
-- complete issue #73's read-only selected-MSI, installed-registration,
-  executable-identity, recovery-evidence, and update-plan layer before any
-  installer mutation is enabled;
+- review issue #73's read-only selected-MSI, installed-registration,
+  executable-identity, recovery-evidence, and update-plan layer before the
+  separately attended synthetic installer acceptance;
 - continue improving local-data protection while clearly communicating that
   prompt text, backup files, and databases remain plaintext;
 - produce truthful screenshots or a short demo only from an accepted product
