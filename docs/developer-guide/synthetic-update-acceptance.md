@@ -77,27 +77,34 @@ node --import tsx scripts/synthetic-update/run.ts $action $privateRequest
    identity, and restarts unelevated. Repeat a matching `upgrade` request to prove
    no-op. Use lower-version, changed same-version payload, wrong-target, tampered
    manifest/package/payload and incomplete recovery requests to prove refusals.
-6. `restart --refuse-close` refuses graceful close for 15 seconds. `shutdown` has a
+6. Before any later mutating probe whose installed prior package is no longer
+   `1.0.0`, repeat the same explicit `shutdown` -> `uninstall` -> `recovery-install`
+   -> `restart --run` proof for that **exact currently installed prior package**.
+   `install-old` remains restricted to the initial `1.0.0` bootstrap;
+   `recovery-install` may reinstall the exact retained prior accepted version.
+   A `1.0.0` recovery proof cannot authorize mutation from installed `1.1.0`.
+7. `restart --refuse-close` refuses graceful close for 15 seconds. `shutdown` has a
    five-second deadline and must report timeout without forced termination. After
    the fixture stops refusing, an explicit later graceful close is possible.
-7. `cancel` has the same safety gates as upgrade and requests one normal elevation.
+8. `cancel` has the same safety gates as upgrade and requests one normal elevation.
    The operator cancels that specific prompt. Record the actual observation.
    There is no automatic retry. A canceled baseline or recovery operation blocks
    dependent steps; a deliberately canceled test never counts as an upgrade.
-8. `rollback` uses the `1.2.0` probe with `WIXFAILWHENDEFERRED=1`. Require a real
+9. `rollback` uses the `1.2.0` probe with `WIXFAILWHENDEFERRED=1`. Require a real
    failing transaction, log evidence of that deferred action and rollback, the
    exact prior registration/package/executable restored, and quiescent data
    equality. A nonzero exit code alone is insufficient.
-9. `verification-failure` installs a higher probe normally, then injects an
-   expected executable hash mismatch in the verifier. Evidence retains the real
-   post-commit identity and the injected mismatch. It must be classified as
-   `committed-verification-failed`, recovery required; no automatic rollback is
-   claimed and the installed binary is not damaged.
-10. Recover through the previously proven explicit synthetic procedure, with one
-    attended operation at a time. Separately use `restart-failure` for a successful
-    higher-version install followed by the fixture's `--restart-failure` exit 42.
-    Require `committed-restart-failed`, then separately recover as needed.
-11. Capture evidence, explicitly `shutdown` and `uninstall` the exact synthetic
+10. `verification-failure` installs a higher probe normally, then injects an
+    expected executable hash mismatch in the verifier. Evidence retains the real
+    post-commit identity and the injected mismatch. It must be classified as
+    `committed-verification-failed`, recovery required; no automatic rollback is
+    claimed and the installed binary is not damaged.
+11. Recover through the previously proven explicit procedure for the **exact prior
+    package**, with one attended operation at a time. Separately use
+    `restart-failure` for a successful higher-version install followed by the
+    fixture's `--restart-failure` exit 42. Require `committed-restart-failed`, then
+    separately recover through the exact prior package as needed.
+12. Capture evidence, explicitly `shutdown` and `uninstall` the exact synthetic
     product, verify absent registrations/processes/install directory/shortcuts,
     and remove only the inventoried synthetic data after checking its exact
     containment, file allowlist, hashes and lack of reparse points. Preserve logs,
