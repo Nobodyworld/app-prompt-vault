@@ -1,12 +1,14 @@
 export const LOCAL_UPDATE_MANIFEST_VERSION = "1" as const;
 export const PROMPT_VAULT_IDENTIFIER = "com.nobodyworld.promptvault" as const;
+export const SYNTHETIC_UPDATE_IDENTIFIER = "com.nobodyworld.promptvault.updateacceptance" as const;
+export type UpdateIdentifier = typeof PROMPT_VAULT_IDENTIFIER | typeof SYNTHETIC_UPDATE_IDENTIFIER;
 
 export type InstallScope = "per-user" | "per-machine";
 
 export interface LocalUpdateManifest {
   readonly manifestVersion: typeof LOCAL_UPDATE_MANIFEST_VERSION;
   readonly application: {
-    readonly identifier: typeof PROMPT_VAULT_IDENTIFIER;
+    readonly identifier: UpdateIdentifier;
     readonly version: string;
     readonly sourceCommit: string;
   };
@@ -211,7 +213,7 @@ export function compareMsiProductVersions(left: string, right: string): -1 | 0 |
   return 0;
 }
 
-export function validateLocalUpdateManifest(value: unknown): ManifestValidationResult {
+export function validateLocalUpdateManifest(value: unknown, expectedIdentifier: UpdateIdentifier = PROMPT_VAULT_IDENTIFIER): ManifestValidationResult {
   const errors: string[] = [];
   if (!isRecord(value)) return { valid: false, errors: ["manifest must be an object."] };
 
@@ -243,8 +245,8 @@ export function validateLocalUpdateManifest(value: unknown): ManifestValidationR
   const productVersion = readString(executable, "productVersion", errors);
   const executableSha = readString(executable, "sha256", errors);
 
-  if (identifier && identifier !== PROMPT_VAULT_IDENTIFIER) {
-    errors.push(`application.identifier must equal ${PROMPT_VAULT_IDENTIFIER}.`);
+  if (identifier && identifier !== expectedIdentifier) {
+    errors.push(`application.identifier must equal ${expectedIdentifier}.`);
   }
   if (version && !parseMsiProductVersion(version)) {
     errors.push("application.version must be a valid three-field Windows Installer ProductVersion.");
@@ -280,7 +282,7 @@ export function validateLocalUpdateManifest(value: unknown): ManifestValidationR
     manifest: {
       manifestVersion: LOCAL_UPDATE_MANIFEST_VERSION,
       application: {
-        identifier: PROMPT_VAULT_IDENTIFIER,
+        identifier: expectedIdentifier,
         version: version!,
         sourceCommit: sourceCommit!,
       },

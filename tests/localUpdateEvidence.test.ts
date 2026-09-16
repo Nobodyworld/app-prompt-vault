@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { planObservedLocalUpdate, REGISTRATION_ROOTS } from "../src/domain/localUpdateEvidence.js";
+import { planObservedLocalUpdate, REGISTRATION_ROOTS, SYNTHETIC_UPDATE_TARGET } from "../src/domain/localUpdateEvidence.js";
 import type { UpdateObservation } from "../src/domain/localUpdateEvidence.js";
 import type { LocalUpdateManifest } from "../src/domain/localUpdate.js";
 import { parsePlanArguments, confinedFile } from "../scripts/plan-local-update.js";
@@ -48,6 +48,16 @@ function fixture(): { manifest: LocalUpdateManifest; prior: LocalUpdateManifest 
 function run(f = fixture()): ReturnType<typeof planObservedLocalUpdate> { return planObservedLocalUpdate(f.manifest, f.observation, f.prior); }
 
 describe("observed read-only update planning", () => {
+  it("requires an explicit synthetic profile and keeps the product default separate", () => {
+    const f = fixture();
+    const synthetic = JSON.parse(JSON.stringify(f).replaceAll('com.nobodyworld.promptvault', SYNTHETIC_UPDATE_TARGET.identifier).replaceAll('prompt-vault-app.exe', SYNTHETIC_UPDATE_TARGET.executable).replaceAll('Prompt Vault', SYNTHETIC_UPDATE_TARGET.name));
+    for (const msi of [synthetic.observation.selected, synthetic.observation.recovery, synthetic.observation.registrations[0].cachedMsi]) msi.properties.PV_ACCEPTANCE_IDENTIFIER = SYNTHETIC_UPDATE_TARGET.identifier;
+    expect(planObservedLocalUpdate(synthetic.manifest, synthetic.observation, synthetic.prior).selectedManifest.valid).toBe(false);
+    const report = planObservedLocalUpdate(synthetic.manifest, synthetic.observation, synthetic.prior, SYNTHETIC_UPDATE_TARGET);
+    expect(report.blockers).toEqual([]);
+    expect(report.installed.identity?.applicationIdentifier).toBe(SYNTHETIC_UPDATE_TARGET.identifier);
+    expect(planObservedLocalUpdate(f.manifest, f.observation, f.prior, SYNTHETIC_UPDATE_TARGET).selectedManifest.valid).toBe(false);
+  });
   it("plans an eligible higher version with complete prior media and leaves execution conditional", () => {
     const report = run();
     expect(report.blockers).toEqual([]);
