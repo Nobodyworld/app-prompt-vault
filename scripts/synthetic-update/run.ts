@@ -11,6 +11,7 @@ import { SYNTHETIC_UPDATE_IDENTIFIER, validateLocalUpdateManifest } from "../../
 import type { LocalUpdateManifest } from "../../src/domain/localUpdate.js";
 import { classifyInstaller, executeSyntheticUpdate, sameInventory } from "./executor.js";
 import type { DataFile, InstallerResult } from "./executor.js";
+import { bootstrapVersionAllowed } from "./policy.js";
 
 const scripts = resolve(dirname(fileURLToPath(import.meta.url)), "..", "windows");
 const hash = (path: string) => createHash("sha256").update(readFileSync(plainFile(path))).digest("hex");
@@ -92,7 +93,7 @@ export async function main(args: string[]) {
       });
     };
     if (action === "install-old" || action === "recovery-install") {
-      assert.equal(selected.manifest.application.version, "1.0.0", "Only the synthetic baseline can bootstrap");
+      assert.ok(bootstrapVersionAllowed(action, selected.manifest.application.version), "install-old requires 1.0.0; recovery-install must use the exact retained prior version");
       assert.equal(beforeObservation.registrations.length, 0);
       assert.equal(beforeObservation.processes.length, 0);
       assert.equal(beforeObservation.errors.length, 0);
