@@ -5,7 +5,25 @@ Set-StrictMode -Version Latest
 $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $isElevated = ([Security.Principal.WindowsPrincipal]::new($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-$context = @{ user = $identity.Name; sid = $identity.User.Value; sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId; elevated = $isElevated; interactive = [Environment]::UserInteractive }
+Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class SyntheticOperatorDesktop {
+    [DllImport("user32.dll")] static extern IntPtr GetProcessWindowStation();
+    [DllImport("user32.dll")] static extern IntPtr GetThreadDesktop(uint thread);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool GetUserObjectInformation(IntPtr handle, int index, StringBuilder text, int length, out int needed);
+    static string Name(IntPtr handle) {
+        var text = new StringBuilder(512); int needed;
+        if (!GetUserObjectInformation(handle, 2, text, text.Capacity * 2, out needed)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        return text.ToString();
+    }
+    public static string CallerDesktop() { return Name(GetProcessWindowStation()) + "\\" + Name(GetThreadDesktop(GetCurrentThreadId())); }
+}
+'@
+$context = @{ user = $identity.Name; sid = $identity.User.Value; sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId; callerDesktop = [SyntheticOperatorDesktop]::CallerDesktop(); elevated = $isElevated; interactive = [Environment]::UserInteractive }
 if ($request.action -eq 'context') { $context | ConvertTo-Json -Compress; exit 0 }
 if ($isElevated -or $identity.User.Value -ne $request.ownerSid -or $context.sessionId -eq 0) { throw 'Intended non-elevated operator session required.' }
 $installRoot = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Prompt Vault Update Acceptance'

@@ -75,6 +75,19 @@ describe("synthetic executor", () => {
     const { ports, calls } = setup({ install: async (): Promise<InstallerResult> => ({ launched: true, exitCode: 3010, launchError: null }) });
     expect(await executeSyntheticUpdate(ports)).toMatchObject({ status: "success-reboot-required", restartAttempted: false }); expect(calls).not.toContain("restart");
   });
+  it.each(["inventory", "verify", "restart"])("preserves committed classification when %s throws", async (stage) => {
+    let inventories = 0;
+    const { ports } = setup({
+      inventory: async () => { if (++inventories === 2 && stage === "inventory") throw Error("unreadable data"); return files; },
+      verifyCommitted: async () => { if (stage === "verify") throw Error("unreadable identity"); return true; },
+      restart: async () => { if (stage === "restart") throw Error("launch denied"); return true; },
+    });
+    expect(await executeSyntheticUpdate(ports)).toMatchObject({ status: stage === "restart" ? "committed-restart-failed" : "committed-verification-failed", outcome: { installerCommitted: true, followUp: "recovery-required", transactionRollbackProven: false } });
+  });
+  it("does not claim rollback when its verification throws", async () => {
+    const { ports } = setup({ install: async () => ({ launched: true, exitCode: 1603, launchError: null }), verifyRollback: async () => { throw Error("unreadable log"); } });
+    expect(await executeSyntheticUpdate(ports)).toMatchObject({ status: "transaction-failed", transactionRollbackProven: false, followUp: "inspect-installation-before-any-further-operation" });
+  });
   it("compares presence, sizes and hashes including WAL/SHM without deleting them", () => {
     expect(sameInventory(files, [...files].reverse())).toBe(true);
     expect(sameInventory(files, files.slice(0, 1))).toBe(false);

@@ -46,19 +46,24 @@ export async function executeSyntheticUpdate(ports: ExecutorPorts) {
   // An exception before launch remains a refusal; the native helper always
   // persists launch/outcome evidence once it crosses the installer boundary.
   const installer = await ports.install();
-  const after = await ports.inventory();
-  const dataPreserved = sameInventory(before, after);
+  let after: DataFile[] = [];
+  let postInstallInventoryAvailable = true;
+  try { after = await ports.inventory(); } catch { postInstallInventoryAvailable = false; }
+  const dataPreserved = postInstallInventoryAvailable && sameInventory(before, after);
   const classification = classifyInstaller(installer);
   if (classification !== "committed") {
-    const rollbackProven = classification === "transaction-failed" && dataPreserved && await ports.verifyRollback();
-    return { status: classification, installerLaunched: installer.launched, installer, dataPreserved, before, after, transactionRollbackProven: rollbackProven, followUp: classification === "elevation-cancelled" || classification === "launch-failed" ? "none" : rollbackProven ? "none" : "inspect-installation-before-any-further-operation" };
+    let rollbackProven = false;
+    if (classification === "transaction-failed" && dataPreserved) { try { rollbackProven = await ports.verifyRollback(); } catch { /* Unavailable proof is not rollback. */ } }
+    return { status: classification, installerLaunched: installer.launched, installer, dataPreserved, before, after, postInstallInventoryAvailable, transactionRollbackProven: rollbackProven, followUp: dataPreserved && (classification === "elevation-cancelled" || classification === "launch-failed" || rollbackProven) ? "none" : "inspect-installation-before-any-further-operation" };
   }
-  const identityVerified = await ports.verifyCommitted();
+  let identityVerified = false;
+  try { identityVerified = await ports.verifyCommitted(); } catch { /* A committed installer still requires recovery when inspection fails. */ }
   const verified = identityVerified && dataPreserved;
   // Reboot-required is terminal for this attended run. No automatic reboot.
   const restartAttempted = verified && installer.exitCode === 0;
-  const restartPassed = restartAttempted ? await ports.restart() : undefined;
+  let restartPassed: boolean | undefined;
+  if (restartAttempted) { try { restartPassed = await ports.restart(); } catch { restartPassed = false; } }
   return { status: classifyLocalUpdateOutcome({ installerLaunched: true, installerExitCode: installer.exitCode, postInstallVerificationPassed: verified, restartAttempted, restartPassed }).kind,
     outcome: classifyLocalUpdateOutcome({ installerLaunched: true, installerExitCode: installer.exitCode, postInstallVerificationPassed: verified, restartAttempted, restartPassed }),
-    installerLaunched: true, installer, before, after, dataPreserved, identityVerified, restartAttempted, restartPassed };
+    installerLaunched: true, installer, before, after, postInstallInventoryAvailable, dataPreserved, identityVerified, restartAttempted, restartPassed };
 }
