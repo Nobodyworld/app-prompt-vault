@@ -107,6 +107,11 @@ node --import tsx scripts/synthetic-update/run.ts $action $privateRequest
 The driver never interacts with UAC. Before each installer call, announce the
 exact operation, original MSI path/hash, ProductCode, UpgradeCode and command.
 Use normal `ShellExecute RunAs` from the intended non-elevated operator session.
+The helper uses `ProcessStartInfo.UseShellExecute` and `Verb = runas` so a native
+launch failure retains `Win32Exception.NativeErrorCode`. Some PowerShell
+`Start-Process` failures lose that code in an `InvalidOperationException`; unknown
+native errors remain launch failures, never inferred cancellation. An older
+failed launch is not reclassified using a later helper or retried automatically.
 Keep package/manifest/recovery files locked against modification across consent
 and execution. `RunAs` or error 1223 is not proof a prompt was visible: keep
 `uacObserved: operator-attestation-required` until the operator reports that

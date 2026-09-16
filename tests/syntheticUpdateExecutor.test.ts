@@ -51,6 +51,7 @@ describe("synthetic executor", () => {
   it.each([
     [{ launched: false, exitCode: null, launchError: 1223 }, "elevation-cancelled"],
     [{ launched: false, exitCode: null, launchError: 1312 }, "launch-failed"],
+    [{ launched: false, exitCode: null, launchError: null }, "launch-failed"],
     [{ launched: true, exitCode: 1602, launchError: null }, "installer-cancelled"],
     [{ launched: true, exitCode: null, launchError: null }, "installer-outcome-unknown"],
     [{ launched: true, exitCode: 1641, launchError: null }, "committed-reboot-initiated"],

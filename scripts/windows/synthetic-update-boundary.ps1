@@ -140,19 +140,31 @@ try {
     $operation = if ($request.action -eq 'uninstall') { '/x' } else { '/i' }
     $arguments = "$operation `"$msiPath`" /qn /norestart /l*v `"$($request.logPath)`""
     if ($request.injectTransactionFailure) { $arguments += ' WIXFAILWHENDEFERRED=1' }
-    $result = @{ launched = $false; exitCode = $null; launchError = $null; hresult = $null; scope = 'per-machine'; method = 'ShellExecute RunAs msiexec'; context = $context; uacObserved = 'operator-attestation-required'; package = $manifest; packageLockedAcrossConsent = $true; command = $arguments; logPath = $request.logPath; startedUtc = [DateTime]::UtcNow.ToString('o'); rebootRequired = $null }
+    $result = @{ launched = $false; exitCode = $null; launchError = $null; hresult = $null; exceptionType = $null; exceptionMessage = $null; scope = 'per-machine'; method = 'ProcessStartInfo UseShellExecute RunAs msiexec'; context = $context; uacObserved = 'operator-attestation-required'; package = $manifest; packageLockedAcrossConsent = $true; command = $arguments; logPath = $request.logPath; startedUtc = [DateTime]::UtcNow.ToString('o'); completedUtc = $null; rebootRequired = $null }
     $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $request.resultPath
     try {
         # Exactly one ShellExecute attempt. Consent is controlled solely by the
         # operator. Neither a Win32 error nor RunAs proves a prompt was observed.
-        $installer = Start-Process -FilePath (Join-Path $env:WINDIR 'System32\msiexec.exe') -ArgumentList $arguments -Verb RunAs -PassThru -WindowStyle Hidden
+        # Start-Process can replace a Win32Exception with an InvalidOperationException
+        # that loses NativeErrorCode. Use the same normal ShellExecute RunAs via
+        # ProcessStartInfo to preserve 1223 without interpreting localized text.
+        $startInfo = [Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = Join-Path $env:WINDIR 'System32\msiexec.exe'
+        $startInfo.Arguments = $arguments
+        $startInfo.UseShellExecute = $true
+        $startInfo.Verb = 'runas'
+        $startInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+        $installer = [Diagnostics.Process]::Start($startInfo)
+        if ($null -eq $installer) { throw 'No installer process handle returned; inspect before continuing.' }
         $result.launched = $true
         if ($installer.WaitForExit(600000)) { $installer.Refresh(); $result.exitCode = $installer.ExitCode; $result.rebootRequired = $installer.ExitCode -in @(3010, 1641) }
     } catch {
         $cause = $_.Exception
         while ($cause.InnerException) { $cause = $cause.InnerException }
         $result.hresult = $cause.HResult
+        $result.exceptionType = $cause.GetType().FullName
+        $result.exceptionMessage = $cause.Message
         if ($cause -is [ComponentModel.Win32Exception]) { $result.launchError = $cause.NativeErrorCode }
-    } finally { $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $request.resultPath }
+    } finally { $result.completedUtc = [DateTime]::UtcNow.ToString('o'); $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $request.resultPath }
     $result | ConvertTo-Json -Depth 12 -Compress
 } finally { foreach ($handle in $handles) { $handle.Dispose() } }
