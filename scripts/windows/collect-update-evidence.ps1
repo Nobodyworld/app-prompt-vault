@@ -1,7 +1,8 @@
 [CmdletBinding()]
-param()
+param([switch]$SyntheticAcceptance)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$targetExecutable = if ($SyntheticAcceptance) { 'prompt-vault-update-acceptance.exe' } else { 'prompt-vault-app.exe' }
 
 # Private observations go to the parent process through stdout. Only its domain
 # report is public. This collector never opens an installer session or app data.
@@ -157,7 +158,7 @@ function Read-Registration([string]$Hive, [string]$Location, [string]$KeyName, [
         try { $record.cachedMsi = Read-Msi $record.services[0].localPackage -Cached } catch { $record.errors += 'cached-identity-unreadable' }
     }
     if ($record.installLocation) {
-        try { $record.executable = Read-File (Join-Path $record.installLocation 'prompt-vault-app.exe') -Executable } catch { $record.errors += 'installed-executable-unreadable' }
+        try { $record.executable = Read-File (Join-Path $record.installLocation $targetExecutable) -Executable } catch { $record.errors += 'installed-executable-unreadable' }
     }
     return $record
 }
@@ -194,7 +195,8 @@ try {
                         try {
                             $display = [string]$key.GetValue('DisplayName', '')
                             $install = [string]$key.GetValue('InstallLocation', '')
-                            if ($display -match '(?i)prompt[ -]*vault' -or $install -match '(?i)prompt[ -]*vault' -or $name -in $relatedProducts -or ($null -ne $selected -and $name -eq $selected.properties.ProductCode)) {
+                            $candidate = if ($SyntheticAcceptance) { $display -eq 'Prompt Vault Update Acceptance' -or $install -match '(?i)prompt vault update acceptance' } else { $display -match '(?i)prompt[ -]*vault' -or $install -match '(?i)prompt[ -]*vault' }
+                            if ($candidate -or $name -in $relatedProducts -or ($null -ne $selected -and $name -eq $selected.properties.ProductCode)) {
                                 $registrations += Read-Registration $hive $location $name $key
                             }
                         } finally { if ($null -ne $key) { $key.Dispose() } }
@@ -211,7 +213,7 @@ try {
         foreach ($process in Get-CimInstance -ClassName Win32_Process -Property Name, ProcessId, ExecutablePath) {
             $path = [string]$process.ExecutablePath
             $underInstall = @($registrations | Where-Object { $_.installLocation -and $path.StartsWith($_.installLocation.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
-            if ($process.Name -ieq 'prompt-vault-app.exe' -or $underInstall) {
+            if ($process.Name -ieq $targetExecutable -or $underInstall) {
                 $file = $null
                 if ($path) { try { $file = Read-File $path -Executable } catch { $errors.Add('process-executable-unreadable') } }
                 $processes += @{ pid = [int]$process.ProcessId; path = $path; file = $file }
