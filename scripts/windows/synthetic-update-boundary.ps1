@@ -72,6 +72,8 @@ function Verified-Processes([string]$ExpectedHash) {
     foreach ($record in Get-CimInstance Win32_Process -Property Name,ProcessId,ExecutablePath,CreationDate,SessionId) {
         if ($record.Name -ieq 'prompt-vault-update-acceptance.exe' -or ($record.ExecutablePath -and $record.ExecutablePath.StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase))) {
             if (-not [string]::Equals($record.ExecutablePath, $executablePath, [StringComparison]::OrdinalIgnoreCase) -or $record.SessionId -ne $context.sessionId -or (Digest $record.ExecutablePath).sha256 -ne $ExpectedHash) { throw 'Unverified process; no shutdown allowed.' }
+            $owner = Invoke-CimMethod -InputObject $record -MethodName GetOwnerSid
+            if ($owner.ReturnValue -ne 0 -or $owner.Sid -cne $identity.User.Value) { throw 'Process owner mismatch.' }
             $process = Get-Process -Id $record.ProcessId
             # CIM timestamps carry microseconds; compare at that precision while
             # retaining the process handle for the subsequent close request.
@@ -95,14 +97,30 @@ try {
     if ($msiDigest.sha256 -cne $manifest.artifact.sha256 -or $msiDigest.byteLength -ne $manifest.artifact.byteLength) { throw 'Package changed at execution boundary.' }
     if ($request.action -eq 'shutdown') {
         $processes = @(Verified-Processes $manifest.executable.sha256)
-        foreach ($process in $processes) { if (-not $process.CloseMainWindow()) { @{ status = 'refused' } | ConvertTo-Json -Compress; exit 0 } }
+        if ($processes.Count -gt 1) { @{ status = 'refused'; reason = 'multiple-synthetic-processes' } | ConvertTo-Json -Compress; exit 0 }
+        Add-Type -Path (Join-Path $PSScriptRoot 'SyntheticWindowClose.cs')
+        $closeAttempts = [Collections.Generic.List[object]]::new()
+        # Verify every process first. The fallback only recovers the historical
+        # hidden synthetic form, after the normal visible-window close refuses.
+        foreach ($process in $processes) {
+            $creationUtc = $process.StartTime.ToUniversalTime().ToString('o')
+            $normal = $process.CloseMainWindow()
+            $attempt = @{ pid = $process.Id; creationUtc = $creationUtc; normalClose = $normal; fallback = $null }
+            $closeAttempts.Add($attempt)
+            if (-not $normal) {
+                $attempt.fallback = [SyntheticWindowClose]::Request($process)
+                if (-not $attempt.fallback.Posted) {
+                    @{ status = 'refused'; closeAttempts = @($closeAttempts) } | ConvertTo-Json -Depth 10 -Compress; exit 0
+                }
+            }
+        }
         $deadline = [DateTime]::UtcNow.AddSeconds(5)
         foreach ($process in $processes) {
             $remaining = [Math]::Max(0, [int]($deadline - [DateTime]::UtcNow).TotalMilliseconds)
-            if (-not $process.WaitForExit($remaining)) { @{ status = 'timeout' } | ConvertTo-Json -Compress; exit 0 }
+            if (-not $process.WaitForExit($remaining)) { @{ status = 'timeout'; waitMilliseconds = 5000; closeAttempts = @($closeAttempts) } | ConvertTo-Json -Depth 10 -Compress; exit 0 }
         }
         if (@(Verified-Processes $manifest.executable.sha256).Count) { throw 'Process appeared after shutdown.' }
-        @{ status = 'stopped' } | ConvertTo-Json -Compress; exit 0
+        @{ status = 'stopped'; waitMilliseconds = 5000; closeAttempts = @($closeAttempts) } | ConvertTo-Json -Depth 10 -Compress; exit 0
     }
     if ($request.action -eq 'restart') {
         if ((Digest $executablePath -Lock).sha256 -cne $manifest.executable.sha256 -or @(Verified-Processes $manifest.executable.sha256).Count) { throw 'Restart identity or exclusivity refused.' }
