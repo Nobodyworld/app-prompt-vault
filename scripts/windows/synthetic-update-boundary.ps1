@@ -109,7 +109,8 @@ try {
         $argument = [string]$request.argument
         if ($argument -notin @('--run', '--seed', '--refuse-close', '--restart-failure')) { throw 'Unsupported synthetic launch.' }
         if ($argument -eq '--seed' -and (Test-Path -LiteralPath $dataRoot)) { throw 'Existing data is protected from seeding.' }
-        $process = Start-Process -FilePath $executablePath -ArgumentList $argument -PassThru -WindowStyle Hidden
+        # This is the explicitly requested interactive fixture; readiness and graceful close require its visible main window.
+        $process = Start-Process -FilePath $executablePath -ArgumentList $argument -PassThru -WindowStyle Normal
         $deadline = [DateTime]::UtcNow.AddSeconds(10)
         $ready = $false
         while ([DateTime]::UtcNow -lt $deadline -and -not $process.HasExited) {
